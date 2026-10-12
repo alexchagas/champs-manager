@@ -38,8 +38,9 @@ Este guia explica passo a passo como colocar o **Champs Manager 2026** no ar gra
    * **Root Directory:** `web`
    * **Build Command:** `npm run build`
    * **Build Output Directory:** `dist`
-5. Na seção **Environment Variables (Variáveis de Ambiente)**, adicione:
-   * `DISCORD_WEBHOOK_URL` = `https://discord.com/api/webhooks/1559307258033086534/Kos_RPWWCJT966J7qToOCMexJcFP_4NkU-n_K65NBIEcTg8sOkXRZVbsLes_296xJOm4`
+5. Na seção **Environment Variables (Variáveis de Ambiente / Secrets)**, adicione:
+   * `DISCORD_WEBHOOK_URL` = *(Cole a URL do seu Webhook do Discord aqui - mantido como secret na Cloudflare)*
+   * `SENTRY_AUTH_TOKEN` = *(O token do Sentry gerado nas configurações da sua conta Sentry)*
    * `VITE_SENTRY_DSN` = `https://0fe88f0dba4b1ea02cc33e1dd7d2f1d6@o4512245219983361.ingest.de.sentry.io/4512245317763152`
    * `VITE_ACCESS_HASH` = `4c7d4c3e0e024e04a6c41ba1932ec71b991bef21b3e0a90659de092e1baddc51`
 6. Clique em **Save and Deploy**.
