@@ -13,6 +13,7 @@ import { NewsFeed } from './components/NewsFeed';
 import { LeagueStatsScreen } from './components/LeagueStatsScreen';
 import { ManagersScreen } from './components/ManagersScreen';
 import { ClubViewer } from './components/ClubViewer';
+import { SplashScreen } from './components/SplashScreen';
 import { sound } from './audio/soundEngine';
 import { deriveClubAtmosphere } from './theme/clubTheme';
 
@@ -50,11 +51,17 @@ const MainAppContent: React.FC = () => {
     completeRound, 
     userFixture,
     viewedClubId,
-    closeClubViewer 
+    closeClubViewer,
+    rustVersion,
+    isWasmEngine,
+    hasActiveCareer,
   } = useGame();
 
   // Global Keyboard Shortcuts (Space to advance / play, Esc to back)
   useEffect(() => {
+    // If on splash screen, let SplashScreen handle keyboard shortcuts
+    if (activeScreen === 'splash') return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't trigger shortcuts if focus is inside an input, textarea or select
       const activeEl = document.activeElement;
@@ -94,7 +101,7 @@ const MainAppContent: React.FC = () => {
         // - if club viewer is open: closes club viewer
         // - on sub-screens: returns to 'overview'
         // - on 'overview': opens 'menu'
-        // - on 'menu': closes menu / back to 'overview'
+        // - on 'menu': closes menu / back to 'overview' ONLY if career was started
         e.preventDefault();
         sound.playClick();
         if (viewedClubId !== null) {
@@ -102,7 +109,9 @@ const MainAppContent: React.FC = () => {
         } else if (activeScreen === 'overview') {
           setScreen('menu');
         } else if (activeScreen === 'menu') {
-          setScreen('overview');
+          if (hasActiveCareer) {
+            setScreen('overview');
+          }
         } else if (activeScreen !== 'live_match') {
           setScreen('overview');
         }
@@ -111,20 +120,27 @@ const MainAppContent: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeScreen, advanceRound, completeRound, setScreen, userFixture, viewedClubId, closeClubViewer]);
+  }, [activeScreen, advanceRound, completeRound, setScreen, userFixture, viewedClubId, closeClubViewer, hasActiveCareer]);
 
   return (
     <AppShell>
-      {/* Header is visible in all gameplay screens */}
-      {activeScreen !== 'menu' && <Header />}
+      {/* Header is visible in all gameplay screens except menu and splash */}
+      {activeScreen !== 'menu' && activeScreen !== 'splash' && <Header />}
 
-      {gameState.activeMatch && gameState.activeMatch.phase !== 'committed' && activeScreen !== 'live_match' && <div className="bg-emerald-950 border-b border-emerald-700 px-4 py-2 flex justify-between text-sm">
+      {gameState.activeMatch && gameState.activeMatch.phase !== 'committed' && activeScreen !== 'live_match' && activeScreen !== 'splash' && <div className="bg-emerald-950 border-b border-emerald-700 px-4 py-2 flex justify-between text-sm">
         <span>Partida pausada · {gameState.activeMatch.clock.minute}{gameState.activeMatch.clock.added ? '+'+gameState.activeMatch.clock.added : ''}′ · {gameState.activeMatch.score.join(' : ')}</span>
         <button onClick={() => setScreen('live_match')} className="font-bold text-emerald-300">Voltar à partida</button>
       </div>}
-      {matchError && activeScreen !== 'live_match' && <p role="alert" className="p-2 text-amber-300">{matchError}</p>}
+      {matchError && activeScreen !== 'live_match' && activeScreen !== 'splash' && <p role="alert" className="p-2 text-amber-300">{matchError}</p>}
       {/* Screen Views */}
       <main className="flex-1 flex overflow-hidden relative">
+        {activeScreen === 'splash' && (
+          <SplashScreen 
+            onFinish={() => setScreen('menu')} 
+            rustVersion={rustVersion} 
+            isWasmReady={isWasmEngine} 
+          />
+        )}
         {activeScreen === 'menu' && <MainMenu />}
         {activeScreen === 'overview' && <ClubOverview />}
         {activeScreen === 'tactics' && <TacticsScreen />}

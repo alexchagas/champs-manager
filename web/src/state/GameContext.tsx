@@ -55,6 +55,7 @@ import {
 interface GameContextType {
   gameState: GameState;
   activeScreen: ActiveScreen;
+  hasActiveCareer: boolean;
   userClub: Club;
   currentRoundFixtures: MatchFixture[];
   userFixture?: MatchFixture;
@@ -122,6 +123,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [rustVersion, setRustVersion] = useState<string>('Carregando WASM...');
   const [lastSavedText, setLastSavedText] = useState<string>('Salvo');
   const [viewedClubId, setViewedClubId] = useState<number | null>(null);
+  const [hasActiveCareer, setHasActiveCareer] = useState<boolean>(false);
 
   const viewClub = useCallback((clubId: number) => {
     sound.playClick();
@@ -137,7 +139,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [gameState, setGameStateRaw] = useState<GameState>(() => {
     applySavedClubEdits();
     const initial = migrateCareer(createNewGame(255, 'Professor'));
-    return { ...initial, newsFeed: generateKickoffNews(initial) }; // default Flamengo
+    return { ...initial, newsFeed: generateKickoffNews(initial), activeScreen: 'splash' }; // default splash
   });
 
   // Synchronous authority prevents stale timer/shortcut/double-click closures from committing twice.
@@ -198,6 +200,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Load persisted state and save slots from IndexedDB/LocalStorage
     loadActiveGameFromStorage().then((saved) => {
       if (mounted && saved) {
+        setHasActiveCareer(true);
         const migrated = migrateCareer(saved);
         const sanitized = sanitizeClubData(migrated.clubs);
         const news = saved.newsFeed && saved.newsFeed.length > 0 ? saved.newsFeed : generateKickoffNews(saved);
@@ -205,6 +208,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           ...migrated,
           clubs: sanitized,
           newsFeed: news,
+          activeScreen: 'splash',
         }));
       }
     }).finally(() => {
@@ -332,8 +336,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const startNewGame = async (clubId: number, managerName: string, customOptions?: Partial<GameOptions>) => {
     if (matchInProgress() && !window.confirm('Abandonar a partida em curso e iniciar outra carreira?')) return;
     const migrated = migrateCareer(createNewGame(clubId, managerName, customOptions));
-    const newState = { ...migrated, newsFeed: generateKickoffNews(migrated) };
+    const newState = { ...migrated, newsFeed: generateKickoffNews(migrated), activeScreen: 'overview' as const };
     setMatchError('');
+    setHasActiveCareer(true);
     setGameState(newState);
     if (newState.options.autoSaveMode === 'start_of_year') {
       await performAutoSave(newState);
@@ -387,8 +392,10 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const finalState = resolvePendingFixtures({
           ...migrated,
           clubs: sanitized,
+          activeScreen: 'overview',
         });
         setMatchError('');
+        setHasActiveCareer(true);
         setGameState(finalState);
         await saveActiveGameToStorage(finalState);
         sound.playClick();
@@ -1008,6 +1015,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         gameState,
         activeScreen: gameState.activeScreen,
+        hasActiveCareer,
         userClub,
         currentRoundFixtures,
         userFixture,

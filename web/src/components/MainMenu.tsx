@@ -19,7 +19,10 @@ import {
   MapPin,
   Trophy,
   Sliders,
-  Users
+  Users,
+  Sparkles,
+  Heart,
+  Info
 } from 'lucide-react';
 import { sound } from '../audio/soundEngine';
 import { TeamEditorScreen } from './TeamEditorScreen';
@@ -38,6 +41,8 @@ import { getClubTheme, deriveClubAtmosphere } from '../theme/clubTheme';
 export const MainMenu: React.FC = () => {
   const { 
     gameState, 
+    userClub,
+    hasActiveCareer,
     setScreen, 
     startNewGame, 
     loadGame, 
@@ -49,9 +54,9 @@ export const MainMenu: React.FC = () => {
     rustVersion
   } = useGame();
 
-  const [activeTab, setActiveTab] = useState<'new_game' | 'load_game' | 'options' | 'editor'>('new_game');
+  const [activeTab, setActiveTab] = useState<'new_game' | 'load_game' | 'options' | 'editor' | 'credits'>('new_game');
   const [editorDirty, setEditorDirty] = useState(false);
-  const changeTab = (tab: 'new_game' | 'load_game' | 'options' | 'editor') => {
+  const changeTab = (tab: 'new_game' | 'load_game' | 'options' | 'editor' | 'credits') => {
     if (activeTab === 'editor' && tab !== 'editor' && editorDirty && !window.confirm('Há alterações não salvas. Sair do editor?')) return;
     setEditorDirty(false);
     sound.playClick();
@@ -241,67 +246,117 @@ export const MainMenu: React.FC = () => {
         </div>
 
         {/* Continue playing button if career is running */}
-        <button
-          onClick={returnToGame}
-          className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#152e22] hover:bg-[#1b3d2d] text-emerald-300 border border-[#2b5941] rounded text-xs font-bold transition-colors cursor-pointer"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          <span>Voltar ao Jogo</span>
-        </button>
+        {hasActiveCareer && (
+          <button
+            onClick={returnToGame}
+            className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#152e22] hover:bg-[#1b3d2d] text-emerald-300 border border-[#2b5941] rounded text-xs font-bold transition-colors cursor-pointer"
+            data-testid="return-to-game-header-btn"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Voltar ao Jogo</span>
+          </button>
+        )}
       </div>
 
       {/* Main Content Layout */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar Menu Options */}
-        <div className="w-52 bg-[var(--app-surface-1)] border-r border-[var(--app-border-subtle)] p-3 flex flex-col justify-between shrink-0">
-          <div className="space-y-1.5">
-            <button
-              onClick={() => changeTab('new_game')}
-              className={`w-full flex items-center space-x-2.5 px-3.5 py-2.5 rounded text-xs font-bold transition-all text-left cursor-pointer ${
-                activeTab === 'new_game'
-                  ? 'bg-gradient-to-r from-emerald-700 to-emerald-600 text-white shadow-md'
-                  : 'text-slate-300 hover:bg-[var(--app-surface-2)] hover:text-white'
-              }`}
-            >
-              <Play className="w-4 h-4" />
-              <span>Novo Jogo</span>
-            </button>
+        <div className="w-64 bg-[var(--app-surface-1)] border-r border-[var(--app-border-subtle)] p-3 flex flex-col justify-between shrink-0">
+          <div className="space-y-2">
+            {/* 1. SE HOUVER CARREIRA ATIVA: BOTÃO EM DESTAQUE "▶ Continuar Carreira" */}
+            {hasActiveCareer && (
+              <div className="mb-2 p-2.5 rounded-lg bg-gradient-to-br from-emerald-950/90 via-[#0f2a1d] to-[#0a1811] border border-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.2)]">
+                <div className="text-[10px] uppercase font-bold tracking-wider text-emerald-400 mb-1.5 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    Carreira Ativa
+                  </span>
+                  <span className="font-mono text-emerald-300/80 text-[10px]">{gameState.seasonYear}</span>
+                </div>
+                <button
+                  onClick={returnToGame}
+                  className="w-full flex items-center justify-between p-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded text-xs font-black shadow-md transition-all cursor-pointer group"
+                  data-testid="continue-career-btn"
+                >
+                  <div className="flex items-center space-x-2 text-left truncate mr-1.5">
+                    <Play className="w-4 h-4 fill-white shrink-0 group-hover:scale-110 transition-transform" />
+                    <div className="truncate">
+                      <div className="font-extrabold text-xs leading-none">Continuar Carreira</div>
+                      <div className="text-[10px] text-emerald-100 font-medium truncate mt-0.5">
+                        {userClub.name} · {gameState.seasonYear} · Rodada {gameState.currentRound}
+                      </div>
+                    </div>
+                  </div>
+                  <ClubCrest club={userClub} size="sm" />
+                </button>
+              </div>
+            )}
 
-            <button
-              onClick={() => changeTab('load_game')}
-              className={`w-full flex items-center space-x-2.5 px-3.5 py-2.5 rounded text-xs font-bold transition-all text-left cursor-pointer ${
-                activeTab === 'load_game'
-                  ? 'bg-gradient-to-r from-emerald-700 to-emerald-600 text-white shadow-md'
-                  : 'text-slate-300 hover:bg-[var(--app-surface-2)] hover:text-white'
-              }`}
-            >
-              <FolderOpen className="w-4 h-4" />
-              <span>Carregar / Salvar</span>
-            </button>
+            {/* 2. BOTÕES CLÁSSICOS BEM ORGANIZADOS E ACESSÍVEIS */}
+            <div className="space-y-1">
+              <button
+                onClick={() => changeTab('new_game')}
+                className={`w-full flex items-center space-x-2.5 px-3 py-2.5 rounded text-xs font-bold transition-all text-left cursor-pointer ${
+                  activeTab === 'new_game'
+                    ? 'bg-gradient-to-r from-emerald-700 to-emerald-600 text-white shadow-md'
+                    : 'text-slate-300 hover:bg-[var(--app-surface-2)] hover:text-white'
+                }`}
+              >
+                <Play className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>⚽ Novo Jogo</span>
+              </button>
 
-            <button
-              onClick={() => changeTab('editor')}
-              className={`w-full flex items-center space-x-2.5 px-3.5 py-2.5 rounded text-xs font-bold transition-all text-left cursor-pointer ${
-                activeTab === 'editor'
-                  ? 'bg-gradient-to-r from-emerald-700 to-emerald-600 text-white shadow-md'
-                  : 'text-slate-300 hover:bg-[var(--app-surface-2)] hover:text-white'
-              }`}
-            >
-              <Users className="w-4 h-4" />
-              <span>Editor de Dados</span>
-            </button>
+              <button
+                onClick={() => changeTab('load_game')}
+                className={`w-full flex items-center space-x-2.5 px-3 py-2.5 rounded text-xs font-bold transition-all text-left cursor-pointer ${
+                  activeTab === 'load_game'
+                    ? 'bg-gradient-to-r from-emerald-700 to-emerald-600 text-white shadow-md'
+                    : 'text-slate-300 hover:bg-[var(--app-surface-2)] hover:text-white'
+                }`}
+              >
+                <FolderOpen className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>💾 Carregar Jogo</span>
+              </button>
 
-            <button
-              onClick={() => changeTab('options')}
-              className={`w-full flex items-center space-x-2.5 px-3.5 py-2.5 rounded text-xs font-bold transition-all text-left cursor-pointer ${
-                activeTab === 'options'
-                  ? 'bg-gradient-to-r from-emerald-700 to-emerald-600 text-white shadow-md'
-                  : 'text-slate-300 hover:bg-[var(--app-surface-2)] hover:text-white'
-              }`}
-            >
-              <Settings className="w-4 h-4" />
-              <span>Opções do Jogo</span>
-            </button>
+              <button
+                onClick={() => changeTab('editor')}
+                className={`w-full flex items-center space-x-2.5 px-3 py-2.5 rounded text-xs font-bold transition-all text-left cursor-pointer ${
+                  activeTab === 'editor'
+                    ? 'bg-gradient-to-r from-emerald-700 to-emerald-600 text-white shadow-md'
+                    : 'text-slate-300 hover:bg-[var(--app-surface-2)] hover:text-white'
+                }`}
+              >
+                <Users className="w-4 h-4 text-blue-400 shrink-0" />
+                <span>🛠️ Editor de Equipes</span>
+              </button>
+
+              <button
+                onClick={() => changeTab('options')}
+                className={`w-full flex items-center space-x-2.5 px-3 py-2.5 rounded text-xs font-bold transition-all text-left cursor-pointer ${
+                  activeTab === 'options'
+                    ? 'bg-gradient-to-r from-emerald-700 to-emerald-600 text-white shadow-md'
+                    : 'text-slate-300 hover:bg-[var(--app-surface-2)] hover:text-white'
+                }`}
+              >
+                <Settings className="w-4 h-4 text-slate-400 shrink-0" />
+                <span>⚙️ Opções & Áudio</span>
+              </button>
+
+              <button
+                onClick={() => changeTab('credits')}
+                className={`w-full flex items-center space-x-2.5 px-3 py-2.5 rounded text-xs font-bold transition-all text-left cursor-pointer ${
+                  activeTab === 'credits'
+                    ? 'bg-gradient-to-r from-emerald-700 to-emerald-600 text-white shadow-md'
+                    : 'text-slate-300 hover:bg-[var(--app-surface-2)] hover:text-white'
+                }`}
+              >
+                <Trophy className="w-4 h-4 text-yellow-400 shrink-0" />
+                <span>🏆 Créditos (lekD Games)</span>
+              </button>
+            </div>
           </div>
 
           {/* Quick info footer */}
@@ -1175,6 +1230,99 @@ export const MainMenu: React.FC = () => {
                     </div>
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 5: CRÉDITOS (lekD Games) */}
+          {activeTab === 'credits' && (
+            <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-300">
+              {/* Header do Estúdio lekD Games */}
+              <div className="p-6 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 border border-sky-500/30 shadow-[0_0_25px_rgba(56,189,248,0.15)] flex flex-col sm:flex-row items-center gap-6 text-center sm:text-left">
+                <div className="relative shrink-0">
+                  <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-sky-500/20 to-blue-900/40 border border-sky-400/40 shadow-[0_0_30px_rgba(56,189,248,0.3)] flex items-center justify-center">
+                    <Shield className="w-12 h-12 text-sky-400 drop-shadow-[0_0_10px_rgba(56,189,248,0.8)]" />
+                  </div>
+                  <div className="absolute -top-2 left-1/2 -translate-x-1/2 flex items-center gap-1">
+                    {[...Array(5)].map((_, i) => (
+                      <Star key={i} className="w-3.5 h-3.5 text-sky-300 fill-sky-300/80 drop-shadow-[0_0_4px_rgba(56,189,248,0.9)] animate-pulse" />
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex-1 space-y-1.5">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                    <h2 className="text-3xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-sky-400 via-cyan-100 to-blue-400">
+                      lekD <span className="font-mono text-xl tracking-[0.3em] uppercase text-sky-300 font-bold">GAMES</span>
+                    </h2>
+                    <span className="self-center sm:self-auto px-2.5 py-0.5 rounded-full bg-sky-500/10 border border-sky-400/30 text-sky-300 font-mono text-xs font-semibold">
+                      Estúdio Criador
+                    </span>
+                  </div>
+                  <p className="text-sm font-semibold tracking-wider text-cyan-300/90 uppercase">
+                    Futebol Tático Raiz
+                  </p>
+                  <p className="text-xs text-slate-300 leading-relaxed pt-1">
+                    Projeto concebido com paixão por futebol, estratégia tática e a nostalgia dos clássicos gerenciadores de PC dos anos 90 e 2000.
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => setScreen('splash')}
+                  className="px-3.5 py-2 rounded-lg bg-sky-950/80 hover:bg-sky-900 text-sky-300 border border-sky-500/40 text-xs font-bold transition-all flex items-center gap-2 shrink-0 cursor-pointer shadow-sm hover:scale-105"
+                  title="Ver abertura oficial novamente"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Ver Abertura</span>
+                </button>
+              </div>
+
+              {/* Filosofia do Jogo */}
+              <div className="p-5 rounded-xl bg-[#0e1c15] border border-[#1a3828] space-y-2.5 shadow-md">
+                <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
+                  <Trophy className="w-4 h-4 text-emerald-400" />
+                  <span>A Essência do Gerenciamento de Futebol</span>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  O <strong className="text-white">Champs Manager 2026</strong> foi desenhado para proporcionar a experiência pura, dinâmica e estratégica de um simulador de futebol autêntico: abrir o jogo, escalar seus 11 titulares, ajustar a tática, acompanhar as rodadas lance a lance e construir um legado vitorioso com o seu clube.
+                </p>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Simplicidade envolvente, ritmo ágil, densidade de informações em tela única sem poluição visual e determinismo matemático absoluto em cada resultado.
+                </p>
+              </div>
+
+              {/* Ficha Técnica & Tecnologias */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 rounded-xl bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] space-y-2">
+                  <div className="flex items-center gap-2 text-xs font-bold text-emerald-400">
+                    <Zap className="w-4 h-4 text-amber-400 fill-amber-400" />
+                    <span>Motor Matemático (Rust 1.85+ & WASM)</span>
+                  </div>
+                  <ul className="text-xs text-slate-300 space-y-1.5 list-disc list-inside">
+                    <li>Simulação 90 minutos determinística e lance a lance</li>
+                    <li>Algoritmo anti-goleada calibrado e decisões em tempo real</li>
+                    <li>Regra oficial de 5 substituições em 3 janelas</li>
+                    <li>Cobranças de pênaltis e lesões graves interativas</li>
+                  </ul>
+                </div>
+
+                <div className="p-4 rounded-xl bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] space-y-2">
+                  <div className="flex items-center gap-2 text-xs font-bold text-emerald-400">
+                    <Globe className="w-4 h-4 text-cyan-400" />
+                    <span>Base Autêntica e Longevidade</span>
+                  </div>
+                  <ul className="text-xs text-slate-300 space-y-1.5 list-disc list-inside">
+                    <li>703 clubes reais (Séries A, B, C, D e 134 países)</li>
+                    <li>Mais de 14.600 atletas com atributos e contratos</li>
+                    <li>Theming dinâmico por cores de clube (Atmosferas)</li>
+                    <li>100% Offline-First para Web e Desktop (Tauri v2)</li>
+                  </ul>
+                </div>
+              </div>
+
+              {/* Rodapé de Versão */}
+              <div className="text-center pt-2 text-[11px] text-slate-500 font-mono">
+                Champs Manager 2026 • Desenvolvido com carinho por lekD Games • Versão 0.1.0
               </div>
             </div>
           )}

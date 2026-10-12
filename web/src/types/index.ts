@@ -249,6 +249,7 @@ export interface NewsArticle {
 }
 
 export type ActiveScreen = 
+  | 'splash'
   | 'menu' 
   | 'new_game' 
   | 'load_game' 

@@ -306,6 +306,34 @@ class SoundEngine {
       osc.stop(startTime + 0.26);
     });
   }
+
+  // Intro chime / kickoff chord for splash screen
+  public playIntroChime() {
+    if (!this.enabled || this.volume <= 0) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+    const freqs = [523.25, 659.25, 783.99, 1046.50];
+    freqs.forEach((freq, idx) => {
+      const startTime = now + idx * 0.05;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, startTime);
+
+      gain.gain.setValueAtTime(0, startTime);
+      gain.gain.linearRampToValueAtTime(0.14 * this.volume, startTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.38);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(startTime);
+      osc.stop(startTime + 0.4);
+    });
+  }
 }
 
 export const sound = new SoundEngine();
