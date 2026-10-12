@@ -364,6 +364,11 @@ class SoundEngine {
       osc.stop(startTime + 0.4);
     });
   }
+
+  // Fanfare / success confirmation
+  public playFanfare() {
+    this.playIntroChime();
+  }
 }
 
 export const sound = new SoundEngine();

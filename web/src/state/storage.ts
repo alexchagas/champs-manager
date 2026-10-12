@@ -1,5 +1,5 @@
 import type { GameState, SaveGameSlot } from '../types/index.ts';
-import { addBreadcrumb, captureError } from '../observability/sentry';
+import { addBreadcrumb, captureError } from '../observability/sentry.ts';
 
 const DB_NAME = 'ChampsManagerDB';
 const DB_VERSION = 1;

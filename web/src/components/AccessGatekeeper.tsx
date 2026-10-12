@@ -62,7 +62,7 @@ export const AccessGatekeeper: React.FC<AccessGatekeeperProps> = ({ children }) 
         try {
           localStorage.setItem(STORAGE_KEY, 'true');
         } catch {}
-        sound.playFanfare();
+        sound.playIntroChime();
         setIsGranted(true);
 
         if (fromUrl) {
@@ -130,7 +130,7 @@ export const AccessGatekeeper: React.FC<AccessGatekeeperProps> = ({ children }) 
                   setInputKey(e.target.value);
                   if (errorMsg) setErrorMsg('');
                 }}
-                placeholder="Ex: CHAMPS2026"
+                placeholder="••••••••••••"
                 autoFocus
                 disabled={isChecking}
                 className="w-full pl-10 pr-4 py-3 bg-[#0c1511] border border-[#234234] focus:border-[#10b981] focus:ring-1 focus:ring-[#10b981] rounded-xl text-slate-100 text-sm placeholder:text-slate-600 outline-none transition-all"

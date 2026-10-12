@@ -70,7 +70,7 @@ export const BugReportModal: React.FC<BugReportModalProps> = ({
       });
 
       if (res.ok) {
-        sound.playFanfare();
+        sound.playIntroChime();
         setSendSuccess(true);
         setTimeout(() => {
           onClose();
