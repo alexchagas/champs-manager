@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { VitePWA } from 'vite-plugin-pwa';
+import { sentryVitePlugin } from '@sentry/vite-plugin';
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -49,6 +50,15 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,png,svg,wasm}']
       }
     }),
+    sentryVitePlugin({
+      org: 'alex-org-3b',
+      project: 'javascript-react',
+      authToken: process.env.SENTRY_AUTH_TOKEN,
+      sourcemaps: {
+        filesToDeleteAfterUpload: ['**/*.js.map'],
+      },
+      disable: !process.env.SENTRY_AUTH_TOKEN,
+    }),
     {
       name: 'club-editor-file-api',
       configureServer(server) {
@@ -69,7 +79,7 @@ export default defineConfig({
     },
   ],
   build: {
-    sourcemap: false,
+    sourcemap: process.env.SENTRY_AUTH_TOKEN ? true : false,
   },
   server: {
     port: 3000,
