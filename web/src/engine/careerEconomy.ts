@@ -167,7 +167,7 @@ export function scoreManagers(state: GameState, fixtures: MatchFixture[]): GameS
     const finances = Math.round(Math.max(-20, Math.min(20, (club.balance - job.initialBalance) / Math.max(1_000_000, job.initialBalance) * 12 - Math.max(0, (club.overdueWages || 0) - job.initialOverdueWages) / 100_000)));
     const scoreComponents = { results, competitions, squad, finances };
     const seasonScore = results + competitions + squad + finances;
-    const boardRating = Math.max(0, Math.min(100, m.boardRating + (points - job.initialExpectation) * 3 + ((club.overdueWages || 0) > job.initialOverdueWages ? -5 : 0) + (club.squad.filter(p => !p.injured && !p.suspended).length < 11 ? -8 : 0)));
+    const boardRating = Math.max(0, Math.min(100, Math.round(m.boardRating + (points - job.initialExpectation) * 3 + ((club.overdueWages || 0) > job.initialOverdueWages ? -5 : 0) + (club.squad.filter(p => !p.injured && !p.suspended).length < 11 ? -8 : 0))));
     const careerScore = seasonScore + m.jobs.slice(0, -1).reduce((n, j) => n + (j.finalScore || 0), 0);
     return { ...m, jobs: [...m.jobs.slice(0, -1), updatedJob], seasonScore, careerScore, reputation: Math.max(0, Math.min(100, Math.round(50 + careerScore / 10))), scoreComponents, boardRating };
   });
@@ -286,7 +286,10 @@ export function rolloverManagers(state: GameState): GameState {
     const old = { ...m.jobs[last], endSeason: state.seasonYear, endRound: 38, reason: 'Fim da temporada', finalScore: m.seasonScore + titleBonus };
     const next = { clubId: c.id, clubName: c.name, startSeason: state.seasonYear + 1, startRound: 1, wins: 0, draws: 0, losses: 0, points: 0, initialBalance: c.balance, initialSquadValue: c.squad.reduce((n, p) => n + p.marketValue, 0), initialExpectation: managerExpectation(c, state.clubs), initialOverdueWages: c.overdueWages || 0 };
     const title = champion === c.id ? `${state.seasonYear} · ${state.nationalLeagueName || state.leagueName || 'Campeonato'}` : undefined;
-    return { ...m, jobs: [...m.jobs.slice(0, -1), old, next], titles: title ? [...m.titles, title] : m.titles, careerScore: m.careerScore + titleBonus, seasonScore: 0, scoreComponents: { results: 0, competitions: 0, squad: 0, finances: 0 } };
+    const careerScore = m.careerScore + titleBonus;
+    const reputation = Math.max(0, Math.min(100, Math.round(50 + careerScore / 10)));
+    const boardRating = Math.max(0, Math.min(100, Math.round(m.boardRating ?? 60)));
+    return { ...m, jobs: [...m.jobs.slice(0, -1), old, next], titles: title ? [...m.titles, title] : m.titles, careerScore, seasonScore: 0, scoreComponents: { results: 0, competitions: 0, squad: 0, finances: 0 }, reputation, boardRating };
   });
   return { ...state, managers };
 }

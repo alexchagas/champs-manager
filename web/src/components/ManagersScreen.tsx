@@ -101,7 +101,7 @@ export const ManagersScreen: React.FC = () => {
                 </span>
               </h2>
               <p className="text-xs text-slate-400">
-                Avaliação da diretoria: <strong className="text-[var(--app-text-accent)]">{Math.round(human.boardRating)}/100</strong> · Reputação: <strong className="text-amber-400">{human.reputation}/100</strong> · Perfil: <strong className="text-slate-200">{human.riskProfile}</strong>
+                Avaliação da diretoria: <strong className="text-[var(--app-text-accent)]">{Math.max(0, Math.min(100, Math.round(human.boardRating)))}/100</strong> · Reputação: <strong className="text-amber-400">{Math.max(0, Math.min(100, Math.round(human.reputation)))}/100</strong> · Perfil: <strong className="text-slate-200">{human.riskProfile}</strong>
               </p>
             </div>
           </div>

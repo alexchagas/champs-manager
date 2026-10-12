@@ -246,6 +246,7 @@ export interface NewsArticle {
   isHeadline?: boolean;
   badgeText?: string;
   statsHighlight?: string;
+  read?: boolean;
 }
 
 export type ActiveScreen = 

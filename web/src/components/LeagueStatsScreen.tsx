@@ -11,8 +11,7 @@ import {
   DollarSign, 
   ShieldAlert, 
   Flame,
-  Users,
-  Play
+  Users
 } from 'lucide-react';
 import { Player, Club } from '../types';
 import { sound } from '../audio/soundEngine';
@@ -233,14 +232,6 @@ export const LeagueStatsScreen: React.FC = () => {
             <span className="text-slate-400 text-[10px] block uppercase font-bold">Atletas Ativos</span>
             <span className="text-amber-400 font-mono-numbers font-black text-sm">{allDivisionPlayers.length}</span>
           </div>
-
-          <button
-            onClick={() => { sound.playWhistle(); setScreen('live_match'); }}
-            className="flex items-center space-x-1.5 bg-gradient-to-r from-emerald-500 to-green-400 hover:from-emerald-400 hover:to-green-300 text-black font-extrabold px-3.5 py-1.5 rounded-lg shadow-md text-xs uppercase tracking-wider cursor-pointer active:scale-95 transition-all"
-          >
-            <Play className="w-3.5 h-3.5 fill-black" />
-            <span>Jogar Partida</span>
-          </button>
         </div>
       </div>
 

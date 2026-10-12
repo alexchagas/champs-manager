@@ -11,10 +11,20 @@ import {
   ClubLoan,
   FinancialEntry,
   FormationType,
+  Mentality,
   MatchCommand,
 } from '../types';
 import { createNewGame, generateYouthSquad, generateSingleYouthPlayer } from '../data/initialData';
-import { closeRoundFinances, migrateCareer, scoreManagers, changeManagers, appointHuman, runAiMarket, rolloverManagers } from '../engine/careerEconomy';
+import { 
+  closeRoundFinances, 
+  migrateCareer, 
+  scoreManagers, 
+  changeManagers, 
+  appointHuman, 
+  runAiMarket, 
+  rolloverManagers,
+  automaticMatchBench 
+} from '../engine/careerEconomy';
 import { applySavedClubEdits } from '../data/editorPersistence';
 import { sortStandings, generateTwoSemesterCalendar, initializeStandings } from '../data/calendarGenerator';
 import { resolvePendingFixtures } from '../engine/qualification';
@@ -74,9 +84,11 @@ interface GameContextType {
   deleteSave: (slotId: string) => void;
   updateOptions: (newOptions: Partial<GameOptions>) => void;
   updateTactics: (tactics: Partial<ClubTactics>) => void;
+  changeMatchFormation: (formation: FormationType) => void;
+  changeMatchMentality: (mentality: Mentality) => void;
   swapPlayers: (idA: number, idB: number) => void;
   toggleStarter: (playerId: number) => void;
-  autoSelectBestLineup: (formation?: FormationType) => void;
+  autoSelectBestLineup: (formation?: FormationType) => { restedCount: number } | void;
   matchError: string;
   dispatchMatch: (command: MatchCommand) => { success: boolean; error?: string };
   setMatchBench: (ids: number[]) => void;
@@ -98,6 +110,8 @@ interface GameContextType {
   releaseYouthPlayer: (playerId: number) => { success: boolean; error?: string };
   scoutYouthPlayer: () => { success: boolean; error?: string };
   acceptManagerJob: (clubId: number) => void;
+  markNewsAsRead: (articleId: string) => void;
+  markAllNewsAsRead: () => void;
 }
 
 
@@ -454,6 +468,71 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
+  const changeMatchFormation = (formation: FormationType) => {
+    const session = stateRef.current.activeMatch;
+    if (!session) return;
+    const human = session.humanSide ?? 0;
+    const team = session.teams[human];
+    if (!team) return;
+
+    sound.playClick();
+    const onFieldIds = Object.keys(team.onFieldRoleByPlayerId).map(Number);
+    const gkId = onFieldIds.find(id => team.onFieldRoleByPlayerId[id] === 'GOL' || team.players.find(p => p.id === id)?.position === 'GOL') ?? onFieldIds[0];
+    const outfieldIds = onFieldIds.filter(id => id !== gkId);
+
+    const rankNatural: Record<string, number> = { ZAG: 1, LAT: 2, VOL: 3, MEI: 4, ATA: 5 };
+    outfieldIds.sort((a, b) => {
+      const posA = team.players.find(p => p.id === a)?.position || 'MEI';
+      const posB = team.players.find(p => p.id === b)?.position || 'MEI';
+      return (rankNatural[posA] || 99) - (rankNatural[posB] || 99);
+    });
+
+    const formationSlots: Record<FormationType, import('../types').Position[]> = {
+      '4-4-2': ['LAT', 'ZAG', 'ZAG', 'LAT', 'VOL', 'VOL', 'MEI', 'MEI', 'ATA', 'ATA'],
+      '4-3-3': ['LAT', 'ZAG', 'ZAG', 'LAT', 'VOL', 'MEI', 'MEI', 'ATA', 'ATA', 'ATA'],
+      '3-5-2': ['ZAG', 'ZAG', 'ZAG', 'VOL', 'VOL', 'MEI', 'MEI', 'MEI', 'ATA', 'ATA'],
+      '4-5-1': ['LAT', 'ZAG', 'ZAG', 'LAT', 'VOL', 'VOL', 'MEI', 'MEI', 'MEI', 'ATA'],
+      '5-3-2': ['LAT', 'ZAG', 'ZAG', 'ZAG', 'LAT', 'VOL', 'MEI', 'MEI', 'ATA', 'ATA'],
+    };
+
+    const slots = formationSlots[formation] || formationSlots['4-4-2'];
+    const newRoles: Record<string, import('../types').Position> = { [String(gkId)]: 'GOL' };
+    outfieldIds.forEach((id, idx) => {
+      newRoles[String(id)] = slots[idx] || 'MEI';
+    });
+
+    setGameState(prev => {
+      if (!prev.activeMatch) return prev;
+      const updatedTeams = [...prev.activeMatch.teams] as [typeof team, typeof team];
+      updatedTeams[human] = {
+        ...updatedTeams[human],
+        formation,
+        onFieldRoleByPlayerId: newRoles,
+      };
+      return {
+        ...prev,
+        activeMatch: {
+          ...prev.activeMatch,
+          teams: updatedTeams,
+        },
+      };
+    });
+  };
+
+  const changeMatchMentality = (mentality: Mentality) => {
+    sound.playClick();
+    setGameState(prev => {
+      const updatedClubs = prev.clubs.map(c => {
+        if (c.id !== prev.userClubId) return c;
+        return {
+          ...c,
+          tactics: { ...c.tactics, mentality },
+        };
+      });
+      return { ...prev, clubs: updatedClubs };
+    });
+  };
+
   // Swap position of two players in user squad
   const swapPlayers = (idA: number, idB: number) => {
     if (matchInProgress()) { setMatchError('Comando bloqueado durante a partida. Volte à escalação da sessão.'); return; }
@@ -534,13 +613,50 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
-  const autoSelectBestLineup = (formation?: FormationType) => {
-    if (matchInProgress()) { setMatchError('Comando bloqueado durante a partida. Volte à escalação da sessão.'); return; }
+  const autoSelectBestLineup = (formation?: FormationType): { restedCount: number } => {
+    if (matchInProgress()) { 
+      setMatchError('Comando bloqueado durante a partida. Volte à escalação da sessão.'); 
+      return { restedCount: 0 }; 
+    }
     sound.playClick();
     const updated = autoSelectBestLineupWasm(gameState, gameState.userClubId, formation);
-    if (updated) {
-      setGameState(updated);
+    if (!updated) return { restedCount: 0 };
+
+    let restedCount = 0;
+    const userClubUpdated = updated.clubs.find((c) => c.id === gameState.userClubId);
+    if (userClubUpdated) {
+      // 1. Rest tired starters (< 75% energy) if fresh subs available
+      const tiredStarters = userClubUpdated.squad.filter((p) => p.isStarter && p.energy < 75);
+      let availableFreshSubs = userClubUpdated.squad.filter(
+        (p) => !p.isStarter && !p.injured && !p.suspended && p.energy >= 75
+      );
+
+      for (const starter of tiredStarters) {
+        let sub = availableFreshSubs
+          .filter((c) => c.position === starter.position)
+          .sort((a, b) => b.strength - a.strength || b.energy - a.energy)[0];
+
+        if (!sub && starter.position !== 'GOL') {
+          sub = availableFreshSubs
+            .filter((c) => c.position !== 'GOL')
+            .sort((a, b) => b.strength - a.strength || b.energy - a.energy)[0];
+        }
+
+        if (sub) {
+          starter.isStarter = false;
+          sub.isStarter = true;
+          availableFreshSubs = availableFreshSubs.filter((c) => c.id !== sub.id);
+          restedCount++;
+        }
+      }
+
+      // 2. Automatically populate the 11-player match bench with top remaining available players
+      userClubUpdated.namedSubstituteIds = automaticMatchBench(userClubUpdated);
     }
+
+    setGameState(updated);
+    setMatchError('');
+    return { restedCount };
   };
 
   // One immutable state transition publishes domain results plus the career ledger/news.
@@ -615,7 +731,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const currentSemester = nextCompetition === 'estadual' ? 1 : 2;
         const standings = nextCompetition === 'estadual' ? wasmUpdated.standingsEstadual || wasmUpdated.standings :
           nextCompetition === 'nacional' ? wasmUpdated.standingsNacional || wasmUpdated.standings : wasmUpdated.standings;
-        setGameState(runAiMarket({ ...wasmUpdated, activeMatch: undefined, activeMatchFixtureId: undefined, currentSemester, standings }));
+        setGameState(runAiMarket({ ...wasmUpdated, activeMatch: undefined, activeMatchFixtureId: undefined, currentSemester, standings, activeScreen: 'overview' }));
         return;
       }
     }
@@ -1010,6 +1126,32 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { success: true };
   };
 
+  const markNewsAsRead = useCallback((articleId: string) => {
+    setGameState((prev) => {
+      if (!prev.newsFeed) return prev;
+      const alreadyRead = prev.newsFeed.find((a) => a.id === articleId)?.read;
+      if (alreadyRead) return prev;
+      return {
+        ...prev,
+        newsFeed: prev.newsFeed.map((art) =>
+          art.id === articleId ? { ...art, read: true } : art
+        ),
+      };
+    });
+  }, []);
+
+  const markAllNewsAsRead = useCallback(() => {
+    setGameState((prev) => {
+      if (!prev.newsFeed) return prev;
+      const allAlreadyRead = prev.newsFeed.every((a) => a.read);
+      if (allAlreadyRead) return prev;
+      return {
+        ...prev,
+        newsFeed: prev.newsFeed.map((art) => ({ ...art, read: true })),
+      };
+    });
+  }, []);
+
   return (
     <GameContext.Provider
       value={{
@@ -1034,6 +1176,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         deleteSave,
         updateOptions,
         updateTactics,
+        changeMatchFormation,
+        changeMatchMentality,
         swapPlayers,
         toggleStarter,
         autoSelectBestLineup,
@@ -1058,6 +1202,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         releaseYouthPlayer,
         scoutYouthPlayer,
         acceptManagerJob,
+        markNewsAsRead,
+        markAllNewsAsRead,
       }}
     >
       {children}

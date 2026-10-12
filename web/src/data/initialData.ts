@@ -9,7 +9,7 @@ export const DEFAULT_OPTIONS: GameOptions = {
   soundEnabled: true,
   soundVolume: 0.8,
   simSpeed: 2,
-  autoPauseOnGoal: true,
+  autoPauseOnGoal: false,
   autoSaveMode: 'disabled',
 };
 

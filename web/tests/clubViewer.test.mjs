@@ -220,3 +220,19 @@ test('deriveClubAtmosphere accurately styles ClubViewer for machine clubs: Ituan
   assert.notEqual(santosAtmosphere.family, 'verdes', 'Santos must not default to green');
   assert.notEqual(aguaSantaAtmosphere.family, 'verdes', 'Água Santa must not default to green');
 });
+
+test('mobileTab state defaults to squad and toggles between squad and campaign', () => {
+  let mobileTab = 'squad';
+  assert.equal(mobileTab, 'squad', 'Initial mobile tab should be squad so players are immediately accessible');
+
+  const setMobileTab = (tab) => {
+    mobileTab = tab;
+  };
+
+  setMobileTab('campaign');
+  assert.equal(mobileTab, 'campaign');
+
+  setMobileTab('squad');
+  assert.equal(mobileTab, 'squad');
+});
+

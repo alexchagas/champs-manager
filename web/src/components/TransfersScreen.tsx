@@ -236,14 +236,14 @@ export const TransfersScreen: React.FC = () => {
   return (
     <div className="flex-1 flex flex-col h-[calc(100vh-3.5rem)] bg-[var(--app-bg-deep)] overflow-hidden select-none">
       {/* Top Banner / Market Overview Bar */}
-      <div className="bg-[var(--app-surface-1)] border-b border-[var(--app-border-subtle)] px-4 py-2.5 flex items-center justify-between shrink-0 shadow-sm relative overflow-hidden">
+      <div className="bg-[var(--app-surface-1)] border-b border-[var(--app-border-subtle)] px-3 sm:px-4 py-2 sm:py-2.5 flex flex-col sm:flex-row gap-2 sm:items-center justify-between shrink-0 shadow-sm relative overflow-hidden">
         {/* Kit Stripe Top Accent Line */}
         <div 
           className="h-1 w-full absolute top-0 left-0 right-0" 
           style={{ background: clubTheme.stripeGradient }} 
         />
 
-        <div className="flex items-center space-x-4 pt-0.5">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-4 pt-0.5">
           <div className="flex items-center space-x-2">
             <ClubCrest club={userClub} size="sm" preferMini={true} className="w-5 h-5 shrink-0" />
             <h1 className="text-sm font-bold text-white uppercase tracking-wider flex items-center space-x-1.5">
@@ -255,28 +255,28 @@ export const TransfersScreen: React.FC = () => {
             </h1>
           </div>
 
-          <div className="h-4 w-px bg-[var(--app-border-subtle)]" />
+          <div className="hidden sm:block h-4 w-px bg-[var(--app-border-subtle)]" />
 
           {/* Squad Limit Indicator */}
-          <div className="flex items-center space-x-2 text-xs">
-            <Users className="w-4 h-4 text-slate-400" />
+          <div className="flex items-center space-x-1.5 text-xs">
+            <Users className="w-3.5 h-3.5 text-slate-400" />
             <span className="text-slate-300">Elenco:</span>
-            <span className={`font-mono font-bold px-1.5 py-0.5 rounded ${
+            <span className={`font-mono font-bold px-1.5 py-0.5 rounded text-[11px] ${
               isSquadFull ? 'bg-amber-950 text-amber-400 border border-amber-800' :
               isSquadAtMin ? 'bg-rose-950 text-rose-400 border border-rose-800' :
               'bg-[var(--app-surface-2)] text-[var(--app-text-accent)] border border-[var(--app-border-subtle)]'
             }`}>
               {squadCount} / 30 atletas
             </span>
-            <span className="text-[11px] text-slate-500">
-              (Mínimo: 16 | Máximo: 30)
+            <span className="hidden md:inline text-[11px] text-slate-500">
+              (Mín: 16 | Máx: 30)
             </span>
           </div>
         </div>
 
         {/* Club Finances Summary */}
-        <div className="flex items-center space-x-4">
-          <div className="text-xs text-right">
+        <div className="flex items-center justify-between sm:justify-end">
+          <div className="text-xs">
             <span className="text-slate-400 mr-1.5">Saldo Disponível:</span>
             <span className="font-mono font-bold text-emerald-400 text-sm">
               {formatMoney(userClub.balance)}
@@ -286,8 +286,8 @@ export const TransfersScreen: React.FC = () => {
       </div>
 
       {/* Tab Navigation */}
-      <div className="bg-[var(--app-surface-1)] border-b border-[var(--app-border-subtle)] px-4 flex items-center justify-between shrink-0">
-        <div className="flex space-x-1">
+      <div className="bg-[var(--app-surface-1)] border-b border-[var(--app-border-subtle)] px-2 sm:px-4 flex items-center justify-between shrink-0 overflow-x-auto no-scrollbar">
+        <div className="flex space-x-1 min-w-max">
           <button
             onClick={() => { setActiveTab('free_agents'); sound.playClick(); }}
             className={`flex items-center space-x-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer ${
@@ -396,38 +396,40 @@ export const TransfersScreen: React.FC = () => {
         {activeTab === 'free_agents' && (
           <div className="space-y-3 max-w-7xl mx-auto">
             {/* Filter Bar */}
-            <div className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg p-3 flex flex-wrap items-center gap-3">
-              <div className="flex items-center space-x-2">
-                <span className="text-xs text-slate-400 font-semibold">Posição:</span>
-                <select
-                  value={faPosition}
-                  onChange={(e) => setFaPosition(e.target.value)}
-                  className="bg-[var(--app-surface-2)] border border-[var(--app-border-subtle)] text-slate-200 text-xs rounded px-2.5 py-1.5 focus:outline-none focus:border-[var(--app-border-highlight)]"
-                >
-                  <option value="TODOS">Todas as Posições</option>
-                  <option value="GOL">Goleiro (GOL)</option>
-                  <option value="ZAG">Zagueiro (ZAG)</option>
-                  <option value="LAT">Lateral (LAT)</option>
-                  <option value="VOL">Volante (VOL)</option>
-                  <option value="MEI">Meia (MEI)</option>
-                  <option value="ATA">Atacante (ATA)</option>
-                </select>
+            <div className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg p-3 flex flex-col md:flex-row md:flex-wrap items-stretch md:items-center gap-2.5 sm:gap-3">
+              <div className="grid grid-cols-2 md:flex md:items-center gap-2">
+                <div className="flex items-center space-x-1.5">
+                  <span className="text-xs text-slate-400 font-semibold shrink-0">Posição:</span>
+                  <select
+                    value={faPosition}
+                    onChange={(e) => setFaPosition(e.target.value)}
+                    className="w-full md:w-auto bg-[var(--app-surface-2)] border border-[var(--app-border-subtle)] text-slate-200 text-xs rounded px-2.5 py-1.5 focus:outline-none focus:border-[var(--app-border-highlight)]"
+                  >
+                    <option value="TODOS">Todas</option>
+                    <option value="GOL">Goleiro (GOL)</option>
+                    <option value="ZAG">Zagueiro (ZAG)</option>
+                    <option value="LAT">Lateral (LAT)</option>
+                    <option value="VOL">Volante (VOL)</option>
+                    <option value="MEI">Meia (MEI)</option>
+                    <option value="ATA">Atacante (ATA)</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center space-x-1.5">
+                  <span className="text-xs text-slate-400 font-semibold shrink-0">Força Mín:</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={faMinStrength || ''}
+                    onChange={(e) => setFaMinStrength(Number(e.target.value) || 0)}
+                    placeholder="0"
+                    className="w-full md:w-16 bg-[var(--app-surface-2)] border border-[var(--app-border-subtle)] text-slate-200 text-xs rounded px-2 py-1.5 text-center font-mono focus:outline-none focus:border-[var(--app-border-highlight)]"
+                  />
+                </div>
               </div>
 
-              <div className="flex items-center space-x-2">
-                <span className="text-xs text-slate-400 font-semibold">Força Mín:</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={faMinStrength || ''}
-                  onChange={(e) => setFaMinStrength(Number(e.target.value) || 0)}
-                  placeholder="0"
-                  className="w-16 bg-[var(--app-surface-2)] border border-[var(--app-border-subtle)] text-slate-200 text-xs rounded px-2 py-1.5 text-center font-mono focus:outline-none focus:border-[var(--app-border-highlight)]"
-                />
-              </div>
-
-              <div className="flex-1 min-w-[200px] relative">
+              <div className="flex-1 min-w-[180px] relative">
                 <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
                 <input
                   type="text"
@@ -438,14 +440,14 @@ export const TransfersScreen: React.FC = () => {
                 />
               </div>
 
-              <span className="text-xs text-slate-400 ml-auto font-mono">
+              <span className="text-xs text-slate-400 md:ml-auto font-mono text-right">
                 {filteredFreeAgents.length} atleta(s) encontrado(s)
               </span>
             </div>
 
             {/* Free Agents Table */}
-            <div className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg overflow-hidden shadow">
-              <table className="w-full text-left text-xs text-slate-300">
+            <div className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg overflow-x-auto shadow">
+              <table className="w-full text-left text-xs text-slate-300 min-w-[620px] md:min-w-0">
                 <thead className="bg-[var(--app-surface-2)] text-slate-400 text-[11px] uppercase tracking-wider border-b border-[var(--app-border-subtle)]">
                   <tr>
                     <th className="py-2.5 px-3">Nome</th>
@@ -526,13 +528,13 @@ export const TransfersScreen: React.FC = () => {
           <div className="space-y-3 max-w-7xl mx-auto">
             {/* Search Filter Panel */}
             <div className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg p-3 space-y-3">
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap items-stretch lg:items-center gap-2.5 sm:gap-3">
                 <div className="flex items-center space-x-2">
-                  <span className="text-xs text-slate-400 font-semibold">Posição:</span>
+                  <span className="text-xs text-slate-400 font-semibold shrink-0">Posição:</span>
                   <select
                     value={searchFilter.position || 'TODOS'}
                     onChange={(e) => setSearchFilter({ ...searchFilter, position: e.target.value })}
-                    className="bg-[var(--app-surface-2)] border border-[var(--app-border-subtle)] text-slate-200 text-xs rounded px-2.5 py-1.5 focus:outline-none focus:border-[var(--app-border-highlight)]"
+                    className="w-full lg:w-auto bg-[var(--app-surface-2)] border border-[var(--app-border-subtle)] text-slate-200 text-xs rounded px-2.5 py-1.5 focus:outline-none focus:border-[var(--app-border-highlight)]"
                   >
                     <option value="TODOS">Todas</option>
                     <option value="GOL">Goleiro (GOL)</option>
@@ -544,8 +546,8 @@ export const TransfersScreen: React.FC = () => {
                   </select>
                 </div>
 
-                <div className="flex items-center space-x-2">
-                  <span className="text-xs text-slate-400 font-semibold">Força:</span>
+                <div className="flex items-center space-x-1.5">
+                  <span className="text-xs text-slate-400 font-semibold shrink-0">Força:</span>
                   <input
                     type="number"
                     min={1}
@@ -553,7 +555,7 @@ export const TransfersScreen: React.FC = () => {
                     value={searchFilter.minStrength ?? ''}
                     onChange={(e) => setSearchFilter({ ...searchFilter, minStrength: Number(e.target.value) || 0 })}
                     placeholder="Min"
-                    className="w-14 bg-[var(--app-surface-2)] border border-[var(--app-border-subtle)] text-slate-200 text-xs rounded px-1.5 py-1.5 text-center font-mono focus:outline-none focus:border-[var(--app-border-highlight)]"
+                    className="w-full lg:w-14 bg-[var(--app-surface-2)] border border-[var(--app-border-subtle)] text-slate-200 text-xs rounded px-1.5 py-1.5 text-center font-mono focus:outline-none focus:border-[var(--app-border-highlight)]"
                   />
                   <span className="text-slate-500">-</span>
                   <input
@@ -563,12 +565,12 @@ export const TransfersScreen: React.FC = () => {
                     value={searchFilter.maxStrength ?? ''}
                     onChange={(e) => setSearchFilter({ ...searchFilter, maxStrength: Number(e.target.value) || 100 })}
                     placeholder="Max"
-                    className="w-14 bg-[var(--app-surface-2)] border border-[var(--app-border-subtle)] text-slate-200 text-xs rounded px-1.5 py-1.5 text-center font-mono focus:outline-none focus:border-[var(--app-border-highlight)]"
+                    className="w-full lg:w-14 bg-[var(--app-surface-2)] border border-[var(--app-border-subtle)] text-slate-200 text-xs rounded px-1.5 py-1.5 text-center font-mono focus:outline-none focus:border-[var(--app-border-highlight)]"
                   />
                 </div>
 
-                <div className="flex items-center space-x-2">
-                  <span className="text-xs text-slate-400 font-semibold">Idade:</span>
+                <div className="flex items-center space-x-1.5">
+                  <span className="text-xs text-slate-400 font-semibold shrink-0">Idade:</span>
                   <input
                     type="number"
                     min={15}
@@ -576,7 +578,7 @@ export const TransfersScreen: React.FC = () => {
                     value={searchFilter.minAge ?? ''}
                     onChange={(e) => setSearchFilter({ ...searchFilter, minAge: Number(e.target.value) || 15 })}
                     placeholder="Min"
-                    className="w-14 bg-[var(--app-surface-2)] border border-[var(--app-border-subtle)] text-slate-200 text-xs rounded px-1.5 py-1.5 text-center font-mono focus:outline-none focus:border-[var(--app-border-highlight)]"
+                    className="w-full lg:w-14 bg-[var(--app-surface-2)] border border-[var(--app-border-subtle)] text-slate-200 text-xs rounded px-1.5 py-1.5 text-center font-mono focus:outline-none focus:border-[var(--app-border-highlight)]"
                   />
                   <span className="text-slate-500">-</span>
                   <input
@@ -586,27 +588,27 @@ export const TransfersScreen: React.FC = () => {
                     value={searchFilter.maxAge ?? ''}
                     onChange={(e) => setSearchFilter({ ...searchFilter, maxAge: Number(e.target.value) || 45 })}
                     placeholder="Max"
-                    className="w-14 bg-[var(--app-surface-2)] border border-[var(--app-border-subtle)] text-slate-200 text-xs rounded px-1.5 py-1.5 text-center font-mono focus:outline-none focus:border-[var(--app-border-highlight)]"
+                    className="w-full lg:w-14 bg-[var(--app-surface-2)] border border-[var(--app-border-subtle)] text-slate-200 text-xs rounded px-1.5 py-1.5 text-center font-mono focus:outline-none focus:border-[var(--app-border-highlight)]"
                   />
                 </div>
 
-                <div className="flex items-center space-x-2">
-                  <span className="text-xs text-slate-400 font-semibold">Valor Máx:</span>
+                <div className="flex items-center space-x-1.5">
+                  <span className="text-xs text-slate-400 font-semibold shrink-0">Valor Máx:</span>
                   <select
                     value={searchFilter.maxValue ?? ''}
                     onChange={(e) => setSearchFilter({ ...searchFilter, maxValue: e.target.value ? Number(e.target.value) : undefined })}
-                    className="bg-[var(--app-surface-2)] border border-[var(--app-border-subtle)] text-slate-200 text-xs rounded px-2.5 py-1.5 focus:outline-none focus:border-[var(--app-border-highlight)]"
+                    className="w-full lg:w-auto bg-[var(--app-surface-2)] border border-[var(--app-border-subtle)] text-slate-200 text-xs rounded px-2.5 py-1.5 focus:outline-none focus:border-[var(--app-border-highlight)]"
                   >
                     <option value="">Qualquer Valor</option>
-                    <option value="2000000">Até R$ 2.000.000</option>
-                    <option value="5000000">Até R$ 5.000.000</option>
-                    <option value="15000000">Até R$ 15.000.000</option>
-                    <option value="35000000">Até R$ 35.000.000</option>
-                    <option value="70000000">Até R$ 70.000.000</option>
+                    <option value="2000000">Até R$ 2M</option>
+                    <option value="5000000">Até R$ 5M</option>
+                    <option value="15000000">Até R$ 15M</option>
+                    <option value="35000000">Até R$ 35M</option>
+                    <option value="70000000">Até R$ 70M</option>
                   </select>
                 </div>
 
-                <div className="flex-1 min-w-[180px] relative">
+                <div className="col-span-1 sm:col-span-2 lg:flex-1 min-w-[180px] relative">
                   <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
                   <input
                     type="text"
@@ -619,7 +621,7 @@ export const TransfersScreen: React.FC = () => {
 
                 <button
                   onClick={() => setSearchFilter({ position: 'TODOS', minStrength: 50, maxStrength: 100, minAge: 17, maxAge: 40, nameQuery: '' })}
-                  className="text-xs text-slate-400 hover:text-white px-2 py-1 cursor-pointer underline"
+                  className="text-xs text-slate-400 hover:text-white px-2 py-1 cursor-pointer underline text-center sm:text-right"
                 >
                   Limpar
                 </button>
@@ -627,8 +629,8 @@ export const TransfersScreen: React.FC = () => {
             </div>
 
             {/* Results Table */}
-            <div className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg overflow-hidden shadow">
-              <table className="w-full text-left text-xs text-slate-300">
+            <div className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg overflow-x-auto shadow">
+              <table className="w-full text-left text-xs text-slate-300 min-w-[680px] md:min-w-0">
                 <thead className="bg-[var(--app-surface-2)] text-slate-400 text-[11px] uppercase tracking-wider border-b border-[var(--app-border-subtle)]">
                   <tr>
                     <th className="py-2.5 px-3">Atleta</th>
@@ -755,7 +757,7 @@ export const TransfersScreen: React.FC = () => {
                   return (
                     <div 
                       key={offer.id}
-                      className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg p-4 flex items-center justify-between shadow-md hover:border-[var(--app-border-highlight)] transition-all"
+                      className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md hover:border-[var(--app-border-highlight)] transition-all"
                     >
                       <div className="space-y-1">
                         <div className="flex items-center space-x-2">
@@ -780,7 +782,7 @@ export const TransfersScreen: React.FC = () => {
                           </span>
                         </div>
 
-                        <div className="flex items-center space-x-3 text-xs text-slate-400 pt-1">
+                        <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs text-slate-400 pt-1">
                           <span>
                             Valor da Oferta: <strong className="font-mono text-emerald-300 text-sm">{formatMoney(offer.fee)}</strong>
                           </span>
@@ -794,10 +796,10 @@ export const TransfersScreen: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="flex items-center space-x-2 shrink-0">
+                      <div className="flex items-center space-x-2 shrink-0 pt-2 sm:pt-0 border-t border-[var(--app-border-subtle)] sm:border-t-0">
                         <button
                           onClick={() => handleRejectOffer(offer.id)}
-                          className="px-3.5 py-2 rounded text-xs font-bold bg-[#1b2b22] hover:bg-rose-950 hover:text-rose-300 text-slate-300 border border-[#274534] hover:border-rose-800 transition-colors cursor-pointer"
+                          className="flex-1 sm:flex-initial min-h-[38px] px-3.5 py-2 rounded text-xs font-bold bg-[#1b2b22] hover:bg-rose-950 hover:text-rose-300 text-slate-300 border border-[#274534] hover:border-rose-800 transition-colors cursor-pointer"
                         >
                           Recusar
                         </button>
@@ -805,7 +807,7 @@ export const TransfersScreen: React.FC = () => {
                           disabled={isSquadAtMin}
                           onClick={() => handleAcceptOffer(offer)}
                           title={isSquadAtMin ? 'Elenco atingiu o limite mínimo de 16 atletas' : 'Aceitar e transferir atleta'}
-                          className={`px-4 py-2 rounded text-xs font-bold transition-all cursor-pointer ${
+                          className={`flex-1 sm:flex-initial min-h-[38px] px-4 py-2 rounded text-xs font-bold transition-all cursor-pointer ${
                             isSquadAtMin
                               ? 'bg-[#1a2f24] text-slate-500 cursor-not-allowed border border-transparent'
                               : 'bg-emerald-600 hover:bg-emerald-500 text-black shadow-lg shadow-emerald-950/50 active:scale-95'
@@ -863,8 +865,8 @@ export const TransfersScreen: React.FC = () => {
             </div>
 
             {/* Contracts Table */}
-            <div className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg overflow-hidden shadow">
-              <table className="w-full text-left text-xs text-slate-300">
+            <div className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg overflow-x-auto shadow">
+              <table className="w-full text-left text-xs text-slate-300 min-w-[680px] md:min-w-0">
                 <thead className="bg-[var(--app-surface-2)] text-slate-400 text-[11px] uppercase tracking-wider border-b border-[var(--app-border-subtle)]">
                   <tr>
                     <th className="py-2.5 px-3">Atleta</th>

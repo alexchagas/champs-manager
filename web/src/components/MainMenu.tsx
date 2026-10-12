@@ -78,7 +78,7 @@ export const MainMenu: React.FC = () => {
   // In-game simulation options
   const [simSpeed, setSimSpeed] = useState<1 | 2 | 5>(gameState.options.simSpeed || 2);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(gameState.options.soundEnabled ?? true);
-  const [autoPauseOnGoal, setAutoPauseOnGoal] = useState<boolean>(gameState.options.autoPauseOnGoal ?? true);
+  const [autoPauseOnGoal, setAutoPauseOnGoal] = useState<boolean>(gameState.options.autoPauseOnGoal ?? false);
 
   // Save/Load tab state
   const [saveTitle, setSaveTitle] = useState('');

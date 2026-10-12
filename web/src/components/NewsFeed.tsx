@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useGame } from '../state/GameContext';
 import { 
   Newspaper, 
@@ -6,24 +6,26 @@ import {
   Activity, 
   UserMinus, 
   ArrowLeftRight, 
-  Trophy, 
-  Calendar, 
-  ArrowLeft, 
-  Play, 
   Zap,
   TrendingUp,
   AlertTriangle,
   Award,
   Sparkles,
-  ExternalLink
+  ExternalLink,
+  CheckCheck,
+  Check,
+  ChevronRight,
+  BookOpen
 } from 'lucide-react';
 import { NewsArticle, NewsCategory } from '../types';
 import { sound } from '../audio/soundEngine';
 import { getClubTheme } from '../theme/clubTheme';
 
 export const NewsFeed: React.FC = () => {
-  const { gameState, userClub, setScreen } = useGame();
+  const { gameState, userClub, markNewsAsRead, markAllNewsAsRead } = useGame();
   const [selectedCategory, setSelectedCategory] = useState<NewsCategory | 'all'>('all');
+  const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null);
+  const mainArticleRef = useRef<HTMLDivElement>(null);
   const clubTheme = getClubTheme(userClub);
 
   const newsList = gameState.newsFeed || [];
@@ -34,8 +36,40 @@ export const NewsFeed: React.FC = () => {
     return item.category === selectedCategory;
   });
 
-  const headlineArticle = filteredNews.find((a) => a.isHeadline) || filteredNews[0];
-  const secondaryArticles = filteredNews.filter((a) => a.id !== headlineArticle?.id);
+  const totalUnreadAll = newsList.filter((a) => !a.read).length;
+
+  // Active article to show in full detail
+  const activeArticle = 
+    filteredNews.find((a) => a.id === selectedArticleId) ||
+    filteredNews.find((a) => a.isHeadline) ||
+    filteredNews[0];
+
+  const secondaryArticles = filteredNews.filter((a) => a.id !== activeArticle?.id);
+
+  // Automatically mark the viewed article as read
+  useEffect(() => {
+    if (activeArticle && !activeArticle.read) {
+      markNewsAsRead(activeArticle.id);
+    }
+  }, [activeArticle?.id, activeArticle?.read, markNewsAsRead]);
+
+  const handleSelectArticle = (art: NewsArticle) => {
+    sound.playClick();
+    setSelectedArticleId(art.id);
+    markNewsAsRead(art.id);
+    mainArticleRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const handleCategoryChange = (cat: NewsCategory | 'all') => {
+    sound.playClick();
+    setSelectedCategory(cat);
+    if (selectedArticleId && cat !== 'all') {
+      const art = newsList.find((a) => a.id === selectedArticleId);
+      if (art && art.category !== cat) {
+        setSelectedArticleId(null);
+      }
+    }
+  };
 
   const getCategoryMeta = (cat: NewsCategory) => {
     switch (cat) {
@@ -93,27 +127,28 @@ export const NewsFeed: React.FC = () => {
           </div>
 
           <div className="flex items-center space-x-2">
-            <button
-              onClick={() => { sound.playClick(); setScreen('overview'); }}
-              className="px-2 py-0.5 rounded bg-[var(--app-surface-2)] hover:bg-[var(--app-surface-1)] text-slate-300 hover:text-white border border-[var(--app-border-subtle)] text-[11px] font-semibold flex items-center space-x-1 cursor-pointer transition-colors"
-            >
-              <ArrowLeft className="w-3 h-3" />
-              <span>Voltar (Esc)</span>
-            </button>
-            <button
-              onClick={() => { sound.playClick(); setScreen('stats'); }}
-              className="px-2.5 py-0.5 rounded bg-[var(--app-surface-2)] hover:bg-[var(--app-surface-1)] text-[var(--app-text-accent)] hover:text-white border border-[var(--app-border-highlight)] text-[11px] font-bold flex items-center space-x-1 cursor-pointer transition-colors"
-            >
-              <Trophy className="w-3 h-3 text-[var(--app-text-accent)]" />
-              <span>Ver Artilharia</span>
-            </button>
-            <button
-              onClick={() => { sound.playWhistle(); setScreen('live_match'); }}
-              className="px-3 py-0.5 rounded bg-gradient-to-r from-emerald-500 to-green-400 hover:from-emerald-400 text-black text-[11px] font-black uppercase tracking-wider flex items-center space-x-1 shadow-md cursor-pointer active:scale-95 transition-all"
-            >
-              <Play className="w-3 h-3 fill-black" />
-              <span>Jogar (Espaço)</span>
-            </button>
+            {totalUnreadAll > 0 ? (
+              <span className="text-[11px] font-semibold text-amber-300 bg-amber-950/70 border border-amber-600/50 px-2 py-0.5 rounded-full flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                <span>{totalUnreadAll} não lida{totalUnreadAll > 1 ? 's' : ''}</span>
+              </span>
+            ) : (
+              <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-950/70 border border-emerald-600/50 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <CheckCheck className="w-3 h-3 text-emerald-400" />
+                <span>Todas as notícias lidas</span>
+              </span>
+            )}
+
+            {totalUnreadAll > 0 && (
+              <button
+                onClick={() => { sound.playClick(); markAllNewsAsRead(); }}
+                className="px-2.5 py-0.5 rounded bg-[var(--app-surface-2)] hover:bg-[var(--app-surface-1)] text-slate-200 hover:text-white border border-[var(--app-border-subtle)] hover:border-[var(--app-border-highlight)] text-[11px] font-bold flex items-center space-x-1 cursor-pointer transition-colors"
+                title="Marcar todas as notícias como lidas e zerar as notificações do menu"
+              >
+                <CheckCheck className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Marcar todas como lidas</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -134,11 +169,8 @@ export const NewsFeed: React.FC = () => {
           </div>
 
           <div className="hidden md:flex flex-col items-end">
-            <span className="text-xs bg-[var(--app-surface-2)] text-[var(--app-text-accent)] border border-[var(--app-border-highlight)] px-2 py-0.5 rounded font-mono font-bold">
-              {gameState.divisionName || 'Série A'} • Temporada {gameState.seasonYear}
-            </span>
-            <span className="text-[10px] text-slate-400 mt-0.5">
-              Rodada {currentRound} de {gameState.calendar.length > 0 ? Math.max(...gameState.calendar.map((f) => f.round)) : 38}
+            <span className="text-xs text-[var(--app-text-accent)] font-serif italic font-bold">
+              "O diário mais lido dos gramados"
             </span>
           </div>
         </div>
@@ -158,7 +190,7 @@ export const NewsFeed: React.FC = () => {
           return (
             <button
               key={tab.id}
-              onClick={() => { sound.playClick(); setSelectedCategory(tab.id as any); }}
+              onClick={() => handleCategoryChange(tab.id as any)}
               style={
                 isActive 
                   ? { 
@@ -182,85 +214,95 @@ export const NewsFeed: React.FC = () => {
 
       {/* NEWSPAPER CONTENT: LEAD ARTICLE + SECONDARY ARTICLES */}
       <div className="flex-1 grid grid-cols-12 gap-3 overflow-hidden">
-        {/* COLUMN 1 (7 COLS): LEAD HEADLINE ARTICLE */}
-        <div className="col-span-12 lg:col-span-7 bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col overflow-hidden shadow-lg">
-          {headlineArticle ? (
+        {/* COLUMN 1 (7 COLS): LEAD / ACTIVELY OPEN ARTICLE */}
+        <div 
+          ref={mainArticleRef}
+          className="col-span-12 lg:col-span-7 bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col overflow-hidden shadow-lg"
+        >
+          {activeArticle ? (
             <div className="flex-1 flex flex-col overflow-y-auto p-4 space-y-3">
-              {/* Category & Badge */}
-              <div className="flex items-center justify-between">
+              {/* Category, Badge, Date & Read status */}
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center space-x-2">
                   {(() => {
-                    const meta = getCategoryMeta(headlineArticle.category);
+                    const meta = getCategoryMeta(activeArticle.category);
                     const CatIcon = meta.icon;
                     return (
                       <span className={`flex items-center space-x-1 text-[11px] font-bold px-2 py-0.5 rounded border ${meta.color}`}>
                         <CatIcon className="w-3 h-3" />
-                        <span>{headlineArticle.badgeText || meta.label}</span>
+                        <span>{activeArticle.badgeText || meta.label}</span>
                       </span>
                     );
                   })()}
                   <span className="text-[11px] text-slate-400 font-mono-numbers">
-                    {headlineArticle.date}
+                    {activeArticle.date}
                   </span>
                 </div>
 
-                {headlineArticle.statsHighlight && (
-                  <span className="text-xs bg-[var(--app-surface-2)] border border-[var(--app-border-subtle)] text-[var(--app-text-accent)] font-mono font-bold px-2.5 py-0.5 rounded">
-                    {headlineArticle.statsHighlight}
+                <div className="flex items-center space-x-2">
+                  <span className="text-[10px] text-emerald-400 font-semibold flex items-center space-x-1 bg-emerald-950/60 border border-emerald-700/50 px-2 py-0.5 rounded">
+                    <Check className="w-3 h-3 text-emerald-400" />
+                    <span>Notícia lida</span>
                   </span>
-                )}
+
+                  {activeArticle.statsHighlight && (
+                    <span className="text-xs bg-[var(--app-surface-2)] border border-[var(--app-border-subtle)] text-[var(--app-text-accent)] font-mono font-bold px-2.5 py-0.5 rounded">
+                      {activeArticle.statsHighlight}
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Title & Subtitle */}
               <div>
                 <h2 className="text-lg md:text-xl font-black text-white leading-tight font-serif uppercase tracking-tight">
-                  {headlineArticle.title}
+                  {activeArticle.title}
                 </h2>
                 <p className="text-xs md:text-sm text-[var(--app-text-accent)]/90 font-semibold mt-1 leading-snug">
-                  {headlineArticle.subtitle}
+                  {activeArticle.subtitle}
                 </p>
               </div>
 
               {/* Club Banner if applicable */}
-              {(headlineArticle.clubName || headlineArticle.secondaryClubName) && (
+              {(activeArticle.clubName || activeArticle.secondaryClubName) && (
                 <div className="bg-[var(--app-surface-2)] border border-[var(--app-border-subtle)] rounded-lg p-3 flex items-center justify-around shadow-inner">
-                  {headlineArticle.clubName && (
+                  {activeArticle.clubName && (
                     <div className="flex items-center space-x-2.5">
-                      {headlineArticle.clubCrest ? (
+                      {activeArticle.clubCrest ? (
                         <img
-                          src={headlineArticle.clubCrest}
-                          alt={headlineArticle.clubName}
+                          src={activeArticle.clubCrest}
+                          alt={activeArticle.clubName}
                           className="w-10 h-10 object-contain drop-shadow"
                         />
                       ) : (
                         <div className="w-9 h-9 rounded-full bg-[var(--app-surface-1)] border border-[var(--app-border-highlight)] flex items-center justify-center font-bold text-xs text-white">
-                          {headlineArticle.clubName.substring(0, 3)}
+                          {activeArticle.clubName.substring(0, 3)}
                         </div>
                       )}
                       <div>
-                        <div className="font-bold text-white text-xs">{headlineArticle.clubName}</div>
-                        <div className="text-[10px] text-slate-400">Destaque da Rodada</div>
+                        <div className="font-bold text-white text-xs">{activeArticle.clubName}</div>
+                        <div className="text-[10px] text-slate-400">Destaque da Matéria</div>
                       </div>
                     </div>
                   )}
 
-                  {headlineArticle.secondaryClubName && (
+                  {activeArticle.secondaryClubName && (
                     <>
                       <span className="font-serif font-black text-slate-500 text-sm">VS</span>
                       <div className="flex items-center space-x-2.5">
-                        {headlineArticle.secondaryClubCrest ? (
+                        {activeArticle.secondaryClubCrest ? (
                           <img
-                            src={headlineArticle.secondaryClubCrest}
-                            alt={headlineArticle.secondaryClubName}
+                            src={activeArticle.secondaryClubCrest}
+                            alt={activeArticle.secondaryClubName}
                             className="w-10 h-10 object-contain drop-shadow"
                           />
                         ) : (
                           <div className="w-9 h-9 rounded-full bg-slate-800 flex items-center justify-center font-bold text-xs text-white">
-                            {headlineArticle.secondaryClubName.substring(0, 3)}
+                            {activeArticle.secondaryClubName.substring(0, 3)}
                           </div>
                         )}
                         <div>
-                          <div className="font-bold text-white text-xs">{headlineArticle.secondaryClubName}</div>
+                          <div className="font-bold text-white text-xs">{activeArticle.secondaryClubName}</div>
                           <div className="text-[10px] text-slate-400">Adversário</div>
                         </div>
                       </div>
@@ -269,10 +311,10 @@ export const NewsFeed: React.FC = () => {
                 </div>
               )}
 
-              {/* Main Body Text */}
+              {/* Main Body Text (unclipped full story) */}
               <div className="bg-[var(--app-surface-2)] border border-[var(--app-border-subtle)] rounded-lg p-3.5 space-y-2.5">
-                <p className="text-xs md:text-sm text-slate-200 leading-relaxed font-sans first-letter:text-2xl first-letter:font-bold first-letter:text-[var(--app-text-accent)] first-letter:mr-0.5">
-                  {headlineArticle.content}
+                <p className="text-xs md:text-sm text-slate-200 leading-relaxed font-sans first-letter:text-2xl first-letter:font-bold first-letter:text-[var(--app-text-accent)] first-letter:mr-0.5 whitespace-pre-line">
+                  {activeArticle.content}
                 </p>
               </div>
 
@@ -284,7 +326,7 @@ export const NewsFeed: React.FC = () => {
                   backgroundColor: clubTheme.subtleBg 
                 }}
               >
-                "A disputa da Série A segue em ritmo alucinante. Quem vacilar nas próximas rodadas sentirá o peso da cobrança das arquibancadas."
+                "A temporada segue a todo vapor nos gramados nacionais. Continue acompanhando cada lance e bastidor na Gazeta Esportiva."
                 <div className="text-[10px] font-bold not-italic mt-1" style={{ color: clubTheme.primaryAccent }}>
                   — Redação Champs Manager
                 </div>
@@ -292,12 +334,12 @@ export const NewsFeed: React.FC = () => {
             </div>
           ) : (
             <div className="flex-1 flex items-center justify-center text-slate-500 text-xs">
-              Nenhuma manchete disponível para esta categoria.
+              Nenhuma matéria disponível para esta categoria.
             </div>
           )}
         </div>
 
-        {/* COLUMN 2 (5 COLS): SECONDARY ARTICLES FEED */}
+        {/* COLUMN 2 (5 COLS): SECONDARY ARTICLES FEED (CLICKABLE TO OPEN) */}
         <div className="col-span-12 lg:col-span-5 bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col overflow-hidden shadow-lg">
           <div className="px-3.5 py-2.5 bg-[var(--app-surface-2)] border-b border-[var(--app-border-subtle)] flex items-center justify-between shrink-0">
             <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center space-x-1.5">
@@ -310,53 +352,85 @@ export const NewsFeed: React.FC = () => {
           <div className="flex-1 overflow-y-auto p-2.5 space-y-2">
             {secondaryArticles.length === 0 ? (
               <div className="text-center text-slate-500 text-xs py-8 italic">
-                Nenhum outro artigo publicado nesta rodada.
+                {filteredNews.length <= 1 
+                  ? 'Você está visualizando a única notícia publicada nesta categoria.' 
+                  : 'Nenhum outro artigo publicado nesta categoria.'}
               </div>
             ) : (
               secondaryArticles.map((art) => {
                 const meta = getCategoryMeta(art.category);
                 const CatIcon = meta.icon;
                 const isUserClub = art.clubName === userClub.name;
+                const isRead = !!art.read;
 
                 return (
                   <div
                     key={art.id}
+                    onClick={() => handleSelectArticle(art)}
                     style={isUserClub ? { borderLeft: `3px solid ${clubTheme.primaryAccent}` } : undefined}
-                    className="p-3 bg-[var(--app-surface-2)] hover:bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] hover:border-[var(--app-border-highlight)] rounded-lg transition-all space-y-1.5"
+                    className={`p-3 rounded-lg transition-all space-y-1.5 cursor-pointer group border active:scale-[0.99] ${
+                      isRead
+                        ? 'bg-[var(--app-surface-2)]/60 hover:bg-[var(--app-surface-2)] border-[var(--app-border-subtle)] opacity-90 hover:opacity-100'
+                        : 'bg-[var(--app-surface-2)] hover:bg-[var(--app-surface-1)] border-[var(--app-border-highlight)] shadow-sm'
+                    }`}
+                    title="Clique para abrir e ler a notícia completa"
                   >
                     <div className="flex items-center justify-between">
-                      <span className={`inline-flex items-center space-x-1 text-[10px] font-bold px-1.5 py-0.2 rounded border ${meta.color}`}>
-                        <CatIcon className="w-2.5 h-2.5" />
-                        <span>{art.badgeText || meta.label}</span>
-                      </span>
+                      <div className="flex items-center space-x-1.5">
+                        <span className={`inline-flex items-center space-x-1 text-[10px] font-bold px-1.5 py-0.2 rounded border ${meta.color}`}>
+                          <CatIcon className="w-2.5 h-2.5" />
+                          <span>{art.badgeText || meta.label}</span>
+                        </span>
+
+                        {!isRead ? (
+                          <span className="inline-flex items-center space-x-1 text-[9px] font-black text-amber-300 bg-amber-950/80 border border-amber-600/50 px-1.5 py-0.2 rounded animate-pulse">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                            <span>NOVA</span>
+                          </span>
+                        ) : (
+                          <span className="text-[9px] text-slate-400 font-semibold flex items-center gap-0.5">
+                            <Check className="w-2.5 h-2.5 text-emerald-400" />
+                            <span>Lida</span>
+                          </span>
+                        )}
+                      </div>
 
                       <span className="text-[10px] text-slate-400 font-mono-numbers">
                         {art.date}
                       </span>
                     </div>
 
-                    <h3 className="font-bold text-white text-xs leading-snug">
+                    <h3 className="font-bold text-white text-xs leading-snug group-hover:text-[var(--app-text-accent)] transition-colors">
                       {art.title}
                     </h3>
 
-                    <p className="text-[11px] text-slate-300 leading-relaxed line-clamp-3">
+                    <p className="text-[11px] text-slate-300 leading-relaxed line-clamp-2">
                       {art.content}
                     </p>
 
-                    {art.clubName && (
-                      <div className="flex items-center space-x-1.5 pt-1 text-[10px] font-medium border-t border-[var(--app-border-subtle)]" style={{ color: isUserClub ? clubTheme.primaryAccent : undefined }}>
-                        {art.clubCrest && (
-                          <img src={art.clubCrest} alt="" className="w-3.5 h-3.5 object-contain" />
-                        )}
-                        <span className={isUserClub ? 'font-bold' : 'text-slate-300'}>{art.clubName}</span>
-                        {art.relatedPlayerName && (
-                          <>
-                            <span className="text-slate-500">•</span>
-                            <span className="text-slate-300">{art.relatedPlayerName} ({art.relatedPlayerPosition})</span>
-                          </>
-                        )}
-                      </div>
-                    )}
+                    <div className="flex items-center justify-between pt-1 text-[10px] border-t border-[var(--app-border-subtle)]">
+                      {art.clubName ? (
+                        <div className="flex items-center space-x-1.5 font-medium" style={{ color: isUserClub ? clubTheme.primaryAccent : undefined }}>
+                          {art.clubCrest && (
+                            <img src={art.clubCrest} alt="" className="w-3.5 h-3.5 object-contain" />
+                          )}
+                          <span className={isUserClub ? 'font-bold' : 'text-slate-300'}>{art.clubName}</span>
+                          {art.relatedPlayerName && (
+                            <>
+                              <span className="text-slate-500">•</span>
+                              <span className="text-slate-300">{art.relatedPlayerName}</span>
+                            </>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 font-serif italic">Giro da Rodada</span>
+                      )}
+
+                      <span className="text-[10px] text-[var(--app-text-accent)] font-bold flex items-center space-x-0.5 group-hover:translate-x-0.5 transition-transform">
+                        <span>Abrir</span>
+                        <ChevronRight className="w-3 h-3" />
+                      </span>
+                    </div>
                   </div>
                 );
               })

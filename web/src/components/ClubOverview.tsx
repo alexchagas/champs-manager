@@ -24,7 +24,9 @@ import {
   CheckCircle2,
   AlertCircle,
   Newspaper,
-  BarChart3
+  BarChart3,
+  Zap,
+  Award
 } from 'lucide-react';
 import { calculateSectorStrength, getSquadStarters } from '../engine/simulationEngine';
 import { sound } from '../audio/soundEngine';
@@ -42,16 +44,15 @@ export const ClubOverview: React.FC = () => {
     setScreen, 
     currentRoundFixtures,
     completeRound,
-    expandStadium,
-    setTicketPrice,
-    viewClub
+    viewClub,
+    markNewsAsRead
   } = useGame();
 
   const userClubTheme = getClubTheme(userClub);
   const opponentTheme = nextOpponent ? getClubTheme(nextOpponent) : null;
 
   const [selectedRound, setSelectedRound] = useState(gameState.currentRound);
-  const [actionFeedback, setActionFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [mobileTab, setMobileTab] = useState<'standings' | 'calendar'>('standings');
 
   const formatMoney = (val: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -59,23 +60,6 @@ export const ClubOverview: React.FC = () => {
       currency: 'BRL',
       maximumFractionDigits: 0,
     }).format(val);
-  };
-
-  const handleExpand = (seats: 2000 | 5000 | 10000) => {
-    const res = expandStadium(seats);
-    if (res.success) {
-      setActionFeedback({
-        type: 'success',
-        message: `Estádio expandido com sucesso! (+${seats.toLocaleString('pt-BR')} lugares)`,
-      });
-      setTimeout(() => setActionFeedback(null), 4000);
-    } else {
-      setActionFeedback({
-        type: 'error',
-        message: res.error || 'Erro ao expandir estádio.',
-      });
-      setTimeout(() => setActionFeedback(null), 4000);
-    }
   };
 
   const roundFixtures = gameState.calendar.filter((f) => (f.fixtureDateIndex ?? f.round) === selectedRound);
@@ -102,39 +86,227 @@ export const ClubOverview: React.FC = () => {
     customRelegated: userLeagueInfo?.relegated,
   });
 
-  // Sector strengths for user and opponent
+  // Sector strengths and availability for user and opponent
   const userStarters = getSquadStarters(userClub);
+  const unavailableStarters = userStarters.filter((p) => p.injured || p.suspended);
   const userStrength = calculateSectorStrength(userStarters);
 
   const opponentStarters = nextOpponent ? getSquadStarters(nextOpponent) : [];
   const opponentStrength = nextOpponent ? calculateSectorStrength(opponentStarters) : userStrength;
 
-  // Attendance and Financial calculations
-  const avgAttendance = userClub.avgAttendance ?? Math.round(userClub.capacity * 0.76);
-  const occupancyRate = Math.min(100, Math.round((avgAttendance / userClub.capacity) * 100));
+  // Manager & Career Status (Board Trust, Reputation & Manager Profile)
+  const managers = gameState.managers || [];
+  const humanManager = managers.find((m) => m.id === gameState.humanManagerId) 
+    || managers.find((m) => m.kind === 'human')
+    || {
+      id: 'manager-human-1',
+      name: gameState.managerName || 'Professor',
+      boardRating: 65,
+      reputation: 50,
+      riskProfile: 'balanced' as const,
+      seasonScore: 0,
+      careerScore: 0,
+      titles: [],
+    };
 
-  // Ticket price elasticity projection
-  const priceElasticity = Math.max(0.2, Math.min(0.98, 1.15 - (userClub.ticketPrice / 125)));
-  const expectedAttendance = Math.min(userClub.capacity, Math.round(userClub.capacity * priceElasticity));
-  const expectedOccupancy = Math.round((expectedAttendance / userClub.capacity) * 100);
+  const boardRating = Math.max(0, Math.min(100, Math.round(humanManager.boardRating ?? 65)));
+  const managerReputation = Math.max(0, Math.min(100, Math.round(humanManager.reputation ?? 50)));
+  const boardStatus = 
+    boardRating >= 75 ? { label: 'Diretoria Segura', color: 'text-emerald-400 bg-emerald-950/70 border-emerald-600/40', dot: 'bg-emerald-400' } :
+    boardRating >= 50 ? { label: 'Diretoria Estável', color: 'text-amber-300 bg-amber-950/70 border-amber-600/40', dot: 'bg-amber-400' } :
+    { label: 'Diretoria em Risco', color: 'text-rose-400 bg-rose-950/70 border-rose-600/40', dot: 'bg-rose-500' };
 
-  const weeklySeniorPayroll = Math.round(userClub.squad.reduce((acc, p) => acc + p.salary, 0) / 4);
-  const weeklyYouthPayroll = Math.round((userClub.youth || []).reduce((acc, p) => acc + p.salary, 0) / 4);
-  const weeklyPayroll = weeklySeniorPayroll + weeklyYouthPayroll;
-  const stadiumMaintenance = Math.round((userClub.capacity * 2.2));
-  const estimatedTicketIncome = Math.round(expectedAttendance * userClub.ticketPrice);
-  const estimatedNetMatchIncome = estimatedTicketIncome - weeklyPayroll - stadiumMaintenance;
+  const profileLabel = 
+    humanManager.riskProfile === 'aggressive' ? 'Ofensivo' :
+    humanManager.riskProfile === 'cautious' ? 'Cauteloso' : 'Equilibrado';
 
+  const newsList = gameState.newsFeed || [];
+  const headlineArticle = newsList.find((a) => a.isHeadline) || newsList[0];
 
   return (
-    <div className="flex-1 flex overflow-hidden bg-[var(--app-bg-deep)] p-3 gap-3 h-[calc(100vh-3.5rem)] select-none">
-      {/* COLUMN 1: TABELA DE CLASSIFICAÇÃO */}
-      <div className="w-[520px] bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col overflow-hidden shadow-lg">
+    <div className="flex-1 flex flex-col overflow-hidden bg-[var(--app-bg-deep)] p-2 sm:p-3 gap-2 sm:gap-2.5 h-full min-h-0 select-none">
+      {/* TOP: CAREER & BOARD DASHBOARD WIDGET (ESTILO CLÁSSICO BRASFOOT) */}
+      <div className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg p-2.5 sm:p-3 shadow-md shrink-0 relative overflow-hidden">
+        {/* Top dual stripe */}
+        <div className="absolute top-0 left-0 right-0 h-1 flex z-10">
+          <div className="flex-1" style={{ background: userClubTheme.stripeGradient }} />
+          <div className="w-1 bg-[var(--app-surface-2)]" />
+          <div className="flex-1" style={{ background: userClubTheme.stripeGradient }} />
+        </div>
+
+        <div className="flex flex-wrap md:flex-nowrap items-center justify-between gap-2.5 sm:gap-4 pt-0.5">
+          {/* Section 1: Identidade do Clube & Comando Técnico */}
+          <div className="flex items-center space-x-2.5 sm:space-x-3.5 shrink-0 min-w-0 flex-wrap sm:flex-nowrap gap-y-2">
+            {/* Escudo e Nome com Divisão Abaixo */}
+            <div className="flex items-center space-x-2 sm:space-x-2.5 shrink-0">
+              <div 
+                className="w-10 h-10 sm:w-11 sm:h-11 rounded-lg flex items-center justify-center font-bold text-sm shadow-md bg-[var(--app-bg-deep)] shrink-0 p-1 relative overflow-hidden"
+                style={{ 
+                  border: `1.5px solid ${userClubTheme.subtleBorder}`,
+                  boxShadow: `0 0 12px ${userClubTheme.subtleBg}`
+                }}
+                title={userClub.name}
+              >
+                <ClubCrest club={userClub} size="lg" className="w-8 h-8 sm:w-9 sm:h-9" preferMini={false} />
+                <div 
+                  className="absolute bottom-0 left-0 right-0 h-0.5"
+                  style={{ background: userClubTheme.stripeGradient }}
+                />
+              </div>
+
+              <div className="flex flex-col shrink-0 min-w-0">
+                <h1 className="text-sm sm:text-base font-black text-white leading-tight truncate max-w-[130px] sm:max-w-[180px]">
+                  {userClub.name}
+                </h1>
+                <div className="flex items-center space-x-1.5 mt-0.5">
+                  <span className="text-[10px] sm:text-[11px] font-bold text-[var(--app-text-accent)] uppercase tracking-wider">
+                    {gameState.divisionName || 'Série A'}
+                  </span>
+                  <span 
+                    className="w-1.5 h-1.5 rounded-full inline-block shrink-0" 
+                    style={{ backgroundColor: userClubTheme.primaryAccent }}
+                    title={`Cores do ${userClub.name}`}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Separador vertical sutil em telas maiores */}
+            <div className="hidden sm:block h-8 w-px bg-[var(--app-border-subtle)] shrink-0" />
+
+            {/* Comando Técnico & Métricas do Treinador */}
+            <div className="min-w-0 flex flex-col justify-center">
+              <div className="flex items-center space-x-1.5 text-[10px] text-slate-400">
+                <span className="uppercase font-bold tracking-wider">Comando Técnico:</span>
+                <span className="font-bold text-slate-200 truncate max-w-[110px] sm:max-w-[160px]">
+                  {humanManager.name}
+                </span>
+              </div>
+
+              {/* Badges de Confiança da Diretoria, Reputação e Perfil */}
+              <div className="flex items-center flex-wrap gap-1.5 sm:gap-2 mt-1">
+                {/* Confiança da Diretoria */}
+                <span 
+                  className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded font-bold border ${boardStatus.color}`}
+                  title={`Avaliação da Diretoria: ${boardRating}% (${boardStatus.label})`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${boardStatus.dot} animate-pulse`} />
+                  <span>Confiança: {boardRating}%</span>
+                </span>
+
+                {/* Reputação */}
+                <span 
+                  className="inline-flex items-center gap-1 text-[10px] text-[var(--app-text-accent)] bg-[var(--app-bg-deep)] border border-[var(--app-border-subtle)] px-1.5 py-0.5 rounded font-mono font-bold"
+                  title={`Reputação do Treinador: ${managerReputation}%`}
+                >
+                  <Sparkles className="w-2.5 h-2.5 text-amber-300" />
+                  <span>Rep: {managerReputation}%</span>
+                </span>
+
+                {/* Perfil */}
+                <span className="hidden md:inline-flex text-[10px] text-slate-400 bg-[var(--app-surface-2)]/60 px-1.5 py-0.5 rounded font-semibold border border-[var(--app-border-subtle)]">
+                  Estilo: <strong className="text-slate-200 ml-1">{profileLabel}</strong>
+                </span>
+
+                {/* Força Média do Time */}
+                <span className="hidden lg:inline-flex text-[10px] text-slate-400 bg-[var(--app-surface-2)]/60 px-1.5 py-0.5 rounded font-semibold border border-[var(--app-border-subtle)]">
+                  Elenco: <strong className="text-[var(--app-text-accent)] ml-1">{userStrength.overall} Força</strong>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 2: Competição & Barra de Progresso da Temporada */}
+          <div className="hidden lg:flex flex-col items-center justify-center px-4 py-1.5 bg-[var(--app-surface-2)]/60 rounded-md border border-[var(--app-border-subtle)] shrink-0 min-w-[220px]">
+            <div className="flex items-center justify-between w-full text-[11px] mb-1">
+              <span className="text-slate-400 truncate max-w-[130px] font-medium">
+                {tableTitle || 'Campeonato'}
+              </span>
+              <span className="text-[var(--app-text-accent)] font-bold font-mono-numbers">
+                Rodada {gameState.currentRound}/{totalRounds}
+              </span>
+            </div>
+            {/* Progress bar */}
+            <div className="w-full bg-[var(--app-bg-deep)] h-1.5 rounded-full overflow-hidden border border-[var(--app-border-subtle)]">
+              <div 
+                className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full transition-all duration-500"
+                style={{ width: `${Math.min(100, Math.round((gameState.currentRound / Math.max(1, totalRounds)) * 100))}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Section 3: Widget de Saldo em Caixa */}
+          <div 
+            onClick={() => setScreen('finances')}
+            className="flex items-center space-x-3 px-3 py-1.5 bg-[var(--app-surface-2)] hover:bg-[var(--app-surface-2)]/80 border border-[var(--app-border-subtle)] rounded-lg cursor-pointer transition-all active:scale-98 shadow-xs ml-auto sm:ml-0"
+            title="Ver Finanças detalhadas"
+          >
+            <div className="w-7 h-7 rounded-md bg-emerald-950/70 border border-emerald-600/40 flex items-center justify-center text-emerald-400 shrink-0">
+              <DollarSign className="w-4 h-4" />
+            </div>
+            <div className="text-right">
+              <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-semibold">
+                Saldo em Caixa
+              </span>
+              <span className={`text-xs sm:text-sm font-black font-mono-numbers block ${userClub.balance >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {formatMoney(userClub.balance)}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* PLANTÃO DA RODADA / HEADLINE TICKER */}
+      {headlineArticle && (
+        <div 
+          onClick={() => { 
+            sound.playClick(); 
+            if (!headlineArticle.read) markNewsAsRead(headlineArticle.id); 
+            setScreen('news'); 
+          }}
+          className="bg-[var(--app-surface-1)] hover:bg-[var(--app-surface-2)] border border-[var(--app-border-subtle)] hover:border-[var(--app-border-highlight)] rounded-lg px-2.5 sm:px-3 py-1.5 flex items-center justify-between gap-2 shadow-xs shrink-0 cursor-pointer transition-all group"
+          title="Clique para abrir a edição completa do Jornal"
+        >
+          <div className="flex items-center space-x-2 min-w-0">
+            <span className={`inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] font-bold border shrink-0 ${
+              !headlineArticle.read
+                ? 'bg-amber-950/80 text-amber-300 border-amber-600/50'
+                : 'bg-[var(--app-surface-2)] text-slate-300 border-[var(--app-border-subtle)]'
+            }`}>
+              <Newspaper className="w-3 h-3 text-amber-400" />
+              <span>Plantão</span>
+              {!headlineArticle.read && (
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse ml-0.5" />
+              )}
+            </span>
+            <span className={`text-xs font-bold truncate transition-colors ${
+              !headlineArticle.read ? 'text-white group-hover:text-[var(--app-text-accent)]' : 'text-slate-300 group-hover:text-white'
+            }`}>
+              {headlineArticle.title}
+            </span>
+            {headlineArticle.subtitle && (
+              <span className="hidden md:inline text-xs text-slate-400 truncate">
+                — {headlineArticle.subtitle}
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center space-x-1 text-[11px] text-[var(--app-text-accent)] font-bold shrink-0">
+            <span className="hidden sm:inline">Ler Jornal</span>
+            <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+          </div>
+        </div>
+      )}
+
+      {/* MAIN TWO-COLUMN WORKSPACE */}
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden gap-2.5 sm:gap-3 min-h-0">
+        {/* COLUMN 1: TABELA DE CLASSIFICAÇÃO (50% NO DESKTOP, CONDICIONAL NO MOBILE) */}
+        <div className={`bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col overflow-hidden shadow-lg order-2 lg:order-1 lg:w-1/2 min-h-0 ${mobileTab === 'standings' ? 'flex-1' : 'hidden lg:flex'}`}>
         {/* Table Header */}
         <div className="px-3 py-2 bg-[var(--app-surface-2)] border-b border-[var(--app-border-highlight)] flex items-center justify-between shrink-0">
           <div className="flex items-center space-x-2 min-w-0">
             <Trophy className="w-4 h-4 text-[var(--app-text-accent)] shrink-0" />
-            <h2 className="text-xs font-bold text-white uppercase tracking-wider truncate max-w-[340px]">
+            <h2 className="text-xs font-bold text-white uppercase tracking-wider truncate max-w-[280px] sm:max-w-[340px]">
               {tableTitle || gameState.leagueName || 'Campeonato Nacional'}
             </h2>
           </div>
@@ -143,23 +315,22 @@ export const ClubOverview: React.FC = () => {
           </span>
         </div>
 
-
-        {/* Dense Standings Table */}
-        <div className="flex-1 overflow-y-auto">
-          <table className="w-full text-left text-xs brasfoot-table border-collapse">
+        {/* Dense Standings Table with responsive columns */}
+        <div className="flex-1 overflow-x-auto overflow-y-auto no-scrollbar">
+          <table className="w-full text-left text-xs brasfoot-table border-collapse min-w-[280px] sm:min-w-0">
             <thead>
               <tr className="sticky top-0 z-10">
-                <th className="w-8 text-center">#</th>
+                <th className="w-7 sm:w-8 text-center">#</th>
                 <th>Clube</th>
                 <th className="w-8 text-center">PTS</th>
                 <th className="w-7 text-center">J</th>
-                <th className="w-7 text-center">V</th>
-                <th className="w-7 text-center">E</th>
-                <th className="w-7 text-center">D</th>
-                <th className="w-7 text-center">GP</th>
-                <th className="w-7 text-center">GC</th>
-                <th className="w-7 text-center">SG</th>
-                <th className="w-14 text-center">Forma</th>
+                <th className="w-7 text-center hidden sm:table-cell">V</th>
+                <th className="w-7 text-center hidden sm:table-cell">E</th>
+                <th className="w-7 text-center hidden sm:table-cell">D</th>
+                <th className="w-7 text-center hidden md:table-cell">GP</th>
+                <th className="w-7 text-center hidden md:table-cell">GC</th>
+                <th className="w-7 sm:w-8 text-center">SG</th>
+                <th className="w-14 text-center hidden sm:table-cell">Forma</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#14281f] font-mono-numbers">
@@ -197,16 +368,16 @@ export const ClubOverview: React.FC = () => {
                       {(() => {
                         const rowClub = gameState.clubs.find((c) => c.id === row.clubId);
                         return (
-                          <div className="flex items-center space-x-1.5">
+                          <div className="flex items-center space-x-1 sm:space-x-1.5">
                             <ClubCrest
                               club={rowClub || { name: row.clubName, primaryColor: row.primaryColor }}
                               size="sm"
                               preferMini={true}
                             />
-                            <span className="truncate max-w-[130px] font-semibold">{row.clubName}</span>
+                            <span className="truncate max-w-[105px] sm:max-w-[140px] font-semibold">{row.clubName}</span>
                             {isUser && (
                               <span 
-                                className="text-[9px] px-1 rounded font-bold uppercase tracking-tighter"
+                                className="text-[8px] sm:text-[9px] px-1 rounded font-bold uppercase tracking-tighter shrink-0"
                                 style={{
                                   backgroundColor: userClubTheme.primaryAccent,
                                   color: userClubTheme.onPrimaryAccent,
@@ -223,17 +394,17 @@ export const ClubOverview: React.FC = () => {
                       {row.points}
                     </td>
                     <td className="text-center text-slate-300 text-[11px]">{row.played}</td>
-                    <td className="text-center text-emerald-300 text-[11px]">{row.won}</td>
-                    <td className="text-center text-slate-400 text-[11px]">{row.drawn}</td>
-                    <td className="text-center text-rose-300 text-[11px]">{row.lost}</td>
-                    <td className="text-center text-slate-300 text-[11px]">{row.goalsFor}</td>
-                    <td className="text-center text-slate-300 text-[11px]">{row.goalsAgainst}</td>
+                    <td className="text-center text-emerald-300 text-[11px] hidden sm:table-cell">{row.won}</td>
+                    <td className="text-center text-slate-400 text-[11px] hidden sm:table-cell">{row.drawn}</td>
+                    <td className="text-center text-rose-300 text-[11px] hidden sm:table-cell">{row.lost}</td>
+                    <td className="text-center text-slate-300 text-[11px] hidden md:table-cell">{row.goalsFor}</td>
+                    <td className="text-center text-slate-300 text-[11px] hidden md:table-cell">{row.goalsAgainst}</td>
                     <td className={`text-center text-[11px] font-semibold ${
                       row.goalDiff > 0 ? 'text-emerald-400' : row.goalDiff < 0 ? 'text-rose-400' : 'text-slate-400'
                     }`}>
                       {row.goalDiff > 0 ? `+${row.goalDiff}` : row.goalDiff}
                     </td>
-                    <td className="text-center py-1">
+                    <td className="text-center py-1 hidden sm:table-cell">
                       <div className="flex items-center justify-center space-x-0.5">
                         {row.form.length === 0 ? (
                           <span className="text-[10px] text-slate-600">-</span>
@@ -277,11 +448,11 @@ export const ClubOverview: React.FC = () => {
         )}
       </div>
 
-      {/* COLUMN 2 & 3: CALENDÁRIO, PRÓXIMO JOGO & FINANÇAS */}
-      <div className="flex-1 flex flex-col gap-3 overflow-hidden">
+      {/* COLUMN 2: HUB DA PARTIDA & JOGOS DA RODADA (50% NO DESKTOP, ORDER-1 NO MOBILE) */}
+      <div className="flex flex-col gap-2.5 sm:gap-3 overflow-hidden order-1 lg:order-2 lg:w-1/2 min-h-0">
         {/* TOP ROW: NEXT MATCH HERO CARD */}
         {nextOpponent && userFixture && (
-          <div className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg p-3 flex items-center justify-between shadow-md shrink-0 relative overflow-hidden">
+          <div className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg p-2.5 sm:p-3 flex flex-col gap-2 sm:gap-2.5 shadow-md shrink-0 relative overflow-hidden">
             {/* Top dual-team kit stripe line */}
             <div className="absolute top-0 left-0 right-0 h-1 flex z-10">
               <div className="flex-1" style={{ background: userClubTheme.stripeGradient }} />
@@ -289,554 +460,262 @@ export const ClubOverview: React.FC = () => {
               <div className="flex-1" style={{ background: opponentTheme?.stripeGradient || userClubTheme.stripeGradient }} />
             </div>
 
-            {/* User Club */}
-            <div className="flex items-center space-x-3 w-48">
-              <div
-                className="w-10 h-10 rounded-lg flex items-center justify-center font-black text-sm text-white shadow bg-[var(--app-bg-deep)] shrink-0 p-0.5 relative overflow-hidden"
-                style={{ 
-                  border: `1.5px solid ${userClubTheme.subtleBorder}`,
-                  boxShadow: `0 0 10px ${userClubTheme.subtleBg}`
-                }}
-              >
-                <ClubCrest club={userClub} size="lg" className="w-9 h-9" />
-                <div 
-                  className="absolute bottom-0 left-0 right-0 h-0.5"
-                  style={{ background: userClubTheme.stripeGradient }}
-                />
-              </div>
-              <div className="min-w-0">
-                <div className="font-extrabold text-sm text-white truncate flex items-center gap-1.5">
-                  <span className="truncate">{userClub.name}</span>
-                  <span 
-                    className="w-2 h-2 rounded-full shrink-0"
-                    style={{ backgroundColor: userClubTheme.primaryAccent }}
+            {/* Teams & VS Row */}
+            <div className="flex items-center justify-between pt-1">
+              {/* User Club */}
+              <div className="flex items-center space-x-2 sm:space-x-3 flex-1 min-w-0 max-w-[42%] lg:w-44">
+                <div
+                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center font-black text-sm text-white shadow bg-[var(--app-bg-deep)] shrink-0 p-0.5 relative overflow-hidden"
+                  style={{ 
+                    border: `1.5px solid ${userClubTheme.subtleBorder}`,
+                    boxShadow: `0 0 10px ${userClubTheme.subtleBg}`
+                  }}
+                >
+                  <ClubCrest club={userClub} size="lg" className="w-8 h-8 sm:w-9 sm:h-9" />
+                  <div 
+                    className="absolute bottom-0 left-0 right-0 h-0.5"
+                    style={{ background: userClubTheme.stripeGradient }}
                   />
                 </div>
-                <div className="text-[11px] text-[var(--app-text-accent)] font-semibold">
-                  {userFixture.homeClubId === userClub.id ? 'Mandante' : 'Visitante'}
+                <div className="min-w-0">
+                  <div className="font-extrabold text-xs sm:text-sm text-white truncate flex items-center gap-1 sm:gap-1.5">
+                    <span className="truncate">{userClub.name}</span>
+                    <span 
+                      className="w-2 h-2 rounded-full shrink-0"
+                      style={{ backgroundColor: userClubTheme.primaryAccent }}
+                    />
+                  </div>
+                  <div className="text-[10px] sm:text-[11px] text-[var(--app-text-accent)] font-semibold">
+                    {userFixture.homeClubId === userClub.id ? 'Mandante' : 'Visitante'}
+                  </div>
+                </div>
+              </div>
+
+              {/* VS Badge & Match Details */}
+              <div className="flex flex-col items-center px-1 shrink-0">
+                <div className="flex items-center space-x-1 mb-0.5">
+                  <span className="text-[9px] sm:text-[10px] uppercase font-bold tracking-wider text-[var(--app-text-accent)] bg-[var(--app-bg-deep)] px-1.5 sm:px-2 py-0.5 rounded border border-[var(--app-border-subtle)] truncate max-w-[100px] sm:max-w-none">
+                    {userFixture.competitionName || (gameState.currentSemester === 2 ? gameState.nationalLeagueName : gameState.stateChampionshipName) || 'Campeonato'}
+                  </span>
+                  {userFixture.dayOfWeek && (
+                    <span className={`text-[8px] sm:text-[9px] uppercase font-bold px-1 sm:px-1.5 py-0.5 rounded ${userFixture.dayOfWeek === 'quarta' ? 'bg-amber-950/80 text-amber-300 border border-amber-700/50' : 'bg-[var(--app-surface-2)] text-[var(--app-text-accent)]'}`}>
+                      {userFixture.dayOfWeek === 'quarta' ? 'Qua' : userFixture.dayOfWeek === 'quinta' ? 'Qui' : 'Dom'}
+                    </span>
+                  )}
+                </div>
+                <div className="text-base sm:text-lg font-black text-white tracking-wider my-0.2 sm:my-0.5">
+                  VS
+                </div>
+                <span className="text-[10px] sm:text-[11px] text-slate-300 font-medium truncate max-w-[130px] sm:max-w-[220px]">
+                  🏟️ {userFixture.homeClubId === userClub.id ? `${userClub.stadium}` : `${nextOpponent.stadium}`}
+                </span>
+              </div>
+
+              {/* Opponent Club */}
+              <div 
+                onClick={() => viewClub(nextOpponent.id)}
+                className="flex items-center justify-end space-x-2 sm:space-x-3 flex-1 min-w-0 max-w-[42%] lg:w-44 cursor-pointer group hover:opacity-90 transition-all"
+                title={`Ver detalhes de ${nextOpponent.name}`}
+              >
+                <div className="text-right min-w-0">
+                  <div className="font-extrabold text-xs sm:text-sm text-white truncate flex items-center justify-end gap-1 sm:gap-1.5 group-hover:text-[var(--app-text-accent)] transition-colors">
+                    <span 
+                      className="w-2 h-2 rounded-full shrink-0"
+                      style={{ backgroundColor: opponentTheme?.primaryAccent || '#94a3b8' }}
+                    />
+                    <span className="truncate">{nextOpponent.name}</span>
+                  </div>
+                  <div className="text-[10px] sm:text-[11px] text-slate-400 font-semibold flex items-center justify-end gap-1">
+                    <span>{userFixture.homeClubId === nextOpponent.id ? 'Mandante' : 'Visitante'}</span>
+                    <span className="hidden sm:inline text-[9px] text-[var(--app-text-accent)] font-normal underline">ver clube</span>
+                  </div>
+                </div>
+                <div
+                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center font-black text-sm text-white shadow bg-[var(--app-bg-deep)] shrink-0 p-0.5 relative overflow-hidden group-hover:scale-105 transition-transform"
+                  style={{ 
+                    border: `1.5px solid ${opponentTheme?.subtleBorder || 'var(--app-border-subtle)'}`,
+                    boxShadow: opponentTheme ? `0 0 10px ${opponentTheme.subtleBg}` : undefined
+                  }}
+                >
+                  <ClubCrest club={nextOpponent} size="lg" className="w-8 h-8 sm:w-9 sm:h-9" />
+                  <div 
+                    className="absolute bottom-0 left-0 right-0 h-0.5"
+                    style={{ background: opponentTheme?.stripeGradient || userClubTheme.stripeGradient }}
+                  />
                 </div>
               </div>
             </div>
 
-            {/* VS Badge & Match Details */}
-            <div className="flex flex-col items-center">
-              <div className="flex items-center space-x-1 mb-0.5">
-                <span className="text-[10px] uppercase font-bold tracking-wider text-[var(--app-text-accent)] bg-[var(--app-bg-deep)] px-2 py-0.5 rounded border border-[var(--app-border-subtle)]">
-                  {userFixture.competitionName || (gameState.currentSemester === 2 ? gameState.nationalLeagueName : gameState.stateChampionshipName) || 'Campeonato'}
-                </span>
-                {userFixture.dayOfWeek && (
-                  <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded ${userFixture.dayOfWeek === 'quarta' ? 'bg-amber-950/80 text-amber-300 border border-amber-700/50' : 'bg-[var(--app-surface-2)] text-[var(--app-text-accent)]'}`}>
-                    {userFixture.dayOfWeek === 'quarta' ? 'Quarta' : userFixture.dayOfWeek === 'quinta' ? 'Quinta' : 'Domingo'}
+            {/* Bottom Row of Hero Card: DM/Suspension Status & ESCALAR TIME Button */}
+            <div className="pt-2 border-t border-[var(--app-border-subtle)] flex flex-wrap sm:flex-nowrap items-center justify-between gap-2">
+              {/* Availability status */}
+              <div className="flex items-center space-x-1.5 sm:space-x-2">
+                {unavailableStarters.length > 0 ? (
+                  <button 
+                    onClick={() => { sound.playClick(); setScreen('tactics'); }}
+                    className="flex items-center space-x-1 sm:space-x-1.5 px-2 sm:px-2.5 py-1 rounded bg-rose-950/80 border border-rose-700/60 text-rose-300 text-[11px] sm:text-xs font-bold hover:bg-rose-900/80 transition-colors cursor-pointer animate-pulse"
+                    title="Clique para ir para a tela de escalação e substituir jogadores indisponíveis"
+                  >
+                    <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                    <span>⚠️ {unavailableStarters.length} titular(es) no DM/Suspenso!</span>
+                  </button>
+                ) : (
+                  <span className="text-[11px] text-slate-400">
+                    Força dos titulares: <strong className="text-emerald-400 font-mono-numbers">{userStrength.overall}</strong>
                   </span>
                 )}
               </div>
-              <span className="text-[10px] text-slate-400 font-mono-numbers">
-                {userFixture.competitionName} • {userFixture.competitionRound || userFixture.stage || `Rodada ${userFixture.round}`}
-              </span>
-              <div className="text-xl font-black text-white tracking-wider my-0.5">
-                VS
-              </div>
-              <span className="text-[11px] text-slate-300 font-medium truncate max-w-[180px]">
-                {userFixture.homeClubId === userClub.id ? userClub.stadium : nextOpponent.stadium}
-              </span>
-            </div>
 
-            {/* Opponent Club */}
-            <div 
-              onClick={() => viewClub(nextOpponent.id)}
-              className="flex items-center justify-end space-x-3 w-48 cursor-pointer group hover:opacity-90 transition-all"
-              title={`Ver detalhes de ${nextOpponent.name}`}
-            >
-              <div className="text-right min-w-0">
-                <div className="font-extrabold text-sm text-white truncate flex items-center justify-end gap-1.5 group-hover:text-[var(--app-text-accent)] transition-colors">
-                  <span 
-                    className="w-2 h-2 rounded-full shrink-0"
-                    style={{ backgroundColor: opponentTheme?.primaryAccent || '#94a3b8' }}
-                  />
-                  <span className="truncate">{nextOpponent.name}</span>
-                </div>
-                <div className="text-[11px] text-slate-400 font-semibold flex items-center justify-end gap-1">
-                  <span>{userFixture.homeClubId === nextOpponent.id ? 'Mandante' : 'Visitante'}</span>
-                  <span className="text-[9px] text-[var(--app-text-accent)] font-normal underline">ver clube</span>
-                </div>
-              </div>
-              <div
-                className="w-10 h-10 rounded-lg flex items-center justify-center font-black text-sm text-white shadow bg-[var(--app-bg-deep)] shrink-0 p-0.5 relative overflow-hidden group-hover:scale-105 transition-transform"
-                style={{ 
-                  border: `1.5px solid ${opponentTheme?.subtleBorder || 'var(--app-border-subtle)'}`,
-                  boxShadow: opponentTheme ? `0 0 10px ${opponentTheme.subtleBg}` : undefined
-                }}
+              {/* Action Button: ESCALAR TIME (Touch friendly, thumb accessible on mobile) */}
+              <button
+                onClick={() => { sound.playClick(); setScreen('tactics'); }}
+                className="w-full sm:w-auto px-4 sm:px-5 py-2 bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 text-black font-black rounded text-xs uppercase tracking-wider flex items-center justify-center space-x-2 shadow-lg active:scale-95 transition-all cursor-pointer"
+                title="Ir para a preparação e escalação do time (Espaço)"
               >
-
-                <ClubCrest club={nextOpponent} size="lg" className="w-9 h-9" />
-                <div 
-                  className="absolute bottom-0 left-0 right-0 h-0.5"
-                  style={{ background: opponentTheme?.stripeGradient || userClubTheme.stripeGradient }}
-                />
-              </div>
+                <Users className="w-4 h-4 fill-black text-black" />
+                <span>ESCALAR TIME</span>
+                <kbd className="hidden sm:inline-block bg-black/20 text-black/90 px-1 py-0.2 rounded text-[9px] font-mono lowercase tracking-normal font-bold">
+                  espaço
+                </kbd>
+              </button>
             </div>
-
-            {/* Match Action Button */}
-            <button
-              onClick={() => { sound.playWhistle(); setScreen('live_match'); }}
-              className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 text-black font-extrabold rounded text-xs uppercase tracking-wider flex items-center space-x-1.5 shadow-lg active:scale-95 transition-all cursor-pointer"
-              title="Ir para o Jogo (Espaço)"
-            >
-              <Play className="w-4 h-4 fill-black" />
-              <span>Ir para o Jogo</span>
-              <kbd className="hidden sm:inline-block bg-black/20 text-black/90 px-1 py-0.2 rounded text-[9px] font-mono lowercase tracking-normal font-bold">
-                espaço
-              </kbd>
-            </button>
           </div>
         )}
+
         {!userFixture && currentRoundFixtures.some(f => !f.pendingQualification && !f.played) && (
           <div className="bg-[#12261d] border border-[#204232] rounded-lg p-3 flex items-center justify-between shrink-0">
             <span className="text-sm text-slate-200">Seu clube não joga nesta data.</span>
-            <button onClick={() => completeRound()} className="px-4 py-2 bg-emerald-500 text-black font-bold rounded text-xs uppercase">
+            <button onClick={() => completeRound()} className="px-4 py-2 bg-emerald-500 text-black font-bold rounded text-xs uppercase cursor-pointer">
               Simular data
             </button>
           </div>
         )}
 
-        {/* BOTTOM SPLIT: ROUND FIXTURES + FINANCIAL SUMMARY */}
-        <div className="flex-1 grid grid-cols-12 gap-3 overflow-hidden">
-          {/* FIXTURES TABLE (CALENDÁRIO DA TEMPORADA) */}
-          <div className="col-span-7 bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col overflow-hidden shadow-md">
-            {/* Header with Round Switcher */}
-            <div className="px-3 py-2 bg-[var(--app-surface-2)] border-b border-[var(--app-border-highlight)] flex items-center justify-between shrink-0">
-              <div className="flex items-center space-x-2">
-                <Calendar className="w-4 h-4 text-[var(--app-text-accent)]" />
-                <h3 className="text-xs font-bold text-white uppercase tracking-wider">
-                  {roundFixtures[0]?.competitionName || 'Calendário'} • {roundFixtures[0]?.competitionRound || `Data ${selectedRound}`} • {roundFixtures[0]?.date || ''}
-                </h3>
-              </div>
-              <div className="flex items-center space-x-1">
-                <button
-                  disabled={selectedRound <= 1}
-                  onClick={() => { sound.playClick(); setSelectedRound((r) => Math.max(1, r - 1)); }}
-                  className="p-1 rounded bg-[var(--app-bg-deep)] hover:bg-[var(--app-surface-2)] text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed border border-[var(--app-border-subtle)]"
-                >
-                  <ChevronLeft className="w-3.5 h-3.5" />
-                </button>
-                <span className="text-xs font-mono-numbers px-2 text-white font-bold">
-                  {selectedRound} / {totalRounds}
-                </span>
-                <button
-                  disabled={selectedRound >= totalRounds}
-                  onClick={() => { sound.playClick(); setSelectedRound((r) => Math.min(totalRounds, r + 1)); }}
-                  className="p-1 rounded bg-[var(--app-bg-deep)] hover:bg-[var(--app-surface-2)] text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed border border-[var(--app-border-subtle)]"
-                >
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
+        {/* Mobile/Tablet Tab Switcher (Classificação vs Jogos da Rodada) */}
+        <div className="flex lg:hidden bg-[var(--app-surface-2)] p-1 rounded-lg border border-[var(--app-border-subtle)] shrink-0 gap-1">
+          <button
+            onClick={() => { sound.playClick(); setMobileTab('standings'); }}
+            className={`flex-1 py-1.5 px-3 rounded text-xs font-bold flex items-center justify-center space-x-1.5 transition-all cursor-pointer ${
+              mobileTab === 'standings'
+                ? 'bg-[var(--app-surface-1)] text-[var(--app-text-accent)] border border-[var(--app-border-highlight)] shadow-xs'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Trophy className="w-3.5 h-3.5" />
+            <span>Classificação</span>
+          </button>
+          <button
+            onClick={() => { sound.playClick(); setMobileTab('calendar'); }}
+            className={`flex-1 py-1.5 px-3 rounded text-xs font-bold flex items-center justify-center space-x-1.5 transition-all cursor-pointer ${
+              mobileTab === 'calendar'
+                ? 'bg-[var(--app-surface-1)] text-[var(--app-text-accent)] border border-[var(--app-border-highlight)] shadow-xs'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Calendar className="w-3.5 h-3.5" />
+            <span>Jogos da Rodada</span>
+          </button>
+        </div>
+
+        {/* BOTTOM: CALENDÁRIO DA TEMPORADA & JOGOS DA RODADA (EXPANDIDO) */}
+        <div className={`bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col overflow-hidden shadow-md flex-1 min-h-0 ${mobileTab === 'calendar' ? 'flex' : 'hidden lg:flex'}`}>
+          {/* Header with Round Switcher */}
+          <div className="px-3 py-2 bg-[var(--app-surface-2)] border-b border-[var(--app-border-highlight)] flex items-center justify-between shrink-0">
+            <div className="flex items-center space-x-2">
+              <Calendar className="w-4 h-4 text-[var(--app-text-accent)]" />
+              <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+                {roundFixtures[0]?.competitionName || 'Calendário'} • {roundFixtures[0]?.competitionRound || `Data ${selectedRound}`} • {roundFixtures[0]?.date || ''}
+              </h3>
             </div>
-
-            {/* Matches list */}
-            <div className="flex-1 overflow-y-auto p-2 space-y-1">
-              {roundFixtures.map((fix) => {
-                if (fix.pendingQualification) return (
-                  <div key={fix.id} className="flex items-center justify-between px-3 py-2 rounded bg-[var(--app-surface-2)] text-xs text-slate-400">
-                    <span>A definir</span>
-                    <span>{fix.competitionRound || fix.stage} • aguardando classificação</span>
-                    <span>A definir</span>
-                  </div>
-                );
-                const home = gameState.clubs.find((c) => c.id === fix.homeClubId) || getAllClubs().find(c => c.id === fix.homeClubId);
-                const away = gameState.clubs.find((c) => c.id === fix.awayClubId) || getAllClubs().find(c => c.id === fix.awayClubId);
-                if (!home || !away) return null;
-                const isUserMatch = home.id === userClub.id || away.id === userClub.id;
-
-                return (
-                  <div
-                    key={fix.id}
-                    className={`flex items-center justify-between px-3 py-1.5 rounded text-xs transition-colors ${
-                      isUserMatch
-                        ? 'bg-[var(--app-surface-2)] border border-[var(--app-border-highlight)] shadow-xs'
-                        : 'bg-[var(--app-surface-2)]/60 border border-transparent hover:border-[var(--app-border-subtle)]'
-                    }`}
-                  >
-                    {/* Home Club */}
-                    <div 
-                      onClick={() => viewClub(home.id)}
-                      className="flex items-center space-x-2 w-[42%] justify-end min-w-0 cursor-pointer group hover:opacity-85 transition-opacity"
-                      title={`Ver detalhes de ${home.name}`}
-                    >
-                      <span className={`font-semibold truncate group-hover:underline ${home.id === userClub.id ? 'text-[var(--app-text-accent)] font-bold' : 'text-slate-200'}`}>
-                        {home.name}
-                      </span>
-                      <ClubCrest club={home} size="sm" preferMini={true} />
-                    </div>
-
-                    {/* Score / Time Badge */}
-                    <div className="w-[16%] flex justify-center shrink-0">
-                      {fix.played ? (
-                        <span className="font-mono-numbers font-black px-2 py-0.5 bg-[var(--app-bg-deep)] border border-[var(--app-border-subtle)] rounded text-[var(--app-text-accent)] text-xs">
-                          {fix.homeScore} x {fix.awayScore}
-                          {fix.penaltyScore && <span className="block text-[9px] text-amber-300">Pen. {fix.penaltyScore[0]} x {fix.penaltyScore[1]}</span>}
-                        </span>
-                      ) : (
-                        <span className="text-[10px] text-slate-400 bg-[var(--app-bg-deep)] px-2 py-0.5 rounded border border-[var(--app-border-subtle)]">
-                          {selectedRound === gameState.currentRound ? 'Hoje' : 'A Jogar'}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Away Club */}
-                    <div 
-                      onClick={() => viewClub(away.id)}
-                      className="flex items-center space-x-2 w-[42%] min-w-0 cursor-pointer group hover:opacity-85 transition-opacity"
-                      title={`Ver detalhes de ${away.name}`}
-                    >
-                      <ClubCrest club={away} size="sm" preferMini={true} />
-                      <span className={`font-semibold truncate group-hover:underline ${away.id === userClub.id ? 'text-[var(--app-text-accent)] font-bold' : 'text-slate-200'}`}>
-                        {away.name}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="flex items-center space-x-1">
+              <button
+                disabled={selectedRound <= 1}
+                onClick={() => { sound.playClick(); setSelectedRound((r) => Math.max(1, r - 1)); }}
+                className="p-1 rounded bg-[var(--app-bg-deep)] hover:bg-[var(--app-surface-2)] text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed border border-[var(--app-border-subtle)] cursor-pointer"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+              <span className="text-xs font-mono-numbers px-2 text-white font-bold">
+                {selectedRound} / {totalRounds}
+              </span>
+              <button
+                disabled={selectedRound >= totalRounds}
+                onClick={() => { sound.playClick(); setSelectedRound((r) => Math.min(totalRounds, r + 1)); }}
+                className="p-1 rounded bg-[var(--app-bg-deep)] hover:bg-[var(--app-surface-2)] text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed border border-[var(--app-border-subtle)] cursor-pointer"
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
             </div>
           </div>
 
-          {/* FINANCES & STADIUM PANEL */}
-          <div className="col-span-5 bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col overflow-hidden shadow-md">
-            <div className="px-3 py-2 bg-[var(--app-surface-2)] border-b border-[var(--app-border-highlight)] flex items-center justify-between shrink-0">
-              <div className="flex items-center space-x-2">
-                <Building2 className="w-4 h-4 text-[var(--app-text-accent)]" />
-                <h3 className="text-xs font-bold text-white uppercase tracking-wider">
-                  Estádio & Finanças
-                </h3>
-              </div>
-              <div className="flex items-center space-x-2">
-                <span className="text-[10px] text-slate-400 font-medium">Caixa:</span>
-                <span className={`text-[11px] font-mono-numbers font-bold ${userClub.balance >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {formatMoney(userClub.balance)}
-                </span>
-              </div>
-            </div>
+          {/* Matches list */}
+          <div className="flex-1 overflow-y-auto p-2 sm:p-2.5 space-y-1.5 no-scrollbar">
+            {roundFixtures.map((fix) => {
+              if (fix.pendingQualification) return (
+                <div key={fix.id} className="flex items-center justify-between px-2.5 py-1.5 sm:px-3 sm:py-2 rounded bg-[var(--app-surface-2)] text-xs text-slate-400">
+                  <span>A definir</span>
+                  <span className="text-[11px] truncate max-w-[160px]">{fix.competitionRound || fix.stage} • aguardando</span>
+                  <span>A definir</span>
+                </div>
+              );
+              const home = gameState.clubs.find((c) => c.id === fix.homeClubId) || getAllClubs().find(c => c.id === fix.homeClubId);
+              const away = gameState.clubs.find((c) => c.id === fix.awayClubId) || getAllClubs().find(c => c.id === fix.awayClubId);
+              if (!home || !away) return null;
+              const isUserMatch = home.id === userClub.id || away.id === userClub.id;
 
-
-            <div className="flex-1 p-3 overflow-y-auto space-y-3 text-xs">
-              {/* Feedback Alert Toast */}
-              {actionFeedback && (
+              return (
                 <div
-                  className={`p-2 rounded text-xs flex items-center space-x-2 border animate-in fade-in transition-all ${
-                    actionFeedback.type === 'success'
-                      ? 'bg-emerald-950/80 border-emerald-500/80 text-emerald-200'
-                      : 'bg-rose-950/80 border-rose-500/80 text-rose-200'
+                  key={fix.id}
+                  className={`flex items-center justify-between px-2 sm:px-3 py-1.5 sm:py-2 rounded text-xs transition-colors ${
+                    isUserMatch
+                      ? 'bg-[var(--app-surface-2)] border border-[var(--app-border-highlight)] shadow-xs'
+                      : 'bg-[var(--app-surface-2)]/60 border border-transparent hover:border-[var(--app-border-subtle)]'
                   }`}
                 >
-                  {actionFeedback.type === 'success' ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                  ) : (
-                    <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-                  )}
-                  <span className="font-medium text-[11px]">{actionFeedback.message}</span>
-                </div>
-              )}
-
-              {/* STADIUM OVERVIEW & AVERAGE ATTENDANCE CARD */}
-              <div className="bg-[var(--app-surface-2)] p-2.5 rounded border border-[var(--app-border-subtle)] space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <Building2 className="w-4 h-4 text-[var(--app-text-accent)]" />
-                    <div>
-                      <div className="font-bold text-white text-xs">{userClub.stadium}</div>
-                      <div className="text-[10px] text-slate-400">Estádio Oficial</div>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-mono-numbers text-[var(--app-text-accent)] font-extrabold text-xs">
-                      {userClub.capacity.toLocaleString('pt-BR')}
-                    </div>
-                    <div className="text-[10px] text-slate-400">capacidade atual</div>
-                  </div>
-                </div>
-
-                {/* Average Attendance Bar */}
-                <div className="bg-[var(--app-bg-deep)] p-2 rounded border border-[var(--app-border-subtle)] space-y-1">
-                  <div className="flex justify-between items-center text-[11px]">
-                    <span className="text-slate-300 flex items-center space-x-1">
-                      <Users className="w-3 h-3 text-[var(--app-text-accent)]" />
-                      <span>Média de Público:</span>
-                    </span>
-                    <span className="text-white font-mono-numbers font-bold">
-                      {avgAttendance.toLocaleString('pt-BR')} pagantes{' '}
-                      <span className="text-emerald-400 font-semibold">({occupancyRate}%)</span>
-                    </span>
-                  </div>
-                  <div className="w-full bg-[var(--app-surface-1)] rounded-full h-1.5 overflow-hidden">
-                    <div
-                      className="bg-gradient-to-r from-emerald-500 to-emerald-400 h-1.5 rounded-full transition-all"
-                      style={{ width: `${Math.min(100, Math.max(5, occupancyRate))}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* TICKET PRICE CONTROL (PREÇO DO INGRESSO) */}
-              <div className="bg-[var(--app-surface-2)] p-2.5 rounded border border-[var(--app-border-subtle)] space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-200 text-[11px] uppercase tracking-wider flex items-center space-x-1">
-                    <DollarSign className="w-3.5 h-3.5 text-[var(--app-text-accent)]" />
-                    <span>Preço do Ingresso (R$)</span>
-                  </span>
-                  <span className="text-sm font-mono-numbers font-black text-[var(--app-text-accent)] bg-[var(--app-bg-deep)] px-2 py-0.5 rounded border border-[var(--app-border-subtle)]">
-                    R$ {userClub.ticketPrice},00
-                  </span>
-                </div>
-
-                {/* Stepper and Slider */}
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={() => setTicketPrice(Math.max(10, userClub.ticketPrice - 5))}
-                    disabled={userClub.ticketPrice <= 10}
-                    className="p-1.5 bg-[var(--app-bg-deep)] hover:bg-[var(--app-surface-1)] disabled:opacity-30 disabled:cursor-not-allowed border border-[var(--app-border-subtle)] rounded text-slate-200 font-bold active:scale-95 transition-all"
-                    title="Diminuir R$ 5"
+                  {/* Home Club */}
+                  <div 
+                    onClick={() => viewClub(home.id)}
+                    className="flex items-center space-x-1.5 sm:space-x-2 w-[42%] justify-end min-w-0 cursor-pointer group hover:opacity-85 transition-opacity"
+                    title={`Ver detalhes de ${home.name}`}
                   >
-                    <Minus className="w-3.5 h-3.5" />
-                  </button>
+                    <span className={`font-semibold truncate text-[11px] sm:text-xs group-hover:underline ${home.id === userClub.id ? 'text-[var(--app-text-accent)] font-bold' : 'text-slate-200'}`}>
+                      {home.name}
+                    </span>
+                    <ClubCrest club={home} size="sm" preferMini={true} />
+                  </div>
 
-                  <input
-                    type="range"
-                    min="10"
-                    max="150"
-                    step="5"
-                    value={userClub.ticketPrice}
-                    onChange={(e) => setTicketPrice(Number(e.target.value))}
-                    className="flex-1 accent-emerald-400 cursor-pointer h-1.5 bg-[var(--app-bg-deep)] rounded"
-                  />
+                  {/* Score / Time Badge */}
+                  <div className="w-[16%] flex justify-center shrink-0">
+                    {fix.played ? (
+                      <span className="font-mono-numbers font-black px-1.5 sm:px-2.5 py-0.5 bg-[var(--app-bg-deep)] border border-[var(--app-border-subtle)] rounded text-[var(--app-text-accent)] text-[11px] sm:text-xs">
+                        {fix.homeScore} x {fix.awayScore}
+                        {fix.penaltyScore && <span className="block text-[8px] sm:text-[9px] text-amber-300">Pen. {fix.penaltyScore[0]} x {fix.penaltyScore[1]}</span>}
+                      </span>
+                    ) : (
+                      <span className="text-[9px] sm:text-[10px] text-slate-400 bg-[var(--app-bg-deep)] px-1.5 sm:px-2.5 py-0.5 rounded border border-[var(--app-border-subtle)]">
+                        {selectedRound === gameState.currentRound ? 'Hoje' : 'A Jogar'}
+                      </span>
+                    )}
+                  </div>
 
-                  <button
-                    onClick={() => setTicketPrice(Math.min(200, userClub.ticketPrice + 5))}
-                    disabled={userClub.ticketPrice >= 200}
-                    className="p-1.5 bg-[var(--app-bg-deep)] hover:bg-[var(--app-surface-1)] disabled:opacity-30 disabled:cursor-not-allowed border border-[var(--app-border-subtle)] rounded text-slate-200 font-bold active:scale-95 transition-all"
-                    title="Aumentar R$ 5"
+                  {/* Away Club */}
+                  <div 
+                    onClick={() => viewClub(away.id)}
+                    className="flex items-center space-x-1.5 sm:space-x-2 w-[42%] min-w-0 cursor-pointer group hover:opacity-85 transition-opacity"
+                    title={`Ver detalhes de ${away.name}`}
                   >
-                    <Plus className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-
-
-                {/* Quick Presets */}
-                <div className="flex items-center space-x-1 pt-0.5">
-                  <span className="text-[10px] text-slate-400 mr-1">Atalhos:</span>
-                  {[25, 40, 60, 80].map((preset) => (
-                    <button
-                      key={preset}
-                      onClick={() => setTicketPrice(preset)}
-                      className={`text-[10px] px-2 py-0.5 rounded font-mono font-bold transition-all ${
-                        userClub.ticketPrice === preset
-                          ? 'bg-emerald-500 text-black shadow-xs'
-                          : 'bg-[#0a1510] text-slate-300 hover:bg-[#183424] border border-[#193526]'
-                      }`}
-                    >
-                      R$ {preset}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Impact Preview */}
-                <div className="bg-[#0b1610] p-2 rounded border border-[#162e21] flex justify-between text-[11px] text-slate-300">
-                  <div>
-                    <span className="text-slate-400 text-[10px] block">Ocupação Estimada:</span>
-                    <span className="font-bold text-white font-mono-numbers">
-                      {expectedOccupancy}% ({expectedAttendance.toLocaleString('pt-BR')} pag.)
-                    </span>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-slate-400 text-[10px] block">Renda Estimada / Jogo:</span>
-                    <span className="font-bold text-emerald-400 font-mono-numbers">
-                      +{formatMoney(estimatedTicketIncome)}
+                    <ClubCrest club={away} size="sm" preferMini={true} />
+                    <span className={`font-semibold truncate text-[11px] sm:text-xs group-hover:underline ${away.id === userClub.id ? 'text-[var(--app-text-accent)] font-bold' : 'text-slate-200'}`}>
+                      {away.name}
                     </span>
                   </div>
                 </div>
-              </div>
-
-              {/* STADIUM EXPANSION OPTIONS */}
-              <div className="bg-[#122219] p-2.5 rounded border border-[#1d392a] space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-200 text-[11px] uppercase tracking-wider flex items-center space-x-1">
-                    <Hammer className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Obras & Expansão de Lugares</span>
-                  </span>
-                  <span className="text-[10px] text-slate-400 font-medium">Débito do Caixa</span>
-                </div>
-
-                <div className="grid grid-cols-3 gap-1.5">
-                  {/* +2.000 lugares */}
-                  <button
-                    onClick={() => handleExpand(2000)}
-                    disabled={userClub.balance < 3000000}
-                    className={`p-2 rounded border flex flex-col items-center justify-center transition-all ${
-                      userClub.balance >= 3000000
-                        ? 'bg-[var(--app-surface-2)] hover:bg-[var(--app-surface-1)] border-[var(--app-border-subtle)] text-white hover:border-[var(--app-border-highlight)] active:scale-95 cursor-pointer shadow-xs'
-                        : 'bg-[var(--app-bg-deep)] border-[var(--app-border-subtle)] text-slate-500 opacity-60 cursor-not-allowed'
-                    }`}
-                  >
-                    <span className="font-black text-xs text-[var(--app-text-accent)]">+2.000</span>
-                    <span className="text-[9px] text-slate-400 font-medium">lugares</span>
-                    <span className="text-[10px] font-mono-numbers font-bold text-amber-300 mt-1">
-                      R$ 3,0M
-                    </span>
-                  </button>
-
-                  {/* +5.000 lugares */}
-                  <button
-                    onClick={() => handleExpand(5000)}
-                    disabled={userClub.balance < 7000000}
-                    className={`p-2 rounded border flex flex-col items-center justify-center transition-all ${
-                      userClub.balance >= 7000000
-                        ? 'bg-[var(--app-surface-2)] hover:bg-[var(--app-surface-1)] border-[var(--app-border-subtle)] text-white hover:border-[var(--app-border-highlight)] active:scale-95 cursor-pointer shadow-xs'
-                        : 'bg-[var(--app-bg-deep)] border-[var(--app-border-subtle)] text-slate-500 opacity-60 cursor-not-allowed'
-                    }`}
-                  >
-                    <span className="font-black text-xs text-[var(--app-text-accent)]">+5.000</span>
-                    <span className="text-[9px] text-slate-400 font-medium">lugares</span>
-                    <span className="text-[10px] font-mono-numbers font-bold text-amber-300 mt-1">
-                      R$ 7,0M
-                    </span>
-                  </button>
-
-                  {/* +10.000 lugares */}
-                  <button
-                    onClick={() => handleExpand(10000)}
-                    disabled={userClub.balance < 13000000}
-                    className={`p-2 rounded border flex flex-col items-center justify-center transition-all ${
-                      userClub.balance >= 13000000
-                        ? 'bg-[var(--app-surface-2)] hover:bg-[var(--app-surface-1)] border-[var(--app-border-subtle)] text-white hover:border-[var(--app-border-highlight)] active:scale-95 cursor-pointer shadow-xs'
-                        : 'bg-[var(--app-bg-deep)] border-[var(--app-border-subtle)] text-slate-500 opacity-60 cursor-not-allowed'
-                    }`}
-                  >
-                    <span className="font-black text-xs text-[var(--app-text-accent)]">+10.000</span>
-                    <span className="text-[9px] text-slate-400 font-medium">lugares</span>
-                    <span className="text-[10px] font-mono-numbers font-bold text-amber-300 mt-1">
-                      R$ 13,0M
-                    </span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Financial Flow Breakdown */}
-              <div className="space-y-1.5">
-                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                  Projeção por Partida em Casa
-                </div>
-
-                <div className="bg-[var(--app-surface-2)] p-2.5 rounded border border-[var(--app-border-subtle)] space-y-1">
-                  <div className="flex justify-between py-0.5">
-                    <span className="text-slate-300 flex items-center space-x-1">
-                      <ArrowUpRight className="w-3 h-3 text-emerald-400" />
-
-                      <span>Renda de Bilheteria (Estimada)</span>
-                    </span>
-                    <span className="text-emerald-400 font-mono-numbers font-semibold">
-                      +{formatMoney(estimatedTicketIncome)}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between py-0.5">
-                    <span className="text-slate-300 flex items-center space-x-1">
-                      <ArrowDownRight className="w-3 h-3 text-rose-400" />
-                      <span>Folha Salarial Semanal (Prof. + Base)</span>
-                    </span>
-                    <span className="text-rose-400 font-mono-numbers font-semibold">
-                      -{formatMoney(weeklyPayroll)}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between py-0.5">
-                    <span className="text-slate-300 flex items-center space-x-1">
-                      <ArrowDownRight className="w-3 h-3 text-rose-400" />
-                      <span>Manutenção do Estádio</span>
-                    </span>
-                    <span className="text-rose-400 font-mono-numbers font-semibold">
-                      -{formatMoney(stadiumMaintenance)}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between pt-1.5 border-t border-[#1a3628] font-bold">
-                    <span className="text-white">Resultado Líquido</span>
-                    <span className={`font-mono-numbers ${estimatedNetMatchIncome >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                      {estimatedNetMatchIncome >= 0 ? '+' : ''}{formatMoney(estimatedNetMatchIncome)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* QUICK NAVIGATION HUB BUTTONS */}
-              <div className="grid grid-cols-2 gap-2 pt-1">
-                <button
-                  onClick={() => setScreen('news')}
-                  className="p-2 bg-[#10241a] hover:bg-[#193a2b] border border-[#214a34] rounded flex items-center justify-center space-x-1.5 text-emerald-300 font-bold text-[11px] transition-all cursor-pointer shadow-xs"
-                >
-                  <Newspaper className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span className="truncate">Jornal da Rodada</span>
-                </button>
-
-                <button
-                  onClick={() => setScreen('stats')}
-                  className="p-2 bg-[#10241a] hover:bg-[#193a2b] border border-[#214a34] rounded flex items-center justify-center space-x-1.5 text-emerald-300 font-bold text-[11px] transition-all cursor-pointer shadow-xs"
-                >
-                  <BarChart3 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span className="truncate">Estatísticas da Liga</span>
-                </button>
-
-                <button
-                  onClick={() => setScreen('finances')}
-                  className="p-2 bg-[#10241a] hover:bg-[#193a2b] border border-[#214a34] rounded flex items-center justify-center space-x-1.5 text-emerald-300 font-bold text-[11px] transition-all cursor-pointer shadow-xs"
-                >
-                  <Landmark className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span className="truncate">Painel de Finanças</span>
-                </button>
-
-                <button
-                  onClick={() => setScreen('youth')}
-                  className="p-2 bg-[#10241a] hover:bg-[#193a2b] border border-[#214a34] rounded flex items-center justify-center space-x-1.5 text-emerald-300 font-bold text-[11px] transition-all cursor-pointer shadow-xs"
-                >
-                  <GraduationCap className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span className="truncate">Juniores ({userClub.youth?.length || 0})</span>
-                </button>
-              </div>
-
-              {/* Strength overview comparison */}
-              <div className="space-y-1.5">
-                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                  Comparativo de Força dos Setores
-                </div>
-                <div className="bg-[#122219] p-2.5 rounded border border-[#1d392a] space-y-1.5">
-                  <div className="flex justify-between text-[11px]">
-                    <span className="text-slate-300">Defesa:</span>
-                    <div className="flex items-center space-x-2">
-                      <span className="text-emerald-400 font-bold font-mono-numbers">{userStrength.defStrength}</span>
-                      <span className="text-slate-500">vs</span>
-                      <span className="text-slate-400 font-mono-numbers">{opponentStrength.defStrength}</span>
-                    </div>
-                  </div>
-                  <div className="flex justify-between text-[11px]">
-                    <span className="text-slate-300">Meio-Campo:</span>
-                    <div className="flex items-center space-x-2">
-                      <span className="text-emerald-400 font-bold font-mono-numbers">{userStrength.midStrength}</span>
-                      <span className="text-slate-500">vs</span>
-                      <span className="text-slate-400 font-mono-numbers">{opponentStrength.midStrength}</span>
-                    </div>
-                  </div>
-                  <div className="flex justify-between text-[11px]">
-                    <span className="text-slate-300">Ataque:</span>
-                    <div className="flex items-center space-x-2">
-                      <span className="text-emerald-400 font-bold font-mono-numbers">{userStrength.attStrength}</span>
-                      <span className="text-slate-500">vs</span>
-                      <span className="text-slate-400 font-mono-numbers">{opponentStrength.attStrength}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+              );
+            })}
           </div>
-
         </div>
       </div>
     </div>
-  );
+  </div>
+);
 };

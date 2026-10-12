@@ -14,6 +14,7 @@ import { LeagueStatsScreen } from './components/LeagueStatsScreen';
 import { ManagersScreen } from './components/ManagersScreen';
 import { ClubViewer } from './components/ClubViewer';
 import { SplashScreen } from './components/SplashScreen';
+import { BottomNavBar } from './components/BottomNavBar';
 import { sound } from './audio/soundEngine';
 import { deriveClubAtmosphere } from './theme/clubTheme';
 
@@ -30,7 +31,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
       id="app-shell"
       data-testid="app-shell"
       data-club-family={atmosphere.family}
-      className="h-screen w-screen flex flex-col overflow-hidden bg-[var(--app-bg-deep)] text-slate-100 select-none transition-colors duration-300"
+      className="h-screen w-screen flex flex-col overflow-hidden bg-[var(--app-bg-deep)] text-slate-100 select-none transition-colors duration-300 pl-safe pr-safe"
       style={atmosphere.style as React.CSSProperties}
     >
       {children}
@@ -76,25 +77,28 @@ const MainAppContent: React.FC = () => {
       if (e.code === 'Space') {
         if (viewedClubId !== null) { e.preventDefault(); return; }
         // Space advances:
-        // - on 'overview': launches match ('live_match')
+        // - on 'overview': navigates to match preparation ('tactics') if fixture exists, or completes round
+        // - on 'tactics': launches live match ('live_match') if fixture exists
         // - on 'round_results': advances to next round
         // - on 'news' or 'stats': returns to 'overview'
         if (activeScreen === 'overview') {
           e.preventDefault();
           if (userFixture) {
-            sound.playWhistle();
-            setScreen('live_match');
+            sound.playClick();
+            setScreen('tactics');
           } else {
             completeRound();
+          }
+        } else if (activeScreen === 'tactics') {
+          if (userFixture) {
+            e.preventDefault();
+            sound.playWhistle();
+            setScreen('live_match');
           }
         } else if (activeScreen === 'round_results') {
           e.preventDefault();
           sound.playClick();
           advanceRound();
-        } else if (activeScreen === 'news' || activeScreen === 'stats') {
-          e.preventDefault();
-          sound.playClick();
-          setScreen('overview');
         }
       } else if (e.code === 'Escape') {
         // Esc goes back:
@@ -122,18 +126,22 @@ const MainAppContent: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeScreen, advanceRound, completeRound, setScreen, userFixture, viewedClubId, closeClubViewer, hasActiveCareer]);
 
+  const showChrome = activeScreen !== 'menu' && activeScreen !== 'splash' && activeScreen !== 'live_match' && activeScreen !== 'round_results';
+
   return (
     <AppShell>
-      {/* Header is visible in all gameplay screens except menu and splash */}
-      {activeScreen !== 'menu' && activeScreen !== 'splash' && <Header />}
+      {/* Header is visible in all gameplay screens except menu, splash, live match and round results */}
+      {showChrome && <Header />}
 
-      {gameState.activeMatch && gameState.activeMatch.phase !== 'committed' && activeScreen !== 'live_match' && activeScreen !== 'splash' && <div className="bg-emerald-950 border-b border-emerald-700 px-4 py-2 flex justify-between text-sm">
-        <span>Partida pausada · {gameState.activeMatch.clock.minute}{gameState.activeMatch.clock.added ? '+'+gameState.activeMatch.clock.added : ''}′ · {gameState.activeMatch.score.join(' : ')}</span>
-        <button onClick={() => setScreen('live_match')} className="font-bold text-emerald-300">Voltar à partida</button>
-      </div>}
-      {matchError && activeScreen !== 'live_match' && activeScreen !== 'splash' && <p role="alert" className="p-2 text-amber-300">{matchError}</p>}
+      {gameState.activeMatch && gameState.activeMatch.phase !== 'committed' && activeScreen !== 'live_match' && activeScreen !== 'splash' && activeScreen !== 'round_results' && (
+        <div className="bg-emerald-950 border-b border-emerald-700 px-3 sm:px-4 py-2 flex items-center justify-between text-xs sm:text-sm shrink-0">
+          <span>Partida pausada · {gameState.activeMatch.clock.minute}{gameState.activeMatch.clock.added ? '+'+gameState.activeMatch.clock.added : ''}′ · {gameState.activeMatch.score.join(' : ')}</span>
+          <button onClick={() => setScreen('live_match')} className="font-bold text-emerald-300 hover:text-emerald-200 cursor-pointer">Voltar à partida</button>
+        </div>
+      )}
+      {matchError && activeScreen !== 'live_match' && activeScreen !== 'splash' && activeScreen !== 'round_results' && <p role="alert" className="p-2 text-amber-300 shrink-0">{matchError}</p>}
       {/* Screen Views */}
-      <main className="flex-1 flex overflow-hidden relative">
+      <main className={`flex-1 flex overflow-hidden relative ${showChrome ? 'pb-14 md:pb-0' : ''}`}>
         {activeScreen === 'splash' && (
           <SplashScreen 
             onFinish={() => setScreen('menu')} 
@@ -161,6 +169,9 @@ const MainAppContent: React.FC = () => {
           />
         )}
       </main>
+
+      {/* Bottom Navigation Bar on Mobile (< 768px) */}
+      {showChrome && <BottomNavBar />}
     </AppShell>
   );
 };

@@ -18,7 +18,9 @@ import {
   Wallet,
   Receipt,
   PiggyBank,
-  ChevronRight
+  ChevronRight,
+  Minus,
+  Plus
 } from 'lucide-react';
 import { sound } from '../audio/soundEngine';
 import { getClubTheme } from '../theme/clubTheme';
@@ -30,6 +32,8 @@ export const FinancesScreen: React.FC = () => {
     userClub, 
     takeLoan, 
     payOffLoan, 
+    expandStadium,
+    setTicketPrice,
     setScreen 
   } = useGame();
 
@@ -38,7 +42,9 @@ export const FinancesScreen: React.FC = () => {
   const [loanAmount, setLoanAmount] = useState<number>(5000000);
   const [loanInstallments, setLoanInstallments] = useState<number>(10);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-  const [activeTab, setActiveTab] = useState<'statement' | 'ledger'>('statement');
+  const [activeTab, setActiveTab] = useState<'stadium' | 'statement' | 'ledger'>('stadium');
+
+  const [mobileFinanceTab, setMobileFinanceTab] = useState<'loans' | 'stadium'>('loans');
 
   const formatMoney = (val: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -127,6 +133,34 @@ export const FinancesScreen: React.FC = () => {
     }
   };
 
+  // Stadium & Match-day projections
+  const avgAttendance = userClub.avgAttendance ?? Math.round(userClub.capacity * 0.76);
+  const occupancyRate = Math.min(100, Math.round((avgAttendance / userClub.capacity) * 100));
+
+  const currentTicketPrice = userClub.ticketPrice || 40;
+  const priceElasticity = Math.max(0.2, Math.min(0.98, 1.15 - (currentTicketPrice / 125)));
+  const expectedAttendance = Math.min(userClub.capacity, Math.round(userClub.capacity * priceElasticity));
+  const expectedOccupancy = Math.round((expectedAttendance / userClub.capacity) * 100);
+  const estimatedTicketIncome = Math.round(expectedAttendance * currentTicketPrice);
+
+  const handleExpand = (seats: 2000 | 5000 | 10000) => {
+    sound.playClick();
+    const res = expandStadium(seats);
+    if (res.success) {
+      setFeedback({
+        type: 'success',
+        message: `Estádio expandido com sucesso! (+${seats.toLocaleString('pt-BR')} lugares)`,
+      });
+      setTimeout(() => setFeedback(null), 4000);
+    } else {
+      setFeedback({
+        type: 'error',
+        message: res.error || 'Erro ao expandir estádio.',
+      });
+      setTimeout(() => setFeedback(null), 4000);
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-[var(--app-bg-deep)] p-3 gap-3 h-[calc(100vh-3.5rem)] select-none">
       <div className="rounded border border-amber-800/80 bg-amber-950/40 px-3 py-2 text-xs text-amber-100 shrink-0 shadow-xs">
@@ -134,79 +168,79 @@ export const FinancesScreen: React.FC = () => {
         {(userClub.boardActions || []).length > 0 && <span> Diretoria: {(userClub.boardActions || []).join('; ')}.</span>}
       </div>
       {/* TOP HEADER SUMMARY BAR */}
-      <div className="grid grid-cols-4 gap-3 shrink-0">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 shrink-0">
         {/* Saldo em Caixa */}
-        <div className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg p-3 shadow-md flex items-center justify-between">
-          <div>
-            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">
+        <div className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg p-3 shadow-md flex flex-col justify-between">
+          <div className="flex items-center justify-between gap-1 mb-1">
+            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider truncate">
               Saldo em Caixa
             </span>
-            <div className={`text-lg font-black font-mono-numbers ${userClub.balance >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-              {formatMoney(userClub.balance)}
+            <div className="w-7 h-7 rounded-md bg-emerald-950/70 border border-emerald-700/50 flex items-center justify-center shrink-0">
+              <Wallet className="w-3.5 h-3.5 text-emerald-400" />
             </div>
-            <span className="text-[10px] text-slate-400">
-              Disponível para operações
-            </span>
           </div>
-          <div className="w-10 h-10 rounded-lg bg-emerald-950/60 border border-emerald-700/50 flex items-center justify-center shrink-0">
-            <Wallet className="w-5 h-5 text-emerald-400" />
+          <div className={`text-base sm:text-lg xl:text-xl font-black font-mono-numbers truncate py-0.5 ${userClub.balance >= 0 ? 'text-emerald-400' : 'text-rose-400'}`} title={formatMoney(userClub.balance)}>
+            {formatMoney(userClub.balance)}
           </div>
+          <span className="text-[10px] text-slate-400 truncate block">
+            Disponível para operações
+          </span>
         </div>
 
         {/* Dívida Bancária Total */}
-        <div className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg p-3 shadow-md flex items-center justify-between">
-          <div>
-            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">
+        <div className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg p-3 shadow-md flex flex-col justify-between">
+          <div className="flex items-center justify-between gap-1 mb-1">
+            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider truncate">
               Dívida Bancária
             </span>
-            <div className={`text-lg font-black font-mono-numbers ${currentDebt > 0 ? 'text-amber-400' : 'text-slate-300'}`}>
-              {formatMoney(currentDebt)}
+            <div className="w-7 h-7 rounded-md bg-amber-950/70 border border-amber-700/50 flex items-center justify-center shrink-0">
+              <Landmark className="w-3.5 h-3.5 text-amber-400" />
             </div>
-            <span className="text-[10px] text-slate-400">
-              {activeLoans.length} {activeLoans.length === 1 ? 'empréstimo ativo' : 'empréstimos ativos'}
-            </span>
           </div>
-          <div className="w-10 h-10 rounded-lg bg-amber-950/60 border border-amber-700/50 flex items-center justify-center shrink-0">
-            <Landmark className="w-5 h-5 text-amber-400" />
+          <div className={`text-base sm:text-lg xl:text-xl font-black font-mono-numbers truncate py-0.5 ${currentDebt > 0 ? 'text-amber-400' : 'text-slate-300'}`} title={formatMoney(currentDebt)}>
+            {formatMoney(currentDebt)}
           </div>
+          <span className="text-[10px] text-slate-400 truncate block">
+            {activeLoans.length} {activeLoans.length === 1 ? 'empréstimo ativo' : 'empréstimos ativos'}
+          </span>
         </div>
 
         {/* Folha Salarial Semanal */}
-        <div className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg p-3 shadow-md flex items-center justify-between">
-          <div>
-            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">
-              Folha Semanal (Total)
+        <div className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg p-3 shadow-md flex flex-col justify-between">
+          <div className="flex items-center justify-between gap-1 mb-1">
+            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider truncate">
+              Folha Semanal
             </span>
-            <div className="text-lg font-black text-rose-400 font-mono-numbers">
-              -{formatMoney(weeklyTotalPayroll)}
-            </div>
-            <div className="text-[10px] text-slate-400 flex items-center space-x-1.5 font-mono-numbers">
-              <span>Prof: {formatMoney(weeklySeniorPayroll)}</span>
-              <span>•</span>
-              <span>Base: {formatMoney(weeklyYouthPayroll)}</span>
+            <div className="w-7 h-7 rounded-md bg-rose-950/70 border border-rose-700/50 flex items-center justify-center shrink-0">
+              <Users className="w-3.5 h-3.5 text-rose-400" />
             </div>
           </div>
-          <div className="w-10 h-10 rounded-lg bg-rose-950/60 border border-rose-700/50 flex items-center justify-center shrink-0">
-            <Users className="w-5 h-5 text-rose-400" />
+          <div className="text-base sm:text-lg xl:text-xl font-black text-rose-400 font-mono-numbers truncate py-0.5" title={formatMoney(weeklyTotalPayroll)}>
+            -{formatMoney(weeklyTotalPayroll)}
+          </div>
+          <div className="text-[10px] text-slate-400 flex items-center space-x-1.5 font-mono-numbers truncate">
+            <span>Prof: {formatMoney(weeklySeniorPayroll)}</span>
+            <span>•</span>
+            <span>Base: {formatMoney(weeklyYouthPayroll)}</span>
           </div>
         </div>
 
         {/* Limite de Crédito Disponível */}
-        <div className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg p-3 shadow-md flex items-center justify-between">
-          <div>
-            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">
+        <div className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg p-3 shadow-md flex flex-col justify-between">
+          <div className="flex items-center justify-between gap-1 mb-1">
+            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider truncate">
               Crédito Disponível
             </span>
-            <div className="text-lg font-black text-sky-400 font-mono-numbers">
-              {formatMoney(availableCredit)}
+            <div className="w-7 h-7 rounded-md bg-sky-950/70 border border-sky-700/50 flex items-center justify-center shrink-0">
+              <CreditCard className="w-3.5 h-3.5 text-sky-400" />
             </div>
-            <span className="text-[10px] text-slate-400">
-              Teto máximo: {formatMoney(maxCreditLimit)}
-            </span>
           </div>
-          <div className="w-10 h-10 rounded-lg bg-sky-950/60 border border-sky-700/50 flex items-center justify-center shrink-0">
-            <CreditCard className="w-5 h-5 text-sky-400" />
+          <div className="text-base sm:text-lg xl:text-xl font-black text-sky-400 font-mono-numbers truncate py-0.5" title={formatMoney(availableCredit)}>
+            {formatMoney(availableCredit)}
           </div>
+          <span className="text-[10px] text-slate-400 truncate block">
+            Teto máximo: {formatMoney(maxCreditLimit)}
+          </span>
         </div>
       </div>
 
@@ -228,10 +262,39 @@ export const FinancesScreen: React.FC = () => {
         </div>
       )}
 
-      {/* MAIN TWO-COLUMN WORKSPACE */}
-      <div className="flex-1 grid grid-cols-12 gap-3 overflow-hidden">
+      {/* MOBILE / TABLET PANEL SWITCHER (< 1024px) */}
+      <div className="lg:hidden flex bg-[var(--app-surface-2)] p-1 rounded-lg border border-[var(--app-border-subtle)] shrink-0 gap-1">
+        <button
+          onClick={() => { setMobileFinanceTab('loans'); sound.playClick(); }}
+          className={`flex-1 min-h-[40px] px-3 py-1.5 rounded-md text-xs font-bold flex items-center justify-center space-x-1.5 transition-all cursor-pointer ${
+            mobileFinanceTab === 'loans'
+              ? 'shadow-xs border border-[var(--app-border-highlight)]'
+              : 'text-slate-400 hover:text-white'
+          }`}
+          style={mobileFinanceTab === 'loans' ? { color: clubTheme.onPrimaryAccent, backgroundColor: clubTheme.primaryAccent } : undefined}
+        >
+          <Landmark className="w-4 h-4" />
+          <span>Empréstimos & Dívidas</span>
+        </button>
+
+        <button
+          onClick={() => { setMobileFinanceTab('stadium'); sound.playClick(); }}
+          className={`flex-1 min-h-[40px] px-3 py-1.5 rounded-md text-xs font-bold flex items-center justify-center space-x-1.5 transition-all cursor-pointer ${
+            mobileFinanceTab === 'stadium'
+              ? 'shadow-xs border border-[var(--app-border-highlight)]'
+              : 'text-slate-400 hover:text-white'
+          }`}
+          style={mobileFinanceTab === 'stadium' ? { color: clubTheme.onPrimaryAccent, backgroundColor: clubTheme.primaryAccent } : undefined}
+        >
+          <Building2 className="w-4 h-4" />
+          <span>Estádio & Finanças</span>
+        </button>
+      </div>
+
+      {/* MAIN TWO-COLUMN WORKSPACE (TABS ON TABLET/MOBILE, SIDE-BY-SIDE ON DESKTOP >= 1024px) */}
+      <div className="flex-1 flex flex-col lg:grid lg:grid-cols-12 gap-3 overflow-hidden min-h-0">
         {/* COLUMN 1: SISTEMA DE EMPRÉSTIMO BANCÁRIO (COL 1-6) */}
-        <div className="col-span-6 bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col overflow-hidden shadow-lg relative">
+        <div className={`col-span-12 lg:col-span-6 bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col overflow-hidden shadow-lg relative min-h-0 ${mobileFinanceTab === 'loans' ? 'flex flex-1' : 'hidden lg:flex'}`}>
           <div className="h-1 w-full shrink-0" style={{ background: clubTheme.stripeGradient }} />
           <div className="px-3 py-2 bg-[var(--app-surface-2)] border-b border-[var(--app-border-subtle)] flex items-center justify-between shrink-0">
             <div className="flex items-center space-x-2">
@@ -357,7 +420,7 @@ export const FinancesScreen: React.FC = () => {
               <button
                 onClick={handleTakeLoan}
                 disabled={availableCredit <= 0 || loanAmount <= 0 || loanAmount > availableCredit}
-                className="w-full py-2 disabled:opacity-40 disabled:cursor-not-allowed font-extrabold rounded text-xs uppercase tracking-wider flex items-center justify-center space-x-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
+                className="w-full min-h-[44px] py-2.5 disabled:opacity-40 disabled:cursor-not-allowed font-extrabold rounded text-xs uppercase tracking-wider flex items-center justify-center space-x-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
                 style={
                   availableCredit > 0 && loanAmount > 0 && loanAmount <= availableCredit
                     ? { backgroundColor: clubTheme.primaryAccent, color: clubTheme.onPrimaryAccent }
@@ -459,17 +522,42 @@ export const FinancesScreen: React.FC = () => {
           </div>
         </div>
 
-        {/* COLUMN 2: DEMONSTRATIVO SEMANAL E EXTRATO (COL 7-12) */}
-        <div className="col-span-6 bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col overflow-hidden shadow-lg relative">
+        {/* COLUMN 2: ESTÁDIO, DEMONSTRATIVO SEMANAL E EXTRATO (COL 7-12) */}
+        <div className={`col-span-12 lg:col-span-6 bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col overflow-hidden shadow-lg relative min-h-0 ${mobileFinanceTab === 'stadium' ? 'flex flex-1' : 'hidden lg:flex'}`}>
           <div className="h-1 w-full shrink-0" style={{ background: clubTheme.stripeGradient }} />
-          <div className="px-3 py-2 bg-[var(--app-surface-2)] border-b border-[var(--app-border-subtle)] flex items-center justify-between shrink-0">
-            <div className="flex items-center space-x-2">
-              <Receipt className="w-4 h-4 text-[var(--app-text-accent)]" />
-              <h2 className="text-xs font-bold text-white uppercase tracking-wider">
-                Demonstrativo Semanal & Balancete
+          <div className="px-3 py-2 bg-[var(--app-surface-2)] border-b border-[var(--app-border-subtle)] flex items-center justify-between shrink-0 gap-2">
+            <div className="flex items-center space-x-2 truncate">
+              {activeTab === 'stadium' ? (
+                <Building2 className="w-4 h-4 text-[var(--app-text-accent)] shrink-0" />
+              ) : activeTab === 'statement' ? (
+                <Receipt className="w-4 h-4 text-[var(--app-text-accent)] shrink-0" />
+              ) : (
+                <CreditCard className="w-4 h-4 text-[var(--app-text-accent)] shrink-0" />
+              )}
+              <h2 className="text-xs font-bold text-white uppercase tracking-wider truncate">
+                {activeTab === 'stadium'
+                  ? 'Estádio, Ingressos & Expansão'
+                  : activeTab === 'statement'
+                  ? 'Demonstrativo Semanal & Balancete'
+                  : 'Extrato Financeiro Recente'}
               </h2>
             </div>
-            <div className="flex items-center space-x-1">
+            <div className="flex items-center space-x-1 overflow-x-auto no-scrollbar shrink-0">
+              <button
+                onClick={() => setActiveTab('stadium')}
+                className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                  activeTab === 'stadium'
+                    ? 'shadow-xs'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                style={
+                  activeTab === 'stadium'
+                    ? { backgroundColor: clubTheme.primaryAccent, color: clubTheme.onPrimaryAccent }
+                    : undefined
+                }
+              >
+                Estádio & Ingressos
+              </button>
               <button
                 onClick={() => setActiveTab('statement')}
                 className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
@@ -498,13 +586,250 @@ export const FinancesScreen: React.FC = () => {
                     : undefined
                 }
               >
-                Histórico de Transações
+                Extrato
               </button>
             </div>
           </div>
 
           <div className="flex-1 p-3 overflow-y-auto space-y-3 text-xs">
-            {activeTab === 'statement' ? (
+            {activeTab === 'stadium' ? (
+              <div className="space-y-3">
+                {/* STADIUM OVERVIEW & AVERAGE ATTENDANCE CARD */}
+                <div className="bg-[var(--app-surface-2)] p-3 rounded-lg border border-[var(--app-border-subtle)] space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2.5">
+                      <div className="w-8 h-8 rounded bg-[var(--app-bg-deep)] border border-[var(--app-border-subtle)] flex items-center justify-center shrink-0">
+                        <Building2 className="w-4 h-4 text-[var(--app-text-accent)]" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-white text-xs">{userClub.stadium}</div>
+                        <div className="text-[10px] text-slate-400">Estádio Oficial</div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-mono-numbers text-[var(--app-text-accent)] font-extrabold text-sm">
+                        {userClub.capacity.toLocaleString('pt-BR')}
+                      </div>
+                      <div className="text-[10px] text-slate-400">capacidade atual</div>
+                    </div>
+                  </div>
+
+                  {/* Average Attendance Bar */}
+                  <div className="bg-[var(--app-bg-deep)] p-2 rounded border border-[var(--app-border-subtle)] space-y-1">
+                    <div className="flex justify-between items-center text-[11px]">
+                      <span className="text-slate-300 flex items-center space-x-1">
+                        <Users className="w-3 h-3 text-[var(--app-text-accent)]" />
+                        <span>Média de Público Recente:</span>
+                      </span>
+                      <span className="text-white font-mono-numbers font-bold">
+                        {avgAttendance.toLocaleString('pt-BR')} pagantes{' '}
+                        <span className="text-emerald-400 font-semibold">({occupancyRate}%)</span>
+                      </span>
+                    </div>
+                    <div className="w-full bg-[var(--app-surface-1)] rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className="bg-gradient-to-r from-emerald-500 to-emerald-400 h-1.5 rounded-full transition-all"
+                        style={{ width: `${Math.min(100, Math.max(5, occupancyRate))}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* TICKET PRICE CONTROL (PREÇO DO INGRESSO) */}
+                <div className="bg-[var(--app-surface-2)] p-3 rounded-lg border border-[var(--app-border-subtle)] space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-200 text-xs uppercase tracking-wider flex items-center space-x-1.5">
+                      <DollarSign className="w-4 h-4 text-[var(--app-text-accent)]" />
+                      <span>Preço do Ingresso (R$)</span>
+                    </span>
+                    <span className="text-sm font-mono-numbers font-black text-[var(--app-text-accent)] bg-[var(--app-bg-deep)] px-2.5 py-0.5 rounded border border-[var(--app-border-subtle)]">
+                      R$ {currentTicketPrice},00
+                    </span>
+                  </div>
+
+                  {/* Stepper and Slider */}
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => setTicketPrice(Math.max(10, currentTicketPrice - 5))}
+                      disabled={currentTicketPrice <= 10}
+                      className="p-1.5 bg-[var(--app-bg-deep)] hover:bg-[var(--app-surface-1)] disabled:opacity-30 disabled:cursor-not-allowed border border-[var(--app-border-subtle)] rounded text-slate-200 font-bold active:scale-95 transition-all cursor-pointer"
+                      title="Diminuir R$ 5"
+                    >
+                      <Minus className="w-3.5 h-3.5" />
+                    </button>
+
+                    <input
+                      type="range"
+                      min="10"
+                      max="150"
+                      step="5"
+                      value={currentTicketPrice}
+                      onChange={(e) => setTicketPrice(Number(e.target.value))}
+                      className="flex-1 cursor-pointer h-1.5 bg-[var(--app-bg-deep)] rounded"
+                      style={{ accentColor: clubTheme.primaryAccent }}
+                    />
+
+                    <button
+                      onClick={() => setTicketPrice(Math.min(200, currentTicketPrice + 5))}
+                      disabled={currentTicketPrice >= 200}
+                      className="p-1.5 bg-[var(--app-bg-deep)] hover:bg-[var(--app-surface-1)] disabled:opacity-30 disabled:cursor-not-allowed border border-[var(--app-border-subtle)] rounded text-slate-200 font-bold active:scale-95 transition-all cursor-pointer"
+                      title="Aumentar R$ 5"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {/* Quick Presets */}
+                  <div className="flex items-center space-x-1.5 pt-0.5">
+                    <span className="text-[10px] text-slate-400 mr-1">Atalhos:</span>
+                    {[25, 40, 60, 80].map((preset) => (
+                      <button
+                        key={preset}
+                        onClick={() => setTicketPrice(preset)}
+                        className={`text-[10px] px-2.5 py-1 rounded font-mono font-bold transition-all cursor-pointer ${
+                          currentTicketPrice === preset
+                            ? 'shadow-xs'
+                            : 'bg-[var(--app-bg-deep)] text-slate-300 hover:bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)]'
+                        }`}
+                        style={
+                          currentTicketPrice === preset
+                            ? { backgroundColor: clubTheme.primaryAccent, color: clubTheme.onPrimaryAccent }
+                            : undefined
+                        }
+                      >
+                        R$ {preset}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Impact Preview */}
+                  <div className="bg-[var(--app-bg-deep)] p-2.5 rounded border border-[var(--app-border-subtle)] flex justify-between text-[11px] text-slate-300">
+                    <div>
+                      <span className="text-slate-400 text-[10px] block">Ocupação Estimada:</span>
+                      <span className="font-bold text-white font-mono-numbers">
+                        {expectedOccupancy}% ({expectedAttendance.toLocaleString('pt-BR')} pagantes)
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-slate-400 text-[10px] block">Renda Estimada / Partida:</span>
+                      <span className="font-bold text-emerald-400 font-mono-numbers">
+                        +{formatMoney(estimatedTicketIncome)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* STADIUM EXPANSION OPTIONS */}
+                <div className="bg-[var(--app-surface-2)] p-3 rounded-lg border border-[var(--app-border-subtle)] space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-200 text-xs uppercase tracking-wider flex items-center space-x-1.5">
+                      <Hammer className="w-4 h-4 text-amber-400" />
+                      <span>Obras & Expansão de Lugares</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-medium">Débito Direto do Caixa</span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    {/* +2.000 lugares */}
+                    <button
+                      onClick={() => handleExpand(2000)}
+                      disabled={userClub.balance < 3000000}
+                      className={`p-2.5 rounded border flex flex-col items-center justify-center transition-all ${
+                        userClub.balance >= 3000000
+                          ? 'bg-[var(--app-surface-1)] hover:bg-[var(--app-surface-2)] border-[var(--app-border-subtle)] text-white hover:border-[var(--app-border-highlight)] active:scale-95 cursor-pointer shadow-xs'
+                          : 'bg-[var(--app-bg-deep)] border-[var(--app-border-subtle)] text-slate-500 opacity-60 cursor-not-allowed'
+                      }`}
+                    >
+                      <span className="font-black text-xs text-[var(--app-text-accent)]">+2.000</span>
+                      <span className="text-[10px] text-slate-400 font-medium">lugares</span>
+                      <span className="text-[11px] font-mono-numbers font-bold text-amber-300 mt-1">
+                        R$ 3,0M
+                      </span>
+                    </button>
+
+                    {/* +5.000 lugares */}
+                    <button
+                      onClick={() => handleExpand(5000)}
+                      disabled={userClub.balance < 7000000}
+                      className={`p-2.5 rounded border flex flex-col items-center justify-center transition-all ${
+                        userClub.balance >= 7000000
+                          ? 'bg-[var(--app-surface-1)] hover:bg-[var(--app-surface-2)] border-[var(--app-border-subtle)] text-white hover:border-[var(--app-border-highlight)] active:scale-95 cursor-pointer shadow-xs'
+                          : 'bg-[var(--app-bg-deep)] border-[var(--app-border-subtle)] text-slate-500 opacity-60 cursor-not-allowed'
+                      }`}
+                    >
+                      <span className="font-black text-xs text-[var(--app-text-accent)]">+5.000</span>
+                      <span className="text-[10px] text-slate-400 font-medium">lugares</span>
+                      <span className="text-[11px] font-mono-numbers font-bold text-amber-300 mt-1">
+                        R$ 7,0M
+                      </span>
+                    </button>
+
+                    {/* +10.000 lugares */}
+                    <button
+                      onClick={() => handleExpand(10000)}
+                      disabled={userClub.balance < 13000000}
+                      className={`p-2.5 rounded border flex flex-col items-center justify-center transition-all ${
+                        userClub.balance >= 13000000
+                          ? 'bg-[var(--app-surface-1)] hover:bg-[var(--app-surface-2)] border-[var(--app-border-subtle)] text-white hover:border-[var(--app-border-highlight)] active:scale-95 cursor-pointer shadow-xs'
+                          : 'bg-[var(--app-bg-deep)] border-[var(--app-border-subtle)] text-slate-500 opacity-60 cursor-not-allowed'
+                      }`}
+                    >
+                      <span className="font-black text-xs text-[var(--app-text-accent)]">+10.000</span>
+                      <span className="text-[10px] text-slate-400 font-medium">lugares</span>
+                      <span className="text-[11px] font-mono-numbers font-bold text-amber-300 mt-1">
+                        R$ 13,0M
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Financial Flow Breakdown */}
+                <div className="bg-[var(--app-surface-2)] p-3 rounded-lg border border-[var(--app-border-subtle)] space-y-2">
+                  <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider border-b border-[var(--app-border-subtle)] pb-1">
+                    Projeção por Partida em Casa
+                  </div>
+
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex justify-between py-0.5">
+                      <span className="text-slate-300 flex items-center space-x-1.5">
+                        <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Renda de Bilheteria (Estimada):</span>
+                      </span>
+                      <span className="text-emerald-400 font-mono-numbers font-semibold">
+                        +{formatMoney(estimatedTicketIncome)}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between py-0.5">
+                      <span className="text-slate-300 flex items-center space-x-1.5">
+                        <ArrowDownRight className="w-3.5 h-3.5 text-rose-400" />
+                        <span>Folha Salarial Semanal (Prof. + Base):</span>
+                      </span>
+                      <span className="text-rose-400 font-mono-numbers font-semibold">
+                        -{formatMoney(weeklyTotalPayroll)}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between py-0.5">
+                      <span className="text-slate-300 flex items-center space-x-1.5">
+                        <ArrowDownRight className="w-3.5 h-3.5 text-rose-400" />
+                        <span>Manutenção do Estádio:</span>
+                      </span>
+                      <span className="text-rose-400 font-mono-numbers font-semibold">
+                        -{formatMoney(stadiumMaintenance)}
+                      </span>
+                    </div>
+
+                    <div className="pt-1.5 border-t border-[var(--app-border-subtle)] flex justify-between font-bold text-xs">
+                      <span className="text-white">Resultado Líquido Estimado:</span>
+                      <span className={`font-mono-numbers ${estimatedTicketIncome - weeklyTotalPayroll - stadiumMaintenance >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {estimatedTicketIncome - weeklyTotalPayroll - stadiumMaintenance >= 0 ? '+' : ''}{formatMoney(estimatedTicketIncome - weeklyTotalPayroll - stadiumMaintenance)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : activeTab === 'statement' ? (
               <div className="space-y-3">
                 {/* Statement Header Card */}
                 <div className="bg-[var(--app-surface-2)] p-3 rounded-lg border border-[var(--app-border-subtle)] flex items-center justify-between">

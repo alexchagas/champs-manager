@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { initSync, wasm_match_command } from '../src/wasm_pkg/champs_core.js';
+import { initSync, wasm_match_command, WasmCareerEngine } from '../src/wasm_pkg/champs_core.js';
 import { createNewGame } from '../src/data/initialData.ts';
 import { migrateCareer, migrateMatchState, automaticMatchBench, closeRoundFinances } from '../src/engine/careerEconomy.ts';
 import { resolvePendingFixtures } from '../src/engine/qualification.ts';
@@ -66,4 +66,21 @@ test('active save mirror restores the newest session while IndexedDB is unavaila
   assert.deepEqual(await loadActiveGameFromStorage(),next);
   await pendingWrite;
  } finally {globalThis.localStorage=previous;}
+});
+
+test('atomic auto-lineup populates 11 starters and 11 bench players without Rust rejection', () => {
+ const initial = createNewGame(255, 'Manager Teste');
+ const engine = new WasmCareerEngine(JSON.stringify(initial), 42);
+ const updatedJson = engine.auto_select_best_lineup(255, '4-4-2');
+ const updated = JSON.parse(updatedJson);
+ const club = updated.clubs.find(c => c.id === 255);
+ assert.equal(club.squad.filter(p => p.isStarter).length, 11);
+
+ const benchIds = automaticMatchBench(club);
+ assert.equal(benchIds.length, 11);
+ assert.ok(benchIds.every(id => !club.squad.find(p => p.id === id).isStarter));
+
+ const withBench = command(updated, { type: 'set_bench', ids: benchIds });
+ const rustClub = withBench.clubs.find(c => c.id === 255);
+ assert.deepEqual(rustClub.namedSubstituteIds, benchIds);
 });

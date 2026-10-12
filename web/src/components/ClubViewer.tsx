@@ -10,6 +10,7 @@ import {
   Trophy, 
   Building2, 
   User, 
+  Users,
   Star, 
   Zap, 
   Search, 
@@ -21,6 +22,7 @@ import {
   CheckCircle2, 
   AlertCircle 
 } from 'lucide-react';
+import { sound } from '../audio/soundEngine';
 
 import { 
   groupSquadBySector, 
@@ -40,6 +42,7 @@ export const ClubViewer: React.FC<ClubViewerProps> = ({ clubId: propClubId, onCl
   const { gameState, viewedClubId, closeClubViewer } = useGame();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSector, setSelectedSector] = useState<string>('all');
+  const [mobileTab, setMobileTab] = useState<'squad' | 'campaign'>('squad');
 
   const targetClubId = propClubId ?? viewedClubId;
   const handleClose = propOnClose ?? closeClubViewer;
@@ -187,24 +190,24 @@ export const ClubViewer: React.FC<ClubViewerProps> = ({ clubId: propClubId, onCl
 
       {/* MAIN CLUB HERO BANNER */}
       <div 
-        className="px-5 py-4 border-b shrink-0 relative overflow-hidden shadow-md"
+        className="px-3.5 py-3 sm:px-5 sm:py-4 border-b shrink-0 relative overflow-hidden shadow-md"
         style={{
           background: `linear-gradient(135deg, ${atmosphere.tokens['--app-surface-1']} 0%, ${atmosphere.tokens['--app-surface-2']} 100%)`,
           borderBottomColor: atmosphere.tokens['--app-border-subtle'],
         }}
       >
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 relative z-10">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 sm:gap-4 relative z-10">
           {/* Crest & Identity */}
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-3 sm:space-x-4">
             <div 
-              className="w-16 h-16 rounded-xl flex items-center justify-center shrink-0 p-1 relative overflow-hidden shadow-lg"
+              className="w-12 h-12 sm:w-16 sm:h-16 rounded-xl flex items-center justify-center shrink-0 p-1 relative overflow-hidden shadow-lg"
               style={{
                 backgroundColor: atmosphere.tokens['--app-bg-deep'],
                 border: `2px solid ${atmosphere.tokens['--app-border-highlight']}`,
                 boxShadow: `0 0 16px ${atmosphere.tokens['--app-border-subtle']}`,
               }}
             >
-              <ClubCrest club={club} size="xl" className="w-14 h-14" />
+              <ClubCrest club={club} size="xl" className="w-10 h-10 sm:w-14 sm:h-14" />
               <div 
                 className="absolute bottom-0 left-0 right-0 h-1"
                 style={{ background: theme.stripeGradient }}
@@ -212,10 +215,10 @@ export const ClubViewer: React.FC<ClubViewerProps> = ({ clubId: propClubId, onCl
             </div>
 
             <div>
-              <div className="flex items-center space-x-2.5 flex-wrap gap-y-1">
-                <h1 className="text-xl md:text-2xl font-black text-white tracking-tight">{club.name}</h1>
+              <div className="flex items-center space-x-2 sm:space-x-2.5 flex-wrap gap-y-1">
+                <h1 className="text-lg sm:text-2xl font-black text-white tracking-tight">{club.name}</h1>
                 <span 
-                  className="px-2 py-0.5 rounded text-[11px] font-black uppercase tracking-wider shadow-xs"
+                  className="px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-black uppercase tracking-wider shadow-xs"
                   style={{
                     backgroundColor: atmosphere.tokens['--app-text-accent'],
                     color: '#0F172A',
@@ -230,7 +233,7 @@ export const ClubViewer: React.FC<ClubViewerProps> = ({ clubId: propClubId, onCl
                 )}
               </div>
 
-              <div className="flex items-center space-x-4 mt-1.5 text-xs text-slate-300 flex-wrap gap-y-1">
+              <div className="flex items-center space-x-2 sm:space-x-4 mt-1 text-xs text-slate-300 flex-wrap gap-y-0.5 sm:gap-y-1">
                 {/* Treinador */}
                 <div className="flex items-center space-x-1.5">
                   <User className="w-3.5 h-3.5 text-[var(--app-text-accent)] shrink-0" />
@@ -244,8 +247,8 @@ export const ClubViewer: React.FC<ClubViewerProps> = ({ clubId: propClubId, onCl
                 <div className="flex items-center space-x-1.5">
                   <Building2 className="w-3.5 h-3.5 text-[var(--app-text-accent)] shrink-0" />
                   <span className="text-slate-400">Estádio:</span>
-                  <span className="font-semibold text-white">{club.stadium}</span>
-                  <span className="text-slate-400 font-mono-numbers">
+                  <span className="font-semibold text-white truncate max-w-[140px] sm:max-w-none">{club.stadium}</span>
+                  <span className="text-slate-400 font-mono-numbers hidden sm:inline">
                     ({club.capacity.toLocaleString('pt-BR')} lugares)
                   </span>
                 </div>
@@ -275,19 +278,19 @@ export const ClubViewer: React.FC<ClubViewerProps> = ({ clubId: propClubId, onCl
           </div>
 
           {/* Quick Squad Quick Stats */}
-          <div className="flex items-center space-x-2 sm:space-x-4 bg-[var(--app-surface-2)]/80 border border-[var(--app-border-subtle)] rounded-lg p-2.5 self-stretch md:self-auto justify-around">
-            <div className="text-center px-2">
-              <span className="block text-[10px] text-slate-400 uppercase font-semibold">Elenco</span>
+          <div className="flex items-center space-x-2 sm:space-x-4 bg-[var(--app-surface-2)]/80 border border-[var(--app-border-subtle)] rounded-lg p-2 sm:p-2.5 self-stretch md:self-auto justify-around">
+            <div className="text-center px-1.5 sm:px-2">
+              <span className="block text-[9px] sm:text-[10px] text-slate-400 uppercase font-semibold">Elenco</span>
               <span className="text-sm font-black text-white font-mono-numbers">{totalPlayers}</span>
             </div>
             <div className="w-px h-6 bg-[var(--app-border-subtle)]" />
-            <div className="text-center px-2">
-              <span className="block text-[10px] text-slate-400 uppercase font-semibold">Força Média</span>
+            <div className="text-center px-1.5 sm:px-2">
+              <span className="block text-[9px] sm:text-[10px] text-slate-400 uppercase font-semibold">Força Média</span>
               <span className="text-sm font-black text-[var(--app-text-accent)] font-mono-numbers">{overallAvgStrength}</span>
             </div>
             <div className="w-px h-6 bg-[var(--app-border-subtle)]" />
-            <div className="text-center px-2">
-              <span className="block text-[10px] text-slate-400 uppercase font-semibold">Cores</span>
+            <div className="text-center px-1.5 sm:px-2">
+              <span className="block text-[9px] sm:text-[10px] text-slate-400 uppercase font-semibold">Cores</span>
               <div className="flex items-center justify-center space-x-1 mt-0.5">
                 <span 
                   className="w-3.5 h-3.5 rounded-full border border-white/20 shadow-xs" 
@@ -305,10 +308,40 @@ export const ClubViewer: React.FC<ClubViewerProps> = ({ clubId: propClubId, onCl
         </div>
       </div>
 
+      {/* MOBILE TAB TOGGLE (< md) */}
+      <div className="flex md:hidden bg-[var(--app-surface-2)] p-1 rounded-lg border border-[var(--app-border-subtle)] shrink-0 gap-1 mx-3 mt-2">
+        <button
+          onClick={() => { sound.playClick(); setMobileTab('squad'); }}
+          className={`flex-1 min-h-[38px] py-1.5 px-3 rounded text-xs font-bold flex items-center justify-center space-x-1.5 transition-all cursor-pointer ${
+            mobileTab === 'squad'
+              ? 'bg-[var(--app-surface-1)] text-[var(--app-text-accent)] border border-[var(--app-border-highlight)] shadow-xs'
+              : 'text-slate-400 hover:text-white'
+          }`}
+          data-testid="club-viewer-mobile-tab-squad"
+        >
+          <Users className="w-3.5 h-3.5" />
+          <span>Elenco ({totalPlayers})</span>
+        </button>
+        <button
+          onClick={() => { sound.playClick(); setMobileTab('campaign'); }}
+          className={`flex-1 min-h-[38px] py-1.5 px-3 rounded text-xs font-bold flex items-center justify-center space-x-1.5 transition-all cursor-pointer ${
+            mobileTab === 'campaign'
+              ? 'bg-[var(--app-surface-1)] text-[var(--app-text-accent)] border border-[var(--app-border-highlight)] shadow-xs'
+              : 'text-slate-400 hover:text-white'
+          }`}
+          data-testid="club-viewer-mobile-tab-campaign"
+        >
+          <Trophy className="w-3.5 h-3.5" />
+          <span>Campanha & Estádio</span>
+        </button>
+      </div>
+
       {/* CONTENT AREA: SPLIT WITH CAMPAIGN & SQUAD */}
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden p-3 gap-3 bg-[var(--app-bg-deep)]">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden p-2.5 sm:p-3 gap-2.5 sm:gap-3 bg-[var(--app-bg-deep)] min-h-0">
         {/* COLUMN 1: RESUMO DA CAMPANHA NA TEMPORADA ATUAL */}
-        <div className="w-full md:w-[320px] lg:w-[360px] bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col shrink-0 overflow-hidden shadow-md">
+        <div className={`bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col overflow-hidden shadow-md min-h-0 ${
+          mobileTab === 'campaign' ? 'flex-1' : 'hidden md:flex'
+        } md:w-[320px] lg:w-[360px] md:shrink-0`}>
           <div className="px-3 py-2 bg-[var(--app-surface-2)] border-b border-[var(--app-border-subtle)] flex items-center justify-between shrink-0">
             <div className="flex items-center space-x-2">
               <Trophy className="w-4 h-4 text-[var(--app-text-accent)] shrink-0" />
@@ -449,13 +482,15 @@ export const ClubViewer: React.FC<ClubViewerProps> = ({ clubId: propClubId, onCl
         </div>
 
         {/* COLUMN 2: TABELA COMPLETA DO ELENCO DIVIDIDO POR SETOR */}
-        <div className="flex-1 bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col overflow-hidden shadow-md">
+        <div className={`bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col overflow-hidden shadow-md min-h-0 ${
+          mobileTab === 'squad' ? 'flex-1' : 'hidden md:flex'
+        } md:flex-1`}>
           {/* Controls Bar: Search & Sector filter pills */}
           <div className="px-3 py-2 bg-[var(--app-surface-2)] border-b border-[var(--app-border-subtle)] flex flex-wrap items-center justify-between gap-2 shrink-0">
             {/* Filter pills */}
             <div className="flex items-center space-x-1 flex-wrap gap-y-1">
               <button
-                onClick={() => setSelectedSector('all')}
+                onClick={() => { sound.playClick(); setSelectedSector('all'); }}
                 className={`px-2.5 py-1 rounded text-xs font-bold transition-colors cursor-pointer ${
                   selectedSector === 'all'
                     ? 'bg-[var(--app-text-accent)] text-slate-900 shadow-sm'
@@ -467,7 +502,7 @@ export const ClubViewer: React.FC<ClubViewerProps> = ({ clubId: propClubId, onCl
               {sectors.map((sec) => (
                 <button
                   key={sec.key}
-                  onClick={() => setSelectedSector(sec.key)}
+                  onClick={() => { sound.playClick(); setSelectedSector(sec.key); }}
                   className={`px-2 py-1 rounded text-xs font-bold transition-colors cursor-pointer ${
                     selectedSector === sec.key
                       ? 'bg-[var(--app-text-accent)] text-slate-900 shadow-sm'
@@ -480,20 +515,20 @@ export const ClubViewer: React.FC<ClubViewerProps> = ({ clubId: propClubId, onCl
             </div>
 
             {/* Quick Search Input */}
-            <div className="relative">
+            <div className="relative w-full sm:w-auto">
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Buscar jogador ou carac..."
-                className="pl-8 pr-3 py-1 bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[var(--app-border-highlight)] w-44 sm:w-56"
+                className="pl-8 pr-3 py-1 bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[var(--app-border-highlight)] w-full sm:w-56"
               />
             </div>
           </div>
 
           {/* SQUAD SECTORS LIST */}
-          <div className="flex-1 overflow-y-auto p-2 space-y-3">
+          <div className="flex-1 overflow-y-auto p-2 space-y-3 min-h-0">
             {filteredSectors.length === 0 ? (
               <div className="py-12 text-center text-slate-500 text-xs">
                 Nenhum jogador encontrado com os filtros aplicados.
@@ -527,7 +562,7 @@ export const ClubViewer: React.FC<ClubViewerProps> = ({ clubId: propClubId, onCl
 
                   {/* Dense Players Table */}
                   <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs brasfoot-table border-collapse">
+                    <table className="w-full text-left text-xs brasfoot-table border-collapse min-w-[560px] md:min-w-0">
                       <thead>
                         <tr className="bg-[var(--app-surface-2)] text-[10px] uppercase text-slate-400 border-b border-[var(--app-border-subtle)]">
                           <th className="py-1.5 px-2 w-14 text-center">Status</th>
