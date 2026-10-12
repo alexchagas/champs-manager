@@ -23,12 +23,20 @@ fn config_items(path: &Path) -> Result<Vec<std::rc::Rc<Object>>, DataError> {
     let mut out = Vec::new();
     for top in parse_stream(&data)? {
         if let Value::Object(wrapper) = top {
-            if let Some(list) = wrapper.object("a") {
+            if wrapper.class.ends_with("ArrayList") {
+                for item in wrapper.list_items() {
+                    if let Value::Object(o) = item {
+                        out.push(o.clone());
+                    }
+                }
+            } else if let Some(list) = wrapper.object("a") {
                 for item in list.list_items() {
                     if let Value::Object(o) = item {
                         out.push(o.clone());
                     }
                 }
+            } else if wrapper.class.ends_with("ConfigLigaType") || wrapper.class.ends_with("ConfigEstadualType") {
+                out.push(wrapper.clone());
             }
         }
     }
@@ -42,7 +50,7 @@ pub fn import_leagues(dir: &Path, clubs: &[ClubRecord]) -> Result<Vec<LeagueReco
     for path in sorted_files(dir, "cfg")? {
         let mut divs: Vec<LeagueRecord> = config_items(&path)?
             .iter()
-            .filter(|o| o.class == "est.ConfigLigaType")
+            .filter(|o| o.class.ends_with("ConfigLigaType"))
             .map(|o| LeagueRecord {
                 country_id: o.int("pais"),
                 name: o.string("nome"),
@@ -83,13 +91,26 @@ pub fn import_leagues(dir: &Path, clubs: &[ClubRecord]) -> Result<Vec<LeagueReco
 
 pub fn import_states(dir: &Path) -> Result<Vec<StateRecord>, DataError> {
     let mut out = Vec::new();
-    for path in sorted_files(dir, "ces")? {
+    let files = {
+        let mut v = sorted_files(dir, "cfg").unwrap_or_default();
+        if v.is_empty() {
+            v = sorted_files(dir, "ces")?;
+        }
+        v
+    };
+    for path in files {
         let items = config_items(&path)?;
-        let Some(first) = items.iter().find(|o| o.class == "est.ConfigEstadualType") else {
+        let first = items.iter().find(|o| o.class.ends_with("ConfigEstadualType") || o.class.ends_with("ConfigLigaType"));
+        let Some(first) = first else {
             continue;
         };
+        let state_id = if first.class.ends_with("ConfigLigaType") {
+            first.int("pais")
+        } else {
+            first.int("id")
+        };
         out.push(StateRecord {
-            id: first.int("id"),
+            id: state_id,
             code: path
                 .file_stem()
                 .map(|s| s.to_string_lossy().to_string())

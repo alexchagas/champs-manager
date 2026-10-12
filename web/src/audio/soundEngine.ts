@@ -5,6 +5,7 @@ class SoundEngine {
   private ctx: AudioContext | null = null;
   private enabled: boolean = true;
   private volume: number = 0.8;
+  private audioCache = new Map<string, HTMLAudioElement>();
 
   private getContext(): AudioContext | null {
     if (typeof window === 'undefined') return null;
@@ -23,6 +24,27 @@ class SoundEngine {
   public setConfig(enabled: boolean, volume: number) {
     this.enabled = enabled;
     this.volume = Math.max(0, Math.min(1, volume));
+    this.audioCache.forEach((audio) => {
+      audio.volume = this.volume;
+    });
+  }
+
+  private playSoundFile(filename: string): boolean {
+    if (!this.enabled || this.volume <= 0 || typeof window === 'undefined') return false;
+    try {
+      let audio = this.audioCache.get(filename);
+      if (!audio) {
+        audio = new Audio(`/audio/${filename}`);
+        audio.preload = 'auto';
+        this.audioCache.set(filename, audio);
+      }
+      audio.volume = this.volume;
+      audio.currentTime = 0;
+      audio.play().catch(() => {});
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   // Referee Whistle
@@ -74,6 +96,7 @@ class SoundEngine {
 
   // Triple whistle for full-time
   public playFullTimeWhistle() {
+    if (this.playSoundFile('full_time.wav')) return;
     if (!this.enabled || this.volume <= 0) return;
     const ctx = this.getContext();
     if (!ctx) return;
@@ -223,8 +246,38 @@ class SoundEngine {
     noise.stop(now + 0.75);
   }
 
+  // Goal conceded (opponent)
+  public playGoalConceded() {
+    if (this.playSoundFile('goal_conceded.wav')) return;
+    this.playWhistle(true);
+  }
+
+  // Penalty awarded
+  public playPenalty() {
+    if (this.playSoundFile('penalty.wav')) return;
+    this.playWhistle(true);
+  }
+
+  // Red card / ejection
+  public playRedCard() {
+    if (this.playSoundFile('red_card.wav')) return;
+    this.playWhistle(true);
+  }
+
+  // Player injury
+  public playInjury() {
+    if (this.playSoundFile('injury.wav')) return;
+  }
+
+  // Half time whistle
+  public playHalfTime() {
+    if (this.playSoundFile('half_time.wav')) return;
+    this.playWhistle(false);
+  }
+
   // GOOOAL! - Crowd roar and celebration blast
   public playGoal() {
+    if (this.playSoundFile('goal.wav')) return;
     if (!this.enabled || this.volume <= 0) return;
     const ctx = this.getContext();
     if (!ctx) return;

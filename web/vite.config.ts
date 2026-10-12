@@ -47,7 +47,31 @@ export default defineConfig({
       },
       workbox: {
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,wasm}']
+        globPatterns: ['**/*.{js,css,html,ico,svg,wasm}', 'pwa-*.png', 'apple-touch-icon.png'],
+        runtimeCaching: [
+          {
+            urlPattern: /\/(escudos|escudosMini)\/.*\.png$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'crests-cache',
+              expiration: {
+                maxEntries: 2000,
+                maxAgeSeconds: 30 * 24 * 60 * 60
+              }
+            }
+          },
+          {
+            urlPattern: /\/audio\/.*\.wav$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'audio-cache',
+              expiration: {
+                maxEntries: 20,
+                maxAgeSeconds: 30 * 24 * 60 * 60
+              }
+            }
+          }
+        ]
       }
     }),
     sentryVitePlugin({

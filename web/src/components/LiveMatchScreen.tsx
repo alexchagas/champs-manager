@@ -121,12 +121,20 @@ export const LiveMatchScreen: React.FC = () => {
           if (isUserGoal) {
             sound.playGoal();
           } else {
-            sound.playWhistle(true);
+            sound.playGoalConceded();
           }
         }
+      } else if (event.type === 'penalty') {
+        sound.playPenalty();
+      } else if (event.type === 'red_card') {
+        sound.playRedCard();
+      } else if (event.type === 'injury') {
+        sound.playInjury();
+      } else if (event.type === 'halftime') {
+        sound.playHalfTime();
       } else if (event.type === 'fulltime') {
         sound.playFullTimeWhistle();
-      } else if (event.type === 'yellow_card' || event.type === 'red_card') {
+      } else if (event.type === 'yellow_card') {
         sound.playWhistle(true);
       }
     }

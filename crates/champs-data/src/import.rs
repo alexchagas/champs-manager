@@ -196,7 +196,12 @@ pub fn import_teams(teams_dir: &Path) -> Result<TeamsDatabase, DataError> {
 /// `<root>/conf_ligas_nacionais`, states from `<root>/conf_estadual`.
 pub fn import_database(root: &Path) -> Result<TeamsDatabase, DataError> {
     let mut db = import_teams(&root.join("teams"))?;
-    db.leagues = crate::leagues::import_leagues(&root.join("conf_ligas_nacionais"), &db.clubs)?;
+    let leagues_dir = if root.join("BF26/conf_ligas_nacionais").is_dir() {
+        root.join("BF26/conf_ligas_nacionais")
+    } else {
+        root.join("conf_ligas_nacionais")
+    };
+    db.leagues = crate::leagues::import_leagues(&leagues_dir, &db.clubs)?;
     db.states = crate::leagues::import_states(&root.join("conf_estadual"))?;
     Ok(db)
 }
