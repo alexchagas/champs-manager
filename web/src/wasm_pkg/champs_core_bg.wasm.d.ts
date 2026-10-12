@@ -1,0 +1,35 @@
+/* tslint:disable */
+/* eslint-disable */
+export const memory: WebAssembly.Memory;
+export const __wbg_wasmcareerengine_free: (a: number, b: number) => void;
+export const wasm_auto_select_best_lineup: (a: number, b: number, c: number, d: number, e: number) => void;
+export const wasm_calculate_asking_price: (a: number, b: number) => number;
+export const wasm_calculate_demanded_salary: (a: number, b: number) => number;
+export const wasm_match_command: (a: number, b: number, c: number, d: number, e: number) => void;
+export const wasm_simulate_match: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
+export const wasm_sort_standings: (a: number, b: number, c: number) => void;
+export const wasm_version: (a: number) => void;
+export const wasmcareerengine_accept_ai_offer: (a: number, b: number, c: number) => void;
+export const wasmcareerengine_advance_to_next_round: (a: number, b: number) => void;
+export const wasmcareerengine_auto_select_best_lineup: (a: number, b: number, c: number, d: number, e: number) => void;
+export const wasmcareerengine_buy_player: (a: number, b: number, c: number, d: number) => void;
+export const wasmcareerengine_export_save_json: (a: number, b: number) => void;
+export const wasmcareerengine_generate_ai_offers: (a: number, b: number) => void;
+export const wasmcareerengine_generate_ai_offers_internal: (a: number) => number;
+export const wasmcareerengine_get_free_agents: (a: number, b: number) => void;
+export const wasmcareerengine_get_state_json: (a: number, b: number) => void;
+export const wasmcareerengine_import_save_json: (a: number, b: number, c: number, d: number) => void;
+export const wasmcareerengine_new: (a: number, b: number, c: number, d: number, e: number) => void;
+export const wasmcareerengine_play_current_round: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+export const wasmcareerengine_reject_ai_offer: (a: number, b: number, c: number) => void;
+export const wasmcareerengine_release_player: (a: number, b: number, c: number) => void;
+export const wasmcareerengine_renew_contract: (a: number, b: number, c: number, d: number, e: number) => void;
+export const wasmcareerengine_search_players: (a: number, b: number, c: number, d: number) => void;
+export const wasmcareerengine_sign_free_agent: (a: number, b: number, c: number, d: number, e: number) => void;
+export const wasmcareerengine_swap_players: (a: number, b: number, c: number, d: number, e: number) => void;
+export const wasmcareerengine_toggle_starter: (a: number, b: number, c: number, d: number) => void;
+export const wasmcareerengine_update_tactics: (a: number, b: number, c: number, d: number, e: number) => void;
+export const __wbindgen_add_to_stack_pointer: (a: number) => number;
+export const __wbindgen_export: (a: number, b: number) => number;
+export const __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
+export const __wbindgen_export3: (a: number, b: number, c: number) => void;

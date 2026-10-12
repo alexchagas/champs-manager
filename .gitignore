@@ -16,8 +16,8 @@ pnpm-debug.log*
 .env.*.local
 *.local
 
-# WASM Generated Artifacts
-/web/src/wasm_pkg
+# WASM Generated Artifacts (tracked for CI/CD builds without requiring Rust toolchain)
+# /web/src/wasm_pkg
 
 # Tauri
 /src-tauri/target

@@ -1,0 +1,17 @@
+{
+  "name": "champs-core",
+  "type": "module",
+  "description": "Core domain models and save persistence for Champs Manager",
+  "version": "0.1.0",
+  "license": "MIT",
+  "files": [
+    "champs_core_bg.wasm",
+    "champs_core.js",
+    "champs_core.d.ts"
+  ],
+  "main": "champs_core.js",
+  "types": "champs_core.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
