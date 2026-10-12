@@ -3,6 +3,23 @@ import * as Sentry from '@sentry/react';
 let isSentryActive = false;
 
 export function initObservability() {
+  // Check if running on localhost, 127.0.0.1, dev mode, or test environment
+  const isLocalhost =
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname.endsWith('.local') ||
+      window.location.port !== '');
+
+  const isDev = import.meta.env.DEV || isLocalhost;
+
+  if (isDev) {
+    console.info(
+      '[Observability] 🛡️ Ambiente local detectado: envio ao Sentry DESATIVADO para preservar sua cota de dados.'
+    );
+    return;
+  }
+
   const dsn = import.meta.env.VITE_SENTRY_DSN as string | undefined;
 
   if (dsn && dsn.trim().length > 0) {
@@ -12,19 +29,17 @@ export function initObservability() {
         integrations: [
           Sentry.browserTracingIntegration(),
         ],
-        // Sample 100% of errors in closed beta
-        tracesSampleRate: 1.0,
-        // Environment tag
-        environment: import.meta.env.MODE || 'production',
+        // Sample errors in production
+        tracesSampleRate: 0.1, // Sample 10% of performance transactions to conserve data
+        environment: 'production',
       });
       isSentryActive = true;
-      console.info('[Observability] Sentry initialized successfully.');
+      console.info('[Observability] Sentry inicializado com sucesso para produção.');
     } catch (err) {
-      console.warn('[Observability] Failed to initialize Sentry:', err);
+      console.warn('[Observability] Falha ao inicializar Sentry:', err);
     }
   } else {
-    // Silent mode when DSN is not set yet
-    console.info('[Observability] Sentry DSN not configured. Running in local observability mode.');
+    console.info('[Observability] Sentry DSN não configurado. Rodando em modo de observabilidade local.');
   }
 }
 

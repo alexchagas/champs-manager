@@ -11,6 +11,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+.env
+.env.local
+.env.*.local
+*.local
 
 # WASM Generated Artifacts
 /web/src/wasm_pkg
