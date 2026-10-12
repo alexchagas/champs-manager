@@ -61,6 +61,7 @@ import {
   deleteGameSlotFromStorage, 
   listAllSaveSlots 
 } from './storage';
+import { addBreadcrumb } from '../observability/sentry';
 
 interface GameContextType {
   gameState: GameState;
@@ -354,6 +355,12 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setMatchError('');
     setHasActiveCareer(true);
     setGameState(newState);
+    const chosenClub = newState.clubs.find(c => c.id === clubId);
+    addBreadcrumb('Started new career', 'career', {
+      club: chosenClub?.name || `Club #${clubId}`,
+      manager: managerName,
+      division: chosenClub?.division,
+    });
     if (newState.options.autoSaveMode === 'start_of_year') {
       await performAutoSave(newState);
     }
@@ -381,6 +388,11 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isAutoSave: false,
       careerId,
     };
+    addBreadcrumb('Saved career manually', 'storage', {
+      slot: newSlot.title,
+      club: userClub.name,
+      round: gameState.currentRound,
+    });
 
     setLastSavedText('Salvando...');
     try {

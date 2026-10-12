@@ -1,4 +1,5 @@
 import type { GameState, SaveGameSlot } from '../types/index.ts';
+import { addBreadcrumb, captureError } from '../observability/sentry';
 
 const DB_NAME = 'ChampsManagerDB';
 const DB_VERSION = 1;
@@ -47,7 +48,18 @@ export async function saveActiveGameToStorage(state: GameState): Promise<void> {
     } finally { db.close(); }
   });
   activeWriteQueue = write;
-  try { await write; } catch (error) { if (!mirrored) throw error; }
+  try {
+    await write;
+    addBreadcrumb('Saved active game to storage', 'storage', {
+      round: state.currentRound,
+      season: state.seasonYear,
+    });
+  } catch (error) {
+    if (!mirrored) {
+      captureError(error, { context: 'saveActiveGameToStorage' });
+      throw error;
+    }
+  }
 }
 
 export async function loadActiveGameFromStorage(): Promise<GameState | null> {

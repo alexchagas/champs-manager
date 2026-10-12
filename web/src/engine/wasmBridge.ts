@@ -12,6 +12,7 @@ import wasmUrl from '../wasm_pkg/champs_core_bg.wasm?url';
 import { Club, GameState, MatchEvent, ClubTactics, Player, MarketFilter, MarketSearchResult, TransferOffer } from '../types';
 import { SimulatedMatchResult } from './simulationEngine';
 import { canSell, validOffer, post, canFundTransfer, runAiMarket } from './careerEconomy';
+import { addBreadcrumb, captureError } from '../observability/sentry';
 
 let wasmInitialized = false;
 let wasmInitPromise: Promise<boolean> | null = null;
@@ -51,11 +52,17 @@ export async function initWasmEngine(): Promise<boolean> {
       wasmInitialized = true;
       console.log('🦀 [WASM] Champs Manager Rust engine initialized successfully!');
       try {
-        console.log('🦀 [WASM] Version:', wasm_version());
-      } catch (_) {}
+        const v = wasm_version();
+        console.log('🦀 [WASM] Version:', v);
+        addBreadcrumb('WASM Rust engine initialized', 'engine', { version: v });
+      } catch (_) {
+        addBreadcrumb('WASM Rust engine initialized', 'engine');
+      }
       return true;
     } catch (err) {
       console.warn('⚠️ [WASM] Failed to load WASM module, falling back to pure JS engine:', err);
+      addBreadcrumb('WASM failed to load, fallback to JS', 'engine', { error: String(err) });
+      captureError(err, { context: 'initWasmEngine' });
       wasmInitialized = false;
       return false;
     }
