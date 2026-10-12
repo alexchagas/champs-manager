@@ -1,0 +1,12 @@
+{
+  "name": "champs-manager-root",
+  "private": true,
+  "scripts": {
+    "build": "npm --prefix web install && npm --prefix web run build",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250224.0",
+    "wrangler": "^3.114.0"
+  }
+}

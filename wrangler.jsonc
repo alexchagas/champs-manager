@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "champs-manager",
+  "main": "server/index.ts",
+  "compatibility_date": "2026-03-01",
+  "assets": {
+    "directory": "./web/dist",
+    "binding": "ASSETS",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "single-page-application"
+  }
+}
