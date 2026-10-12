@@ -29,65 +29,60 @@ O projeto já possui uma fundação técnica robusta:
 
 Comparando a experiência completa do Brasfoot com a versão atual do Champs Manager, identificamos as seguintes lacunas divididas em 6 pilares:
 
-### A. Fluxo de Novo Jogo & Base Completa de Clubes
-* **Como está hoje:** O jogo inicia com um mock de 20 times brasileiros (`web/src/data/rawClubs.json`) e o Flamengo (ID 255) selecionado por padrão.
-* **O que falta:**
-  * Integrar a base completa gerada em `data/teams.json` (703 clubes, ligas nacionais das Séries A, B, C, D e principais ligas do mundo).
-  * Tela de Novo Jogo completa:
-    * Seleção de País e Divisão de início.
-    * Busca de time com escudo oficial, reputação (estrelas), capacidade do estádio e cidade.
-    * Escolha do nome do técnico humano.
-    * Opção de habilitar/desabilitar estaduais e ligas internacionais.
+### A. Fluxo de Novo Jogo & Base Completa de Clubes ✅ CONCLUÍDO
+* **Status:** Implementado em `web/src/components/MainMenu.tsx` e `data/teamsDatabase.ts`.
+* **Recursos entregues:**
+  * Base completa de **703 clubes reais** e 14.672 atletas conectada.
+  * Seleção de **134 países** e pirâmide brasileira (Séries A, B, C, D, Estaduais e Acesso).
+  * Busca de clubes com escudo oficial, estrelas de reputação, capacidade e cidade.
+  * Personalização do nome do treinador humano e opções gerais de partida.
+  * Editor de dados integrado para personalização de clubes e atletas.
 
 ---
 
-### B. Mercado de Transferências & Gestão de Contratos na Interface
-* **Como está hoje:** A lógica de mercado existe no backend Rust (`crates/champs-core/src/market.rs`), mas a interface web não tem tela de mercado.
-* **O que falta na UI (`TransfersScreen.tsx`):**
-  * **Aba Passes Livres (Free Agents):** Jogadores sem clube disponíveis para contratação direta sem taxa de transferência.
-  * **Pesquisa de Mercado:** Buscar atletas em outros clubes com filtros por Posição, Força, Idade e Preço.
-  * **Fazer Proposta:** Enviar oferta de compra a outro clube com negociação de salário e anos de contrato.
-  * **Caixa de Entrada de Ofertas:** Clubes da IA enviando propostas para comprar jogadores do seu time (botões: *Aceitar*, *Recusar*, *Pedir Mais*).
-  * **Gestão de Contratos:** Listar anos restantes de contrato dos seus atletas e botão para renovação salarial.
+### B. Mercado de Transferências & Gestão de Contratos na Interface ✅ CONCLUÍDO
+* **Status:** Implementado em `web/src/components/TransfersScreen.tsx` e `careerEconomy.ts`.
+* **Recursos entregues:**
+  * **Passes Livres (Free Agents):** Lista completa de atletas sem vínculo para contratação direta com negociação salarial.
+  * **Pesquisa de Mercado:** Filtros por posição (GOL, LAT, ZAG, MEI, ATA), força mínima, idade e busca textual.
+  * **Propostas e Negociações:** Envio de ofertas com compra de direitos, salário e anos de contrato.
+  * **Caixa de Entrada:** Propostas recebidas de clubes da IA com decisões interativas de Aceitar e Recusar.
+  * **Contratos do Elenco:** Acompanhamento de anos de vigência e renovação contratual do plantel.
 
 ---
 
-### C. Gestão de Estádio & Bilheteria
-* **Como está hoje:** O clube tem um estádio com capacidade fixa e saldo financeiro básico.
-* **O que falta na UI e Core:**
-  * **Expansão de Capacidade:** Botão para construir novas arquibancadas (+2.000, +5.000, +10.000 lugares) pagando custos de reforma proporcionais.
-  * **Ajuste de Preço do Ingresso:** Definir o valor do ingresso (ex: R$ 20, R$ 40, R$ 80).
-  * **Cálculo de Público Real:** O público pagante varia conforme a fase do time, reputação do adversário e o preço do ingresso cobrado.
-  * **Renda Bruta e Líquida:** Crédito da bilheteria ao final de cada partida em casa.
+### C. Gestão de Estádio & Bilheteria ✅ CONCLUÍDO
+* **Status:** Implementado em `web/src/components/FinancesScreen.tsx`, `ClubOverview.tsx` e `careerEconomy.ts`.
+* **Recursos entregues:**
+  * **Expansão de Capacidade:** Módulos de expansão (+2.000, +5.000, +10.000 lugares) com débito direto no caixa.
+  * **Ajuste de Preço do Ingresso:** Controle interativo de precificação de ingressos por partida.
+  * **Cálculo de Público e Ocupação:** Taxa de ocupação calibrada determinística com impacto de fase e preço.
+  * **Renda Bruta e Líquida:** Crédito automático de bilheteria e custos operacionais a cada jogo como mandante.
 
 ---
 
-### D. Sistema Financeiro Completo & Empréstimos
-* **Como está hoje:** Saldo bancário exibido no header.
-* **O que falta:**
-  * **Empréstimo Bancário:** Possibilidade de pegar empréstimos de emergência no banco (com limite baseado na reputação do clube) e desconto semanal de juros/parcelas.
-  * **Painel Financeiro Detalhado:**
-    * Receitas: Bilheteria, Premiações de campeonatos, Vendas de jogadores.
-    * Despesas: Folha salarial semanal, Obras do estádio, Compras de jogadores, Juros bancários.
+### D. Sistema Financeiro Completo & Empréstimos ✅ CONCLUÍDO
+* **Status:** Implementado em `web/src/components/FinancesScreen.tsx` e `careerEconomy.ts`.
+* **Recursos entregues:**
+  * **Empréstimos Bancários:** Simulador de contratação com limites baseados na reputação do clube, parcelamento em 10, 15 ou 20 semanas e amortização automática.
+  * **Demonstrativo Semanal:** Balancete detalhado de receitas (bilheteria, vendas de atletas) e despesas (folha salarial profissional e base, manutenção de estádio, amortizações).
+  * **Extrato Financeiro Transacional:** Registro cronológico de todas as transações da temporada.
 
 ---
 
-### E. Categorias de Base (Juniores)
-* **Como está hoje:** A struct `Club` possui o vetor `youth: Vec<Player>`, mas não há interface para interagir com eles.
-* **O que falta:**
-  * Aba ou tela de **Juniores**:
-    * Ver os 10 a 15 atletas da base com idade entre 16 e 19 anos.
-    * Botão **Promover ao Profissional** (transferindo o jovem para o elenco principal).
-    * Botão **Dispensar** da base.
-    * Geração automática de novos jovens a cada virada de temporada.
+### E. Categorias de Base (Juniores) ✅ CONCLUÍDO
+* **Status:** Implementado em `web/src/components/YouthScreen.tsx` e `GameContext.tsx`.
+* **Recursos entregues:**
+  * **Plantel de Base:** Atletas jovens de 16 a 19 anos gerados proporcionalmente ao nível do clube.
+  * **Promover ao Profissional:** Transição direta para o elenco principal com contrato inicial.
+  * **Dispensar da Base:** Liberação de vagas na base para novos talentos.
+  * **Escalação e Monitoramento:** Visualização de posições, atributos e evolução dos jovens.
 
 ---
 
-### F. Feed de Notícias & Jornal da Rodada
-* **Como está hoje:** Apenas os resultados da rodada são mostrados.
-* **O que falta:**
-  * **Jornal / Notícias da Rodada:**
-    * Manchetes de vitórias marcantes e clássicos.
-    * Notícias de lesões graves de atletas importantes (tempo de recuperação em semanas).
-    * Demissões de técnicos e maiores transferências do mercado.
-    * Tabela de artilharia geral (goleadores da Série A/B) e líderes de assistências.
+### F. Feed de Notícias & Estatísticas da Temporada ✅ CONCLUÍDO
+* **Status:** Implementado em `web/src/components/NewsFeed.tsx`, `LeagueStatsScreen.tsx` e `ManagersScreen.tsx`.
+* **Recursos entregues:**
+  * **Jornal da Rodada:** Notícias automáticas com manchetes de abertura de temporada, resultados marcantes, transferências e lesões.
+  * **Estatísticas da Liga:** Artilharia da divisão, líderes de assistências e cartões.
+  * **Painel de Treinadores:** Reputação, tempo de cargo e desempenho de todos os técnicos do campeonato.
