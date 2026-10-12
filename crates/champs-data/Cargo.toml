@@ -1,0 +1,18 @@
+[package]
+name = "champs-data"
+description = "Importer of Brasfoot 22-23 team databases (.ban Java serialization) into Champs Manager's native JSON format"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "champs-data"
+path = "src/main.rs"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

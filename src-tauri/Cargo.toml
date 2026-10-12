@@ -1,0 +1,23 @@
+[package]
+name = "champs-desktop"
+version = "0.1.0"
+description = "Champs Manager Native Desktop App"
+authors = ["alexchagas"]
+edition = "2021"
+
+[lib]
+name = "app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.7.2", features = [] }
+
+[dependencies]
+serde_json.workspace = true
+serde.workspace = true
+log = "0.4"
+tauri = { version = "2.12.3", features = [] }
+tauri-plugin-log = "2"
+champs-core = { path = "../crates/champs-core" }
+champs-sim = { path = "../crates/champs-sim" }
+

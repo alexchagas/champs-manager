@@ -1,0 +1,1185 @@
+import React, { useState, useMemo } from 'react';
+import { useGame } from '../state/GameContext';
+import { 
+  Play, 
+  FolderOpen, 
+  Settings, 
+  Save, 
+  Trash2, 
+  Volume2, 
+  VolumeX, 
+  Check, 
+  Search, 
+  ArrowLeft,
+  Shield,
+  Award,
+  Zap,
+  Globe,
+  Star,
+  MapPin,
+  Trophy,
+  Sliders,
+  Users
+} from 'lucide-react';
+import { sound } from '../audio/soundEngine';
+import { TeamEditorScreen } from './TeamEditorScreen';
+import { ClubCrest } from './ClubCrest';
+import { 
+  getAllClubs, 
+  getAllCountries, 
+  getAllLeagues, 
+  getAllStates, 
+  getClubsByLeague,
+  getClubById 
+} from '../data/teamsDatabase';
+import { AutoSaveMode, Club } from '../types';
+import { getClubTheme, deriveClubAtmosphere } from '../theme/clubTheme';
+
+export const MainMenu: React.FC = () => {
+  const { 
+    gameState, 
+    setScreen, 
+    startNewGame, 
+    loadGame, 
+    saveGame, 
+    deleteSave, 
+    saveSlots, 
+    updateOptions,
+    isWasmEngine,
+    rustVersion
+  } = useGame();
+
+  const [activeTab, setActiveTab] = useState<'new_game' | 'load_game' | 'options' | 'editor'>('new_game');
+  const [editorDirty, setEditorDirty] = useState(false);
+  const changeTab = (tab: 'new_game' | 'load_game' | 'options' | 'editor') => {
+    if (activeTab === 'editor' && tab !== 'editor' && editorDirty && !window.confirm('Há alterações não salvas. Sair do editor?')) return;
+    setEditorDirty(false);
+    sound.playClick();
+    setActiveTab(tab);
+  };
+  const returnToGame = () => {
+    if (activeTab === 'editor' && editorDirty && !window.confirm('Há alterações não salvas. Sair do editor?')) return;
+    setScreen('overview');
+  };
+  
+  // New Game settings
+  const [managerName, setManagerName] = useState(gameState.managerName || 'Alex Chagas');
+  const [selectedCountryId, setSelectedCountryId] = useState<number>(29); // Brasil
+  const [selectedDivision, setSelectedDivision] = useState<number | 'all'>(1); // Série A
+  const [selectedStateCode, setSelectedStateCode] = useState<string>('all');
+  const [selectedClubId, setSelectedClubId] = useState<number>(gameState.userClubId || 255); // Flamengo
+  const [searchFilter, setSearchFilter] = useState('');
+
+  // In-game simulation options
+  const [simSpeed, setSimSpeed] = useState<1 | 2 | 5>(gameState.options.simSpeed || 2);
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(gameState.options.soundEnabled ?? true);
+  const [autoPauseOnGoal, setAutoPauseOnGoal] = useState<boolean>(gameState.options.autoPauseOnGoal ?? true);
+
+  // Save/Load tab state
+  const [saveTitle, setSaveTitle] = useState('');
+  const [saveMessage, setSaveMessage] = useState('');
+
+  // Cached database collections
+  const allClubs = useMemo(() => getAllClubs(), []);
+  const allCountries = useMemo(() => getAllCountries(), []);
+  const allStates = useMemo(() => getAllStates(), []);
+  const allLeagues = useMemo(() => getAllLeagues(), []);
+
+  // Leagues for currently selected country
+  const countryLeagues = useMemo(() => {
+    return allLeagues.filter((l) => l.countryId === selectedCountryId);
+  }, [allLeagues, selectedCountryId]);
+
+  // Filtered clubs for selection list
+  const filteredClubs = useMemo(() => {
+    const query = searchFilter.trim().toLowerCase();
+
+    // Global search if query is 2+ chars
+    if (query.length >= 2) {
+      return allClubs
+        .filter((c) =>
+          c.name.toLowerCase().includes(query) ||
+          c.stadium.toLowerCase().includes(query) ||
+          (c.stateName && c.stateName.toLowerCase().includes(query)) ||
+          (c.stateCode && c.stateCode.toLowerCase().includes(query)) ||
+          c.coach.toLowerCase().includes(query)
+        )
+        .sort((a, b) => b.reputation - a.reputation || a.name.localeCompare(b.name));
+    }
+
+    let list: Club[] = [];
+
+    if (selectedCountryId === 29) {
+      // Brazil
+      if (selectedDivision === 'all') {
+        list = allClubs.filter((c) => c.countryId === 29);
+      } else {
+        const league = countryLeagues.find((l) => l.division === selectedDivision);
+        if (league && league.clubIds.length > 0) {
+          list = getClubsByLeague(league);
+        } else {
+          list = allClubs.filter((c) => c.countryId === 29 && c.division === selectedDivision);
+        }
+      }
+
+      // State sub-filter
+      if (selectedStateCode !== 'all') {
+        list = list.filter((c) => c.stateCode === selectedStateCode);
+      }
+    } else {
+      // Other countries
+      if (selectedDivision === 'all') {
+        list = allClubs.filter((c) => c.countryId === selectedCountryId);
+      } else {
+        const league = countryLeagues.find((l) => l.division === selectedDivision);
+        if (league && league.clubIds.length > 0) {
+          list = getClubsByLeague(league);
+        } else {
+          list = allClubs.filter((c) => c.countryId === selectedCountryId);
+        }
+      }
+    }
+
+    return list.sort((a, b) => b.reputation - a.reputation || a.name.localeCompare(b.name));
+  }, [allClubs, countryLeagues, selectedCountryId, selectedDivision, selectedStateCode, searchFilter, activeTab]);
+
+  // Selected Club details
+  const selectedClub = useMemo(() => {
+    return getClubById(selectedClubId) || filteredClubs[0] || allClubs[0];
+  }, [selectedClubId, filteredClubs, allClubs, activeTab]);
+
+  const selectedClubTheme = useMemo(() => getClubTheme(selectedClub), [selectedClub]);
+  const selectedClubAtmosphere = useMemo(() => deriveClubAtmosphere(selectedClub), [selectedClub]);
+
+  // Average strength of starter squad (top 11)
+  const selectedClubAvgStrength = useMemo(() => {
+    const starters = selectedClub.squad.filter((p) => p.isStarter);
+    const pool = starters.length === 11 ? starters : selectedClub.squad.slice(0, 11);
+    if (pool.length === 0) return 70;
+    return Math.round(pool.reduce((acc, p) => acc + p.strength, 0) / pool.length);
+  }, [selectedClub]);
+
+  // Start new career
+  const handleStartGame = () => {
+    sound.playWhistle();
+    startNewGame(selectedClub.id, managerName.trim() || 'Alex Chagas', {
+      simSpeed,
+      soundEnabled,
+      autoPauseOnGoal,
+    });
+    setScreen('overview');
+  };
+
+  const [saveStatus, setSaveStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const handleSaveCurrent = async () => {
+    setSaveStatus(null);
+    const res = await saveGame(saveTitle.trim() || undefined);
+    if (res.success) {
+      setSaveTitle('');
+      setSaveStatus({ type: 'success', message: 'Jogo salvo com sucesso no navegador!' });
+      setTimeout(() => setSaveStatus(null), 4000);
+    } else {
+      setSaveStatus({ type: 'error', message: res.error || 'Erro ao salvar o jogo.' });
+    }
+  };
+
+  const handleLoadSlot = async (slotId: string) => {
+    setLoadError(null);
+    const res = await loadGame(slotId);
+    if (res.success) {
+      setScreen('overview');
+    } else {
+      setLoadError(res.error || 'Falha ao carregar o save selecionado.');
+    }
+  };
+
+  const handleCountryChange = (cid: number) => {
+    sound.playClick();
+    setSelectedCountryId(cid);
+    setSelectedDivision(1);
+    setSelectedStateCode('all');
+    // Pre-select first club of this country
+    const firstClub = allClubs.find((c) => c.countryId === cid);
+    if (firstClub) {
+      setSelectedClubId(firstClub.id);
+    }
+  };
+
+  const handleDivisionChange = (div: number | 'all') => {
+    sound.playClick();
+    setSelectedDivision(div);
+  };
+
+  // Popular quick countries list
+  const popularCountries = [
+    { id: 29, name: 'Brasil' },
+    { id: 65, name: 'Espanha' },
+    { id: 11, name: 'Argentina' },
+    { id: 97, name: 'Inglaterra' },
+    { id: 104, name: 'Itália' },
+    { id: 3, name: 'Alemanha' },
+    { id: 72, name: 'França' },
+    { id: 154, name: 'Portugal' },
+  ];
+
+  return (
+    <div className="flex-1 flex flex-col bg-[#09120e] text-slate-100 select-none overflow-hidden h-full">
+      {/* Top Banner with Brand and Return Button */}
+      <div className="h-14 bg-[#0d1a14] border-b border-[#1b3629] px-6 flex items-center justify-between shadow-md shrink-0">
+        <div className="flex items-center space-x-3">
+          <div className="w-8 h-8 rounded bg-gradient-to-br from-emerald-500 to-green-700 flex items-center justify-center font-digital font-black text-black text-lg shadow">
+            CM
+          </div>
+          <div>
+            <h1 className="text-base font-extrabold tracking-wider uppercase text-emerald-400">
+              Champs Manager <span className="text-white text-xs font-normal">2026</span>
+            </h1>
+            <p className="text-[10px] text-slate-400">O Clássico Gerenciador de Futebol • Base Real de 703 Clubes</p>
+          </div>
+        </div>
+
+        {/* Continue playing button if career is running */}
+        <button
+          onClick={returnToGame}
+          className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#152e22] hover:bg-[#1b3d2d] text-emerald-300 border border-[#2b5941] rounded text-xs font-bold transition-colors cursor-pointer"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          <span>Voltar ao Jogo</span>
+        </button>
+      </div>
+
+      {/* Main Content Layout */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left Sidebar Menu Options */}
+        <div className="w-52 bg-[var(--app-surface-1)] border-r border-[var(--app-border-subtle)] p-3 flex flex-col justify-between shrink-0">
+          <div className="space-y-1.5">
+            <button
+              onClick={() => changeTab('new_game')}
+              className={`w-full flex items-center space-x-2.5 px-3.5 py-2.5 rounded text-xs font-bold transition-all text-left cursor-pointer ${
+                activeTab === 'new_game'
+                  ? 'bg-gradient-to-r from-emerald-700 to-emerald-600 text-white shadow-md'
+                  : 'text-slate-300 hover:bg-[var(--app-surface-2)] hover:text-white'
+              }`}
+            >
+              <Play className="w-4 h-4" />
+              <span>Novo Jogo</span>
+            </button>
+
+            <button
+              onClick={() => changeTab('load_game')}
+              className={`w-full flex items-center space-x-2.5 px-3.5 py-2.5 rounded text-xs font-bold transition-all text-left cursor-pointer ${
+                activeTab === 'load_game'
+                  ? 'bg-gradient-to-r from-emerald-700 to-emerald-600 text-white shadow-md'
+                  : 'text-slate-300 hover:bg-[var(--app-surface-2)] hover:text-white'
+              }`}
+            >
+              <FolderOpen className="w-4 h-4" />
+              <span>Carregar / Salvar</span>
+            </button>
+
+            <button
+              onClick={() => changeTab('editor')}
+              className={`w-full flex items-center space-x-2.5 px-3.5 py-2.5 rounded text-xs font-bold transition-all text-left cursor-pointer ${
+                activeTab === 'editor'
+                  ? 'bg-gradient-to-r from-emerald-700 to-emerald-600 text-white shadow-md'
+                  : 'text-slate-300 hover:bg-[var(--app-surface-2)] hover:text-white'
+              }`}
+            >
+              <Users className="w-4 h-4" />
+              <span>Editor de Dados</span>
+            </button>
+
+            <button
+              onClick={() => changeTab('options')}
+              className={`w-full flex items-center space-x-2.5 px-3.5 py-2.5 rounded text-xs font-bold transition-all text-left cursor-pointer ${
+                activeTab === 'options'
+                  ? 'bg-gradient-to-r from-emerald-700 to-emerald-600 text-white shadow-md'
+                  : 'text-slate-300 hover:bg-[var(--app-surface-2)] hover:text-white'
+              }`}
+            >
+              <Settings className="w-4 h-4" />
+              <span>Opções do Jogo</span>
+            </button>
+          </div>
+
+          {/* Quick info footer */}
+          <div className="p-3 bg-[var(--app-bg-deep)] border border-[var(--app-border-subtle)] rounded text-[11px] text-slate-400 space-y-1">
+            <div className="text-[var(--app-text-accent)] font-bold flex items-center gap-1.5">
+              <Trophy className="w-3.5 h-3.5 text-[var(--app-text-accent)]" />
+              <span>Base Autêntica</span>
+            </div>
+            <div>703 Clubes Originais</div>
+            <div>Séries A, B, C, D e Mundo</div>
+            <div className="text-[10px] text-slate-500 font-mono">14.672 Atletas Reais</div>
+          </div>
+        </div>
+
+
+        {/* Tab Content Panel */}
+        <div className="flex-1 p-4 overflow-y-auto">
+          {/* TAB 1: NOVO JOGO */}
+          {activeTab === 'new_game' && (
+            <div className="max-w-6xl mx-auto space-y-4">
+              {/* Header Bar: Title + Manager Name Input */}
+              <div className="bg-[#0e1c15] border border-[#1a3828] rounded-lg p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-md">
+                <div>
+                  <h2 className="text-base font-extrabold text-emerald-400 tracking-wide flex items-center gap-2">
+                    <Trophy className="w-4 h-4 text-emerald-400" />
+                    <span>Iniciar Nova Carreira</span>
+                  </h2>
+                  <p className="text-xs text-slate-400">
+                    Escolha qualquer clube do Brasil ou do mundo e monte seu império futebolístico
+                  </p>
+                </div>
+
+                {/* Manager Name Input */}
+                <div className="flex items-center space-x-2.5 bg-[#09140f] px-3 py-1.5 rounded-md border border-[#214332]">
+                  <span className="text-xs text-slate-300 font-bold whitespace-nowrap">Seu Nome de Técnico:</span>
+                  <input
+                    type="text"
+                    value={managerName}
+                    onChange={(e) => setManagerName(e.target.value)}
+                    placeholder="Ex: Alex Chagas"
+                    className="bg-[#12241b] border border-[#29543e] px-2.5 py-1 rounded text-xs text-white focus:outline-none focus:border-emerald-400 font-semibold w-44"
+                  />
+                </div>
+              </div>
+
+              {/* Navigation Filters: Country & Division Selectors */}
+              <div className="bg-[#0e1c15] border border-[#1a3828] rounded-lg p-3.5 space-y-3 shadow-sm">
+                {/* 1. Country Selector */}
+                <div>
+                  <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Globe className="w-3.5 h-3.5 text-emerald-400" />
+                      1. Selecione o País de Largada
+                    </span>
+                    <span className="text-[10px] text-slate-500 font-normal">
+                      134 Países Disponíveis
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {popularCountries.map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => handleCountryChange(c.id)}
+                        className={`px-3 py-1.5 rounded text-xs font-semibold transition-all cursor-pointer ${
+                          selectedCountryId === c.id
+                            ? 'bg-emerald-600 text-black font-extrabold shadow-sm'
+                            : 'bg-[#12231a] text-slate-300 hover:bg-[#183324] hover:text-white border border-[#1e3c2d]'
+                        }`}
+                      >
+                        {c.name}
+                      </button>
+                    ))}
+
+                    {/* All other countries dropdown */}
+                    <div className="relative inline-block">
+                      <select
+                        value={selectedCountryId}
+                        onChange={(e) => handleCountryChange(Number(e.target.value))}
+                        className="bg-[#12231a] border border-[#1e3c2d] text-slate-300 hover:text-white text-xs px-2.5 py-1.5 rounded cursor-pointer focus:outline-none focus:border-emerald-500 font-semibold"
+                      >
+                        <option value="" disabled>Outros Países ({allCountries.length})...</option>
+                        {allCountries.map((c) => (
+                          <option key={c.id} value={c.id} className="bg-[#0b1611] text-white">
+                            {c.name} ({c.clubCount} {c.clubCount === 1 ? 'clube' : 'clubes'})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Division / League Selector */}
+                <div className="pt-2 border-t border-[#162e21]">
+                  <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Shield className="w-3.5 h-3.5 text-emerald-400" />
+                      2. Selecione a Divisão / Campeonato
+                    </span>
+                    {selectedCountryId === 29 && (
+                      <span className="text-[10px] text-emerald-400 font-mono font-medium">
+                        Pirâmide Nacional do Brasil
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {selectedCountryId === 29 ? (
+                      <>
+                        <button
+                          onClick={() => handleDivisionChange(1)}
+                          className={`px-3 py-1.5 rounded text-xs font-semibold cursor-pointer transition-all ${
+                            selectedDivision === 1
+                              ? 'bg-emerald-600 text-black font-extrabold shadow-sm'
+                              : 'bg-[#12231a] text-slate-300 hover:bg-[#183324] border border-[#1e3c2d]'
+                          }`}
+                        >
+                          Série A (20 Clubes)
+                        </button>
+                        <button
+                          onClick={() => handleDivisionChange(2)}
+                          className={`px-3 py-1.5 rounded text-xs font-semibold cursor-pointer transition-all ${
+                            selectedDivision === 2
+                              ? 'bg-emerald-600 text-black font-extrabold shadow-sm'
+                              : 'bg-[#12231a] text-slate-300 hover:bg-[#183324] border border-[#1e3c2d]'
+                          }`}
+                        >
+                          Série B (20 Clubes)
+                        </button>
+                        <button
+                          onClick={() => handleDivisionChange(3)}
+                          className={`px-3 py-1.5 rounded text-xs font-semibold cursor-pointer transition-all ${
+                            selectedDivision === 3
+                              ? 'bg-emerald-600 text-black font-extrabold shadow-sm'
+                              : 'bg-[#12231a] text-slate-300 hover:bg-[#183324] border border-[#1e3c2d]'
+                          }`}
+                        >
+                          Série C (20 Clubes)
+                        </button>
+                        <button
+                          onClick={() => handleDivisionChange(4)}
+                          className={`px-3 py-1.5 rounded text-xs font-semibold cursor-pointer transition-all ${
+                            selectedDivision === 4
+                              ? 'bg-emerald-600 text-black font-extrabold shadow-sm'
+                              : 'bg-[#12231a] text-slate-300 hover:bg-[#183324] border border-[#1e3c2d]'
+                          }`}
+                        >
+                          Série D (64 Clubes)
+                        </button>
+                        <button
+                          onClick={() => handleDivisionChange(5)}
+                          className={`px-3 py-1.5 rounded text-xs font-semibold cursor-pointer transition-all ${
+                            selectedDivision === 5
+                              ? 'bg-emerald-600 text-black font-extrabold shadow-sm'
+                              : 'bg-[#12231a] text-slate-300 hover:bg-[#183324] border border-[#1e3c2d]'
+                          }`}
+                        >
+                          Estaduais / Acesso (72 Clubes)
+                        </button>
+                        <button
+                          onClick={() => handleDivisionChange('all')}
+                          className={`px-3 py-1.5 rounded text-xs font-semibold cursor-pointer transition-all ${
+                            selectedDivision === 'all'
+                              ? 'bg-emerald-600 text-black font-extrabold shadow-sm'
+                              : 'bg-[#12231a] text-slate-300 hover:bg-[#183324] border border-[#1e3c2d]'
+                          }`}
+                        >
+                          Todos do Brasil (196 Clubes)
+                        </button>
+
+                        {/* State Filter for Brazil */}
+                        <div className="ml-auto flex items-center space-x-1.5">
+                          <MapPin className="w-3.5 h-3.5 text-emerald-400" />
+                          <select
+                            value={selectedStateCode}
+                            onChange={(e) => setSelectedStateCode(e.target.value)}
+                            className="bg-[#12231a] border border-[#1e3c2d] text-slate-300 text-xs px-2 py-1.5 rounded cursor-pointer focus:outline-none focus:border-emerald-500 font-semibold"
+                          >
+                            <option value="all">Filtrar por Estado (Todos)</option>
+                            {allStates.map((st) => (
+                              <option key={st.code} value={st.code} className="bg-[#0b1611] text-white">
+                                {st.name} ({st.code}) - {st.clubCount} clubes
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        {countryLeagues.map((l) => (
+                          <button
+                            key={l.division}
+                            onClick={() => handleDivisionChange(l.division)}
+                            className={`px-3 py-1.5 rounded text-xs font-semibold cursor-pointer transition-all ${
+                              selectedDivision === l.division
+                                ? 'bg-emerald-600 text-black font-extrabold shadow-sm'
+                              : 'bg-[#12231a] text-slate-300 hover:bg-[#183324] border border-[#1e3c2d]'
+                            }`}
+                          >
+                            {l.divisionName || `Divisão ${l.division}`} ({l.teamCount} Clubes)
+                          </button>
+                        ))}
+                        <button
+                          onClick={() => handleDivisionChange('all')}
+                          className={`px-3 py-1.5 rounded text-xs font-semibold cursor-pointer transition-all ${
+                            selectedDivision === 'all'
+                              ? 'bg-emerald-600 text-black font-extrabold shadow-sm'
+                              : 'bg-[#12231a] text-slate-300 hover:bg-[#183324] border border-[#1e3c2d]'
+                          }`}
+                        >
+                          Todos os Clubes
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Main Selection Area: Club Grid (Left) + Selected Club Card (Right) */}
+              <div className="grid grid-cols-12 gap-4">
+                {/* 3. Club Grid / List */}
+                <div className="col-span-7 bg-[#0f1d16] border border-[#1b3629] rounded-lg p-3 flex flex-col h-[460px] shadow-md">
+                  {/* Search Bar + Results Counter */}
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="relative flex-1">
+                      <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400" />
+                      <input
+                        type="text"
+                        value={searchFilter}
+                        onChange={(e) => setSearchFilter(e.target.value)}
+                        placeholder="Buscar por nome, estádio, cidade..."
+                        className="w-full bg-[#09130f] border border-[#1e3b2d] pl-8 pr-3 py-1.5 rounded text-xs text-white focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                    <span className="text-[11px] text-emerald-400 font-mono font-bold bg-[#0a1510] px-2 py-1 rounded border border-[#1b3628] whitespace-nowrap">
+                      {filteredClubs.length} {filteredClubs.length === 1 ? 'time' : 'times'}
+                    </span>
+                  </div>
+
+                  {/* Club List Scroll */}
+                  <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
+                    {filteredClubs.map((club) => {
+                      const isSelected = club.id === selectedClub.id;
+
+                      return (
+                        <div
+                          key={club.id}
+                          onClick={() => { sound.playClick(); setSelectedClubId(club.id); }}
+                          style={
+                            isSelected
+                              ? {
+                                  borderLeft: `4px solid ${selectedClubTheme.primaryAccent}`,
+                                  backgroundColor: selectedClubTheme.subtleBg,
+                                  borderColor: selectedClubTheme.subtleBorder,
+                                }
+                              : undefined
+                          }
+                          className={`flex items-center justify-between p-2 rounded-md text-xs cursor-pointer transition-all border ${
+                            isSelected
+                              ? 'text-white shadow-sm ring-1 ring-white/10'
+                              : 'bg-[#122119] border-[#162e21] hover:border-[#224835] hover:bg-[#152a20] text-slate-300'
+                          }`}
+                        >
+                          {/* Crest + Name + Tags */}
+                          <div className="flex items-center space-x-2.5 min-w-0">
+                            {/* Official crest or fallback */}
+                            <div className="w-7 h-7 flex items-center justify-center shrink-0">
+                              <ClubCrest club={club} size="md" />
+                            </div>
+
+                            <div className="min-w-0">
+                              <div className="flex items-center space-x-1.5">
+                                <span className="font-bold text-slate-100 truncate">{club.name}</span>
+                                {club.stateCode && (
+                                  <span 
+                                    className="text-[9px] px-1 py-0.2 rounded font-mono font-bold border"
+                                    style={
+                                      isSelected
+                                        ? {
+                                            backgroundColor: selectedClubTheme.subtleBg,
+                                            color: selectedClubTheme.primaryAccent,
+                                            borderColor: selectedClubTheme.subtleBorder,
+                                          }
+                                        : {
+                                            backgroundColor: '#0c1a13',
+                                            color: '#34d399',
+                                            borderColor: '#1c3a2a',
+                                          }
+                                    }
+                                  >
+                                    {club.stateCode}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-slate-400 truncate">
+                                {club.stadium} • {club.capacity.toLocaleString('pt-BR')} lug.
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Reputation Stars + Division Tag */}
+                          <div className="flex items-center space-x-2.5 shrink-0">
+                            {/* Stars */}
+                            <div className="flex items-center text-amber-400 text-xs tracking-tighter" title={`Reputação: ${club.reputation} estrelas`}>
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <span key={star} className={star <= club.reputation ? 'text-amber-400' : 'text-slate-600'}>
+                                  ★
+                                </span>
+                              ))}
+                            </div>
+
+                            {/* Division tag */}
+                            <span 
+                              className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold border"
+                              style={
+                                isSelected
+                                  ? {
+                                      backgroundColor: selectedClubTheme.subtleBg,
+                                      color: selectedClubTheme.primaryAccent,
+                                      borderColor: selectedClubTheme.subtleBorder,
+                                    }
+                                  : {
+                                      backgroundColor: '#0b1711',
+                                      color: '#34d399',
+                                      borderColor: '#193526',
+                                    }
+                              }
+                            >
+                              {club.divisionName || 'Nacional'}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {filteredClubs.length === 0 && (
+                      <div className="text-center py-12 text-slate-500 text-xs">
+                        Nenhum clube encontrado com esses filtros. Tente buscar outro nome.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 4. Selected Club Preview Card & Options */}
+                <div 
+                  className="col-span-5 rounded-lg p-4 flex flex-col justify-between h-[460px] shadow-md relative overflow-hidden transition-all border"
+                  style={{
+                    backgroundColor: selectedClubAtmosphere.surface1,
+                    borderColor: selectedClubAtmosphere.borderSubtle,
+                  }}
+                >
+                  {/* Kit color top stripe */}
+                  <div 
+                    className="absolute top-0 left-0 right-0 h-1 z-10"
+                    style={{ background: selectedClubTheme.stripeGradient }}
+                  />
+
+                  <div className="space-y-3.5 overflow-y-auto pr-1">
+                    {/* Club Header */}
+                    <div 
+                      className="flex items-center space-x-3.5 border-b pb-3"
+                      style={{ borderColor: selectedClubAtmosphere.borderSubtle }}
+                    >
+                      <div 
+                        className="w-14 h-14 rounded-lg border flex items-center justify-center p-1 shadow shrink-0 relative overflow-hidden"
+                        style={{ 
+                          backgroundColor: selectedClubAtmosphere.surface2,
+                          borderColor: selectedClubTheme.subtleBorder,
+                          boxShadow: `0 0 12px ${selectedClubTheme.subtleBg}`
+                        }}
+                      >
+                        <ClubCrest club={selectedClub} size="xl" />
+                        <div 
+                          className="absolute bottom-0 left-0 right-0 h-0.5"
+                          style={{ background: selectedClubTheme.stripeGradient }}
+                        />
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between">
+                          <h3 className="font-black text-white text-base truncate">{selectedClub.name}</h3>
+                          <div className="flex text-amber-400 text-xs">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <span key={star} className={star <= selectedClub.reputation ? 'text-amber-400' : 'text-slate-600'}>
+                                ★
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2 mt-0.5">
+                          <p 
+                            className="text-xs font-semibold truncate"
+                            style={{ color: selectedClubAtmosphere.textAccent }}
+                          >
+                            {selectedClub.leagueName || selectedClub.divisionName} • {selectedClub.coach}
+                          </p>
+                          <span 
+                            className="text-[9px] px-1.5 py-0.2 rounded font-mono font-bold shrink-0"
+                            style={{ 
+                              backgroundColor: selectedClubTheme.subtleBg,
+                              color: selectedClubTheme.primaryAccent,
+                              border: `1px solid ${selectedClubTheme.subtleBorder}`
+                            }}
+                          >
+                            Cores
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Quick Stats Grid */}
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div 
+                        className="p-2 rounded border"
+                        style={{
+                          backgroundColor: selectedClubAtmosphere.surface2,
+                          borderColor: selectedClubAtmosphere.borderSubtle,
+                        }}
+                      >
+                        <span className="text-[10px] text-slate-400 block">Estádio</span>
+                        <span className="text-white font-bold truncate block">{selectedClub.stadium}</span>
+                        <span 
+                          className="text-[10px] font-mono font-semibold"
+                          style={{ color: selectedClubAtmosphere.textAccent }}
+                        >
+                          {selectedClub.capacity.toLocaleString('pt-BR')} pessoas
+                        </span>
+                      </div>
+
+                      <div 
+                        className="p-2 rounded border"
+                        style={{
+                          backgroundColor: selectedClubAtmosphere.surface2,
+                          borderColor: selectedClubAtmosphere.borderSubtle,
+                        }}
+                      >
+                        <span className="text-[10px] text-slate-400 block">Orçamento em Caixa</span>
+                        <span 
+                          className="font-bold block font-mono"
+                          style={{ color: selectedClubAtmosphere.textAccent }}
+                        >
+                          R$ {(selectedClub.balance / 1000000).toFixed(1)}M
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          Ingresso: R$ {selectedClub.ticketPrice},00
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Squad Highlights */}
+                    <div>
+                      <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                        <span>Destaques do Elenco</span>
+                        <span 
+                          className="text-[10px] font-mono font-semibold"
+                          style={{ color: selectedClubAtmosphere.textAccent }}
+                        >
+                          Força Média: {selectedClubAvgStrength}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {selectedClub.squad.slice(0, 4).map((p) => (
+                          <span
+                            key={p.id}
+                            className="border px-2 py-0.5 rounded text-[11px] font-semibold flex items-center space-x-1"
+                            style={{
+                              backgroundColor: selectedClubAtmosphere.surface2,
+                              borderColor: selectedClubAtmosphere.borderSubtle,
+                              color: '#e2e8f0',
+                            }}
+                          >
+                            <span className="text-[9px] text-slate-400">{p.position}</span>
+                            <span>{p.name}</span>
+                            <span 
+                              className="font-bold font-mono"
+                              style={{ color: selectedClubAtmosphere.textAccent }}
+                            >
+                              ({p.strength})
+                            </span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Inline Game Options Settings */}
+                    <div 
+                      className="pt-2 border-t space-y-2"
+                      style={{ borderColor: selectedClubAtmosphere.borderSubtle }}
+                    >
+                      <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <Sliders 
+                          className="w-3.5 h-3.5" 
+                          style={{ color: selectedClubAtmosphere.textAccent }} 
+                        />
+                        <span>Configurações da Partida</span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        {/* Sim Speed */}
+                        <div 
+                          className="p-1.5 rounded border flex items-center justify-between"
+                          style={{
+                            backgroundColor: selectedClubAtmosphere.surface2,
+                            borderColor: selectedClubAtmosphere.borderSubtle,
+                          }}
+                        >
+                          <span className="text-[10px] text-slate-400">Velocidade:</span>
+                          <div className="flex space-x-1">
+                            {([1, 2, 5] as const).map((spd) => (
+                              <button
+                                key={spd}
+                                onClick={() => setSimSpeed(spd)}
+                                className="px-1.5 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-colors"
+                                style={
+                                  simSpeed === spd
+                                    ? {
+                                        backgroundColor: selectedClubTheme.primaryAccent,
+                                        color: selectedClubTheme.onPrimaryAccent,
+                                      }
+                                    : {
+                                        backgroundColor: selectedClubAtmosphere.surface1,
+                                        color: '#cbd5e1',
+                                      }
+                                }
+                              >
+                                {spd}x
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Sound Toggle */}
+                        <div 
+                          className="p-1.5 rounded border flex items-center justify-between"
+                          style={{
+                            backgroundColor: selectedClubAtmosphere.surface2,
+                            borderColor: selectedClubAtmosphere.borderSubtle,
+                          }}
+                        >
+                          <span className="text-[10px] text-slate-400">Efeitos Áudio:</span>
+                          <button
+                            onClick={() => setSoundEnabled(!soundEnabled)}
+                            className="px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer flex items-center space-x-1 transition-colors"
+                            style={
+                              soundEnabled
+                                ? {
+                                    backgroundColor: selectedClubTheme.primaryAccent,
+                                    color: selectedClubTheme.onPrimaryAccent,
+                                  }
+                                : {
+                                    backgroundColor: '#221c1c',
+                                    color: '#fda4af',
+                                    borderColor: '#881337',
+                                    borderWidth: 1,
+                                  }
+                            }
+                          >
+                            {soundEnabled ? <Volume2 className="w-3 h-3" /> : <VolumeX className="w-3 h-3" />}
+                            <span>{soundEnabled ? 'Ligado' : 'Mudo'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Start Button */}
+                  <div 
+                    className="pt-3 border-t shrink-0"
+                    style={{ borderColor: selectedClubAtmosphere.borderSubtle }}
+                  >
+                    <button
+                      onClick={handleStartGame}
+                      className="w-full py-3 font-black rounded-lg shadow-xl text-xs uppercase tracking-wider transition-all transform active:scale-98 cursor-pointer flex items-center justify-center space-x-2"
+                      style={{
+                        backgroundColor: selectedClubTheme.primaryAccent,
+                        color: selectedClubTheme.onPrimaryAccent,
+                        boxShadow: `0 4px 16px ${selectedClubTheme.subtleBg}`,
+                      }}
+                    >
+                      <Play className="w-4 h-4 fill-current" />
+                      <span>Iniciar Carreira com o {selectedClub.name}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: CARREGAR / SALVAR */}
+          {activeTab === 'load_game' && (
+            <div className="max-w-3xl mx-auto space-y-6">
+              {/* Save current game card */}
+              <div className="bg-[#0f1d16] border border-[#1b3629] rounded p-4 space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-400">
+                  Salvar Jogo Atual
+                </h3>
+                <div className="flex space-x-2">
+                  <input
+                    type="text"
+                    value={saveTitle}
+                    onChange={(e) => setSaveTitle(e.target.value)}
+                    placeholder={`Ex: ${selectedClub.name} - Rodada ${gameState.currentRound}`}
+                    className="flex-1 bg-[#09130f] border border-[#1e3b2d] px-3 py-1.5 rounded text-xs text-white focus:outline-none focus:border-emerald-500"
+                  />
+                  <button
+                    onClick={handleSaveCurrent}
+                    className="flex items-center space-x-1.5 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-black font-bold rounded text-xs cursor-pointer"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    <span>Salvar Agora</span>
+                  </button>
+                </div>
+                {saveStatus && (
+                  <p className={`text-xs font-semibold flex items-center space-x-1.5 ${saveStatus.type === 'success' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {saveStatus.type === 'success' ? <Check className="w-3.5 h-3.5" /> : <span className="w-3.5 h-3.5 text-center">✕</span>}
+                    <span>{saveStatus.message}</span>
+                  </p>
+                )}
+              </div>
+
+              {/* Load existing saves */}
+              <div className="bg-[#0f1d16] border border-[#1b3629] rounded p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-400">
+                    Jogos Salvos no Navegador ({saveSlots.length})
+                  </h3>
+                </div>
+
+                {loadError && (
+                  <div className="p-2.5 bg-rose-950/80 border border-rose-800 rounded text-rose-200 text-xs flex items-center justify-between">
+                    <span>{loadError}</span>
+                    <button onClick={() => setLoadError(null)} className="text-rose-400 hover:text-white font-bold ml-2">✕</button>
+                  </div>
+                )}
+
+                {saveSlots.length === 0 ? (
+                  <div className="text-center py-8 text-slate-500 text-xs">
+                    Nenhum save encontrado. Inicie um novo jogo e salve seu progresso.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {saveSlots.map((slot) => {
+                      const isAuto = slot.isAutoSave || slot.id.startsWith('autosave') || slot.title.startsWith('[Auto-save]');
+                      const slotClub = allClubs.find((c) => c.id === slot.userClubId) || allClubs.find((c) => c.name === slot.userClubName);
+                      const slotTheme = getClubTheme(slotClub);
+
+                      return (
+                        <div
+                          key={slot.id}
+                          style={{ borderLeft: `4px solid ${slotTheme.primaryAccent}` }}
+                          className="flex items-center justify-between p-3 bg-[#122119] border border-[#1b3829] hover:border-emerald-700/50 rounded transition-all relative overflow-hidden"
+                        >
+                          {/* Club kit stripe subtle header indicator */}
+                          <div
+                            className="absolute top-0 left-0 right-0 h-0.5 opacity-60"
+                            style={{ background: slotTheme.stripeGradient }}
+                          />
+
+                          <div className="flex items-center space-x-3 min-w-0 pr-3">
+                            {/* Club Crest */}
+                            <div 
+                              className="w-9 h-9 rounded flex items-center justify-center bg-[#091510] border shrink-0 p-0.5"
+                              style={{ borderColor: slotTheme.subtleBorder }}
+                            >
+                              <ClubCrest club={slotClub || { name: slot.userClubName }} size="md" preferMini={true} />
+                            </div>
+
+                            <div className="min-w-0">
+                              <div className="flex items-center space-x-2">
+                                <span className="font-bold text-xs text-white truncate">{slot.title}</span>
+                                <span className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-bold uppercase ${
+                                  isAuto
+                                    ? 'bg-amber-950 text-amber-300 border border-amber-800/60'
+                                    : 'bg-[#152e20] text-emerald-300 border border-[#2b5941]'
+                                }`}>
+                                  {isAuto ? 'Auto-save' : 'Manual'}
+                                </span>
+                              </div>
+                              <div className="text-[11px] text-slate-400 truncate mt-0.5 flex items-center space-x-1.5">
+                                <span className="font-semibold text-slate-200">{slot.userClubName}</span>
+                                <span>•</span>
+                                <span>Treinador: {slot.managerName}</span>
+                                <span>•</span>
+                                <span>Rodada {slot.currentRound} ({slot.savedAt})</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center space-x-2 shrink-0">
+                            <button
+                              onClick={() => handleLoadSlot(slot.id)}
+                              className="px-3 py-1 bg-emerald-700 hover:bg-emerald-600 text-white rounded text-xs font-bold transition-colors cursor-pointer"
+                            >
+                              Carregar
+                            </button>
+                            <button
+                              onClick={() => deleteSave(slot.id)}
+                              className="p-1 hover:bg-rose-900/50 text-slate-400 hover:text-rose-400 rounded transition-colors cursor-pointer"
+                              title="Excluir save"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'editor' && <TeamEditorScreen onBack={() => changeTab('new_game')} onDirtyChange={setEditorDirty} />}
+
+          {/* TAB 3: OPÇÕES DO JOGO */}
+          {activeTab === 'options' && (
+            <div className="max-w-2xl mx-auto bg-[#0f1d16] border border-[#1b3629] rounded p-6 space-y-6">
+              <div>
+                <h2 className="text-sm font-extrabold text-emerald-400 uppercase tracking-wider">
+                  Configurações Gerais do Champs Manager
+                </h2>
+                <p className="text-xs text-slate-400">Ajuste o comportamento do motor de simulação e áudio</p>
+              </div>
+
+              <div className="space-y-4 text-xs">
+                {/* Sound On/Off */}
+                <div className="flex items-center justify-between py-2 border-b border-[#162e21]">
+                  <div>
+                    <div className="font-bold text-white">Efeitos Sonoros & Torcida</div>
+                    <div className="text-[11px] text-slate-400">Apito, gols, bola na trave e cartões com Web Audio sintetizado</div>
+                  </div>
+                  <button
+                    onClick={() => updateOptions({ soundEnabled: !gameState.options.soundEnabled })}
+                    className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-bold cursor-pointer ${
+                      gameState.options.soundEnabled
+                        ? 'bg-emerald-600 text-black'
+                        : 'bg-[#182a20] text-slate-400'
+                    }`}
+                  >
+                    {gameState.options.soundEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+                    <span>{gameState.options.soundEnabled ? 'Ativado' : 'Mudo'}</span>
+                  </button>
+                </div>
+
+                {/* Simulation Speed */}
+                <div className="flex items-center justify-between py-2 border-b border-[#162e21]">
+                  <div>
+                    <div className="font-bold text-white">Velocidade da Partida ao Vivo</div>
+                    <div className="text-[11px] text-slate-400">Tempo de intervalo entre lances do motor Rust/JS</div>
+                  </div>
+                  <div className="flex space-x-1.5">
+                    {([1, 2, 5] as const).map((spd) => (
+                      <button
+                        key={spd}
+                        onClick={() => updateOptions({ simSpeed: spd })}
+                        className={`px-3 py-1 rounded font-bold cursor-pointer ${
+                          gameState.options.simSpeed === spd
+                            ? 'bg-emerald-600 text-black'
+                            : 'bg-[#14261d] text-slate-300 hover:bg-[#1a3326]'
+                        }`}
+                      >
+                        {spd}x
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Auto Pause on Goal */}
+                <div className="flex items-center justify-between py-2 border-b border-[#162e21]">
+                  <div>
+                    <div className="font-bold text-white">Pausa Automática em Gols</div>
+                    <div className="text-[11px] text-slate-400">Congela a partida para comemoração e replays quando sair um gol</div>
+                  </div>
+                  <button
+                    onClick={() => updateOptions({ autoPauseOnGoal: !gameState.options.autoPauseOnGoal })}
+                    className={`px-3 py-1.5 rounded font-bold cursor-pointer ${
+                      gameState.options.autoPauseOnGoal
+                        ? 'bg-emerald-600 text-black'
+                        : 'bg-[#182a20] text-slate-400'
+                    }`}
+                  >
+                    {gameState.options.autoPauseOnGoal ? 'Sim' : 'Não'}
+                  </button>
+                </div>
+
+                {/* Brasfoot Auto-Save Modes */}
+                <div className="py-2 border-b border-[#162e21] space-y-2.5">
+                  <div>
+                    <div className="font-bold text-white">Gravação Automática (Auto-save)</div>
+                    <div className="text-[11px] text-slate-400">
+                      Selecione o modo de salvamento periódico desta carreira (pertence ao save e é persistido)
+                    </div>
+                  </div>
+
+                  {gameState.options.autoSaveMode === 'legacy_continuous' && (
+                    <div className="p-2 bg-amber-950/70 border border-amber-800/80 rounded text-[11px] text-amber-300">
+                      ⚠️ Carreira carregada sem configuração de auto-save: o comportamento automático anterior foi preservado. Escolha um dos 4 modos oficiais abaixo para migrar definitivamente esta carreira.
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { mode: 'disabled' as const, label: 'Não usar auto-save', desc: 'Salva apenas quando o jogador clicar em Salvar Agora' },
+                      { mode: 'every_3_matches' as const, label: 'A cada 3 jogos', desc: `Grava após concluir 3 partidas (${gameState.autoSaveMatchCounter ?? 0}/3 concluídas)` },
+                      { mode: 'every_match' as const, label: 'A cada jogo', desc: 'Grava após cada partida/rodada concluída' },
+                      { mode: 'start_of_year' as const, label: 'Início do ano', desc: 'Grava no início do jogo e nas viradas de temporada' },
+                    ].map((opt) => {
+                      const isSelected = gameState.options.autoSaveMode === opt.mode;
+                      return (
+                        <button
+                          key={opt.mode}
+                          onClick={() => updateOptions({ autoSaveMode: opt.mode })}
+                          className={`p-2.5 rounded border text-left transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-[#193a29] border-emerald-500 text-emerald-200 shadow-sm'
+                              : 'bg-[#0c1812] border-[#183325] text-slate-300 hover:border-[#224835] hover:bg-[#12241b]'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <span className={`font-bold text-xs ${isSelected ? 'text-emerald-300' : 'text-white'}`}>
+                              {opt.label}
+                            </span>
+                            {isSelected && <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
+                          </div>
+                          <div className="text-[10px] text-slate-400 leading-tight">
+                            {opt.desc}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Diagnostics Panel */}
+                <div className="pt-2 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-bold text-slate-200">Diagnóstico do Motor & Sistema</div>
+                      <div className="text-[11px] text-slate-400">Informações técnicas mantidas para verificação e diagnóstico</div>
+                    </div>
+                    <span className="text-[10px] bg-[#0c1812] text-emerald-300 border border-[#1b3d2b] px-2 py-0.5 rounded font-mono font-bold">
+                      {isWasmEngine ? 'Rust WASM' : 'Motor JS Fallback'}
+                    </span>
+                  </div>
+                  <div className="p-3 bg-[#0a1410] border border-[#152e20] rounded space-y-1.5 font-mono text-[11px]">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Motor de Simulação:</span>
+                      <span className="text-emerald-400">{rustVersion}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Modo Auto-save Ativo:</span>
+                      <span className="text-emerald-400">
+                        {gameState.options.autoSaveMode === 'disabled'
+                          ? 'Não usar auto-save'
+                          : gameState.options.autoSaveMode === 'every_3_matches'
+                          ? `A cada 3 jogos (${gameState.autoSaveMatchCounter ?? 0}/3 concluídas)`
+                          : gameState.options.autoSaveMode === 'every_match'
+                          ? 'A cada jogo'
+                          : gameState.options.autoSaveMode === 'start_of_year'
+                          ? 'Início do ano'
+                          : 'Legado contínuo'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Carreira ID:</span>
+                      <span className="text-slate-300 truncate max-w-[240px]">{gameState.careerId || 'N/A'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Temporada & Rodada:</span>
+                      <span className="text-slate-300">{gameState.seasonYear} • Rodada {gameState.currentRound}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};

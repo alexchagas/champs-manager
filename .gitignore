@@ -1,0 +1,36 @@
+# Rust
+/target
+**/target
+**/*.rs.bk
+
+# Node / Frontend
+/web/node_modules
+/web/dist
+/web/.vite
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# WASM Generated Artifacts
+/web/src/wasm_pkg
+
+# Tauri
+/src-tauri/target
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Reverse-engineering legacy artifacts (Brasfoot raw dumps)
+*.jar
+*.class
+/src_decompiled
+/teams
+/conf_estadual
+/conf_ligas_nacionais
+Brasfoot_launcher.sh

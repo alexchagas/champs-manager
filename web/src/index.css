@@ -1,0 +1,113 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    /* Dynamic Club Atmosphere Tokens (Defaults) */
+    --app-bg-deep: #0c1511;
+    --app-surface-1: #111e18;
+    --app-surface-2: #15261f;
+    --app-border-subtle: #234234;
+    --app-border-highlight: #2f5a46;
+    --app-text-accent: #10b981;
+
+    /* Semantic Aliases mapped to active club atmosphere */
+    --bg-main: var(--app-bg-deep);
+    --bg-panel: var(--app-surface-1);
+    --bg-card: var(--app-surface-2);
+    --bg-header: var(--app-surface-1);
+    --border-color: var(--app-border-subtle);
+    --border-highlight: var(--app-border-highlight);
+
+    /* Strictly protected functional colors */
+    --accent-green: #10b981;
+    --accent-hover: #059669;
+    --pitch-grass: #113824;
+    --energy-high: #10b981;
+    --energy-mid: #f59e0b;
+    --energy-low: #ef4444;
+    --card-yellow: #facc15;
+    --card-red: #ef4444;
+    --medical-cross: #ef4444;
+  }
+
+  body {
+    font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: var(--app-bg-deep);
+    color: #e2e8f0;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+}
+
+
+/* Custom scrollbars for dense views */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0d1712;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1f382b;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #2e5441;
+}
+
+/* Font utilities */
+.font-digital {
+  font-family: 'Chakra Petch', monospace;
+}
+
+.font-mono-numbers {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Brasfoot style table row styling */
+.brasfoot-table th {
+  background-color: var(--app-surface-2);
+  color: var(--app-text-accent);
+  font-weight: 700;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 5px 8px;
+  border-bottom: 2px solid var(--app-border-subtle);
+}
+
+.brasfoot-table td {
+  padding: 4px 8px;
+  font-size: 0.8125rem;
+  border-bottom: 1px solid var(--app-border-subtle);
+}
+
+.brasfoot-table tr:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.brasfoot-table tr.selected {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-left: 3px solid var(--app-text-accent);
+}
+
+
+/* Pitch grass pattern */
+.pitch-pattern {
+  background-color: #113824;
+  background-image: repeating-linear-gradient(
+    0deg,
+    #113824,
+    #113824 35px,
+    #0f3220 35px,
+    #0f3220 70px
+  );
+}
