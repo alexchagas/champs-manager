@@ -12,7 +12,8 @@ import {
   Shield, 
   GraduationCap, 
   Menu as MenuIcon,
-  X
+  X,
+  Bug
 } from 'lucide-react';
 
 export const BottomNavBar: React.FC = () => {
@@ -141,6 +142,19 @@ export const BottomNavBar: React.FC = () => {
                 );
               })}
             </div>
+
+            {/* Bug Report & Feedback Action */}
+            <button
+              onClick={() => {
+                sound.playClick();
+                setIsMoreOpen(false);
+                window.dispatchEvent(new CustomEvent('champs:open-bug-report'));
+              }}
+              className="w-full mt-3 flex items-center justify-center gap-2 p-2.5 rounded-lg border border-emerald-500/30 bg-emerald-950/40 text-emerald-300 hover:bg-emerald-900/50 text-xs font-bold transition-all cursor-pointer"
+            >
+              <Bug className="w-4 h-4 text-emerald-400" />
+              <span>Reportar Bug ou Sugestão</span>
+            </button>
           </div>
         </div>
       )}

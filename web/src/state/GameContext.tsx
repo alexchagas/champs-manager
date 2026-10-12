@@ -90,7 +90,7 @@ interface GameContextType {
   toggleStarter: (playerId: number) => void;
   autoSelectBestLineup: (formation?: FormationType) => { restedCount: number } | void;
   matchError: string;
-  dispatchMatch: (command: MatchCommand) => { success: boolean; error?: string };
+  dispatchMatch: (command: MatchCommand) => { success: boolean; error?: string; updatedSession?: import('../types').ActiveMatchSession | null };
   setMatchBench: (ids: number[]) => void;
   completeRound: () => void;
   advanceRound: () => void;
@@ -174,7 +174,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const updated = commandMatchWasm(stateRef.current, command);
       setGameState(updated);
       setMatchError('');
-      return { success: true };
+      return { success: true, updatedSession: updated.activeMatch };
     } catch (error) {
       const message = String(error instanceof Error ? error.message : error);
       setMatchError(message);

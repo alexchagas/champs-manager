@@ -22,7 +22,8 @@ import {
   Users,
   Sparkles,
   Heart,
-  Info
+  Info,
+  Bug
 } from 'lucide-react';
 import { sound } from '../audio/soundEngine';
 import { TeamEditorScreen } from './TeamEditorScreen';
@@ -355,6 +356,17 @@ export const MainMenu: React.FC = () => {
               >
                 <Trophy className="w-4 h-4 text-yellow-400 shrink-0" />
                 <span>🏆 Créditos (lekD Games)</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  sound.playClick();
+                  window.dispatchEvent(new CustomEvent('champs:open-bug-report'));
+                }}
+                className="w-full flex items-center space-x-2.5 px-3 py-2 rounded text-xs font-bold transition-all text-left cursor-pointer text-emerald-400 hover:bg-emerald-950/60 border border-emerald-500/20 hover:border-emerald-500/40"
+              >
+                <Bug className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>🐛 Reportar Bug / Feedback</span>
               </button>
             </div>
           </div>

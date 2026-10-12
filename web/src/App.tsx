@@ -17,6 +17,8 @@ import { SplashScreen } from './components/SplashScreen';
 import { BottomNavBar } from './components/BottomNavBar';
 import { sound } from './audio/soundEngine';
 import { deriveClubAtmosphere } from './theme/clubTheme';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { BugReportModal } from './components/BugReportModal';
 
 export interface AppShellProps {
   children?: React.ReactNode;
@@ -56,7 +58,22 @@ const MainAppContent: React.FC = () => {
     rustVersion,
     isWasmEngine,
     hasActiveCareer,
+    userClub,
   } = useGame();
+
+  const [isBugReportOpen, setIsBugReportOpen] = useState(false);
+  const [bugInitialError, setBugInitialError] = useState<string | undefined>();
+
+  useEffect(() => {
+    const handleOpenBugReport = (e: Event) => {
+      const customEvent = e as CustomEvent<{ error?: string }>;
+      setBugInitialError(customEvent.detail?.error);
+      setIsBugReportOpen(true);
+    };
+
+    window.addEventListener('champs:open-bug-report', handleOpenBugReport);
+    return () => window.removeEventListener('champs:open-bug-report', handleOpenBugReport);
+  }, []);
 
   // Global Keyboard Shortcuts (Space to advance / play, Esc to back)
   useEffect(() => {
@@ -172,17 +189,38 @@ const MainAppContent: React.FC = () => {
 
       {/* Bottom Navigation Bar on Mobile (< 768px) */}
       {showChrome && <BottomNavBar />}
+
+      {/* Bug Report & Feedback Modal */}
+      <BugReportModal
+        isOpen={isBugReportOpen}
+        onClose={() => {
+          setIsBugReportOpen(false);
+          setBugInitialError(undefined);
+        }}
+        gameStateContext={{
+          userClubName: userClub?.name,
+          currentRound: gameState?.currentRound,
+          activeScreen,
+        }}
+        initialErrorMessage={bugInitialError}
+      />
     </AppShell>
   );
 };
 
-
-
 export const App: React.FC = () => {
   return (
-    <GameProvider>
-      <MainAppContent />
-    </GameProvider>
+    <ErrorBoundary
+      onOpenReport={(err) => {
+        window.dispatchEvent(
+          new CustomEvent('champs:open-bug-report', { detail: { error: err } })
+        );
+      }}
+    >
+      <GameProvider>
+        <MainAppContent />
+      </GameProvider>
+    </ErrorBoundary>
   );
 };
 

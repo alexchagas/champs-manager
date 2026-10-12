@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import confetti from 'canvas-confetti';
 import { useGame } from '../state/GameContext';
 import { MatchLineupPanel } from './MatchLineupPanel';
 import { ClubCrest } from './ClubCrest';
@@ -19,6 +20,9 @@ import {
   Activity,
   Flame,
   ShieldAlert,
+  Target,
+  Sparkles,
+  Footprints,
   X
 } from 'lucide-react';
 
@@ -29,18 +33,58 @@ export const LiveMatchScreen: React.FC = () => {
   const pending = session?.pendingDecision;
   const finished = session?.phase === 'full_time' || session?.phase === 'committed';
 
+  type PenaltyZone = 'top-left' | 'bottom-left' | 'center' | 'top-right' | 'bottom-right';
+  type PenaltyStep = 'aim' | 'runup' | 'kick' | 'outcome';
+  type PenaltyOutcome = 'goal' | 'saved' | 'post' | 'wide';
+
+  interface UserPenaltyKickState {
+    takerId: number;
+    takerName: string;
+    takerStrength: number;
+    gkName: string;
+    gkStrength: number;
+    selectedZone: PenaltyZone;
+    step: PenaltyStep;
+    gkDive: 'left' | 'center' | 'right';
+    outcome: PenaltyOutcome;
+    outcomeTitle: string;
+    outcomeNarrative: string;
+    isGoal: boolean;
+    scoreDisplay: string;
+  }
+
   interface OpponentPenaltyData {
     takerName: string;
     takerStrength: number;
     gkName: string;
     gkStrength: number;
     isGoal: boolean;
-    resolved: boolean;
+    step: PenaltyStep;
+    userGkChoice: 'left' | 'center' | 'right';
+    takerTargetZone: PenaltyZone;
+    outcome: PenaltyOutcome;
+    outcomeTitle: string;
+    outcomeNarrative: string;
+    scoreDisplay: string;
   }
+
+  const [userPenaltyKick, setUserPenaltyKick] = useState<UserPenaltyKickState | null>(null);
+  const [selectedPenaltyTakerId, setSelectedPenaltyTakerId] = useState<number | null>(null);
+  const [selectedPenaltyZone, setSelectedPenaltyZone] = useState<PenaltyZone>('bottom-right');
   const [opponentPenalty, setOpponentPenalty] = useState<OpponentPenaltyData | null>(null);
   const [mobileTab, setMobileTab] = useState<'events' | 'lineup' | 'stats'>('events');
   const [showTacticsModal, setShowTacticsModal] = useState(false);
   const [inspectedParallelFixtureId, setInspectedParallelFixtureId] = useState<number | null>(null);
+
+  const handleCloseUserPenaltyModal = () => {
+    setUserPenaltyKick(null);
+    setSelectedPenaltyTakerId(null);
+  };
+
+  const handleCloseOpponentPenaltyModal = () => {
+    setOpponentPenalty(null);
+    dispatchMatch({ type: 'resume' });
+  };
 
   // Auto-pause and show tactical interventions when a decision is pending
   useEffect(() => {
@@ -72,12 +116,13 @@ export const LiveMatchScreen: React.FC = () => {
     for (const event of newEvents) {
       if (event.type === 'goal') {
         const isUserGoal = event.team === userTeamKind;
-        if (isUserGoal) {
-          // Nosso gol: comemoração máxima de torcida e corneta
-          sound.playGoal();
-        } else {
-          // Gol do adversário: apenas o apito do juiz confirmando o gol, sem barulho eufórico
-          sound.playWhistle(true);
+        const isPenaltyGoal = event.description?.includes('cobrança de pênalti');
+        if (!isPenaltyGoal) {
+          if (isUserGoal) {
+            sound.playGoal();
+          } else {
+            sound.playWhistle(true);
+          }
         }
       } else if (event.type === 'fulltime') {
         sound.playFullTimeWhistle();
@@ -90,12 +135,35 @@ export const LiveMatchScreen: React.FC = () => {
     const oppPenaltyEvent = newEvents.find(e => e.type === 'penalty' && e.team !== userTeamKind);
     if (oppPenaltyEvent) {
       const resolution = newEvents.find(e => (e.type === 'goal' || e.type === 'penalty_missed' || e.type === 'shootout_kick') && e.team !== userTeamKind);
-      const isGoal = resolution?.type === 'goal';
+      const isGoal = resolution?.type === 'goal' || (resolution?.type === 'shootout_kick' && resolution?.description?.includes('gol')) || false;
       const oppTeamData = session.teams[1 - humanSide];
       const userTeamData = session.teams[humanSide];
       const takerName = resolution?.scorerName || resolution?.description?.split(':')[0] || oppTeamData?.players[0]?.name || 'Cobrador';
       const oppPlayer = oppTeamData?.players.find(p => p.name === takerName) ?? oppTeamData?.players[0];
       const ourGk = userTeamData?.players.find(p => userTeamData.onFieldRoleByPlayerId[String(p.id)] === 'GOL' || p.position === 'GOL') ?? userTeamData?.players[0];
+
+      const zones: PenaltyZone[] = ['top-left', 'bottom-left', 'center', 'top-right', 'bottom-right'];
+      const takerTargetZone = zones[Math.floor(Math.random() * zones.length)];
+      let outcome: PenaltyOutcome = 'goal';
+      let outcomeTitle = 'GOL DO ADVERSÁRIO';
+      let outcomeNarrative = `${takerName} bateu com precisão no cantinho e balançou as redes contra ${ourGk?.name || 'seu goleiro'}.`;
+
+      if (!isGoal) {
+        const roll = Math.random();
+        if (roll < 0.60) {
+          outcome = 'saved';
+          outcomeTitle = 'DEFEEEEEENDEU O NOSSO GOLEIRO!';
+          outcomeNarrative = `${ourGk?.name || 'Seu goleiro'} operou um verdadeiro milagre! Voou no canto certo e espalmou a cobrança para fora!`;
+        } else if (roll < 0.85) {
+          outcome = 'post';
+          outcomeTitle = 'NA TRAVE! NO POSTE!';
+          outcomeNarrative = `${takerName} soltou a pancada, a bola explodiu na trave com estrondo e não entrou!`;
+        } else {
+          outcome = 'wide';
+          outcomeTitle = 'PRA FOOOORA!';
+          outcomeNarrative = `${takerName} isolou! A batida foi torta e passou longe da meta de ${ourGk?.name || 'seu goleiro'}!`;
+        }
+      }
 
       setOpponentPenalty({
         takerName,
@@ -103,7 +171,15 @@ export const LiveMatchScreen: React.FC = () => {
         gkName: ourGk?.name ?? 'Goleiro',
         gkStrength: ourGk?.strength ?? 80,
         isGoal,
-        resolved: false,
+        step: 'aim',
+        userGkChoice: 'right',
+        takerTargetZone,
+        outcome,
+        outcomeTitle,
+        outcomeNarrative,
+        scoreDisplay: session.phase === 'shootout' 
+          ? `Pên: ${session.penaltyScore[0]} x ${session.penaltyScore[1]}` 
+          : `${session.score[0]} x ${session.score[1]}`,
       });
       if (!session.paused) {
         dispatchMatch({ type: 'pause' });
@@ -121,7 +197,13 @@ export const LiveMatchScreen: React.FC = () => {
       if (e.code === 'Space') { 
         e.preventDefault(); 
         if (finished) completeRound(); 
-        else if (!pending) dispatchMatch({ type: session?.paused ? 'resume' : 'pause' }); 
+        else if (userPenaltyKick && userPenaltyKick.step === 'outcome') {
+          handleCloseUserPenaltyModal();
+        } else if (opponentPenalty && opponentPenalty.step === 'outcome') {
+          handleCloseOpponentPenaltyModal();
+        } else if (!pending && !userPenaltyKick && !opponentPenalty) {
+          dispatchMatch({ type: session?.paused ? 'resume' : 'pause' }); 
+        }
       }
       if (e.code === 'Escape') { 
         e.preventDefault(); 
@@ -181,115 +263,507 @@ export const LiveMatchScreen: React.FC = () => {
   const oppTeam = session.teams[1 - humanSide];
   const displayedEvents = useMemo(() => [...session.events].reverse(), [session.events]);
 
-  // ================= MODAL DE PÊNALTI =================
-  const renderPenaltyModal = () => {
-    if (!pending || pending.kind !== 'penalty') return null;
+  // ================= VISUAL DO GOL E COBRANÇA DE PÊNALTI =================
+  const ZONE_INFO: Record<PenaltyZone, { top: string; left: string; label: string; desc: string }> = {
+    'top-left': { top: '22%', left: '20%', label: 'Gaveta Esq.', desc: 'Ângulo esquerdo: bola no cantinho alto, indefensável!' },
+    'bottom-left': { top: '68%', left: '20%', label: 'Rasteiro Esq.', desc: 'Cantinho esquerdo: chute colocado e rente à trave.' },
+    'center': { top: '45%', left: '50%', label: 'Meio / Cavada', desc: 'Meio do gol: frieza ou cavadinha. Golaço se o goleiro cair!' },
+    'top-right': { top: '22%', left: '80%', label: 'Gaveta Dir.', desc: 'Ângulo direito: no ninho da coruja, sem chances para o goleiro.' },
+    'bottom-right': { top: '68%', left: '80%', label: 'Rasteiro Dir.', desc: 'Cantinho direito: batida firme na bochecha da rede.' },
+  };
 
-    const penaltyTakerId = pending.defaultTakerId ?? pending.eligibleIds[0];
-    const currentTaker = userTeam.players.find(p => p.id === penaltyTakerId);
+  const renderGoalVisual = (
+    step: PenaltyStep,
+    targetZone: PenaltyZone,
+    gkDive: 'left' | 'center' | 'right',
+    outcome: PenaltyOutcome,
+    isOpponent: boolean,
+    onSelectZone?: (z: PenaltyZone) => void,
+    userGkChoice?: 'left' | 'center' | 'right',
+    gkName?: string
+  ) => {
+    const isGoalScored = step === 'outcome' && outcome === 'goal';
+    const effectiveGkDive = isOpponent && step === 'aim' ? (userGkChoice || 'center') : gkDive;
+
+    return (
+      <div className="relative w-full h-52 sm:h-60 rounded-2xl bg-gradient-to-b from-slate-950 via-slate-900 to-emerald-950/80 border-2 border-slate-700/80 shadow-[inset_0_0_40px_rgba(0,0,0,0.8)] overflow-hidden select-none">
+        {/* Stadium Floodlight Glow */}
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-amber-500/10 via-transparent to-transparent pointer-events-none" />
+
+        {/* Goal Net Background Mesh */}
+        <div className={`absolute top-4 bottom-10 left-7 right-7 border-b border-white/20 bg-[linear-gradient(to_right,#ffffff15_1px,transparent_1px),linear-gradient(to_bottom,#ffffff15_1px,transparent_1px)] bg-[size:14px_14px] transition-all duration-300 ${
+          isGoalScored ? 'bg-emerald-500/15 shadow-[0_0_30px_rgba(16,185,129,0.3)] animate-pulse' : ''
+        }`} />
+
+        {/* Pitch Grass Floor & Penalty Mark */}
+        <div className="absolute bottom-0 left-0 right-0 h-11 bg-gradient-to-t from-emerald-900/90 via-emerald-800/80 to-emerald-950/40 border-t border-emerald-500/30 flex items-center justify-center">
+          {/* Penalty Spot */}
+          <div className="w-3 h-3 rounded-full bg-white/90 shadow-[0_0_10px_white] relative">
+            {step === 'runup' && (
+              <span className="absolute -inset-1 rounded-full border border-amber-400 animate-ping" />
+            )}
+          </div>
+        </div>
+
+        {/* Goal Posts & Crossbar */}
+        <div className="absolute top-4 left-6 right-6 h-3 rounded bg-gradient-to-b from-slate-200 via-white to-slate-400 shadow-[0_0_15px_rgba(255,255,255,0.4)] z-20" />
+        <div className="absolute top-4 bottom-10 left-6 w-3 rounded-b bg-gradient-to-r from-slate-300 via-white to-slate-400 shadow-[0_0_15px_rgba(255,255,255,0.4)] z-20" />
+        <div className="absolute top-4 bottom-10 right-6 w-3 rounded-b bg-gradient-to-l from-slate-300 via-white to-slate-400 shadow-[0_0_15px_rgba(255,255,255,0.4)] z-20" />
+
+        {/* Goalkeeper Silhouette */}
+        <div 
+          className={`absolute z-10 transition-all duration-700 ease-out flex flex-col items-center justify-center pointer-events-none ${
+            step === 'aim' || step === 'runup'
+              ? (effectiveGkDive === 'left' ? 'top-[44%] left-[38%] -translate-x-1/2 -translate-y-1/2' : effectiveGkDive === 'right' ? 'top-[44%] left-[62%] -translate-x-1/2 -translate-y-1/2' : 'top-[44%] left-1/2 -translate-x-1/2 -translate-y-1/2 animate-pulse')
+              : gkDive === 'left'
+              ? 'top-[48%] left-[24%] -translate-x-1/2 -translate-y-1/2 -rotate-25 scale-110'
+              : gkDive === 'right'
+              ? 'top-[48%] left-[76%] -translate-x-1/2 -translate-y-1/2 rotate-25 scale-110'
+              : 'top-[44%] left-1/2 -translate-x-1/2 -translate-y-1/2 scale-105'
+          }`}
+        >
+          <div className={`p-2 rounded-xl flex items-center justify-center border shadow-lg ${
+            step === 'outcome' && outcome === 'saved'
+              ? 'bg-amber-500/90 border-amber-300 text-slate-950 ring-4 ring-amber-400 animate-bounce'
+              : isOpponent
+              ? 'bg-emerald-900/90 border-emerald-400/60 text-white'
+              : 'bg-sky-900/80 border-sky-400/60 text-white'
+          }`}>
+            <span className="text-xl sm:text-2xl leading-none">🧤</span>
+          </div>
+          <span className="text-[10px] font-black text-slate-200 mt-1 bg-black/75 px-1.5 py-0.5 rounded border border-slate-700 truncate max-w-[90px]">
+            {gkName || 'Goleiro'}
+          </span>
+        </div>
+
+        {/* Soccer Ball */}
+        <div 
+          className={`absolute z-30 transition-all duration-700 ease-out flex items-center justify-center pointer-events-none ${
+            step === 'aim' || step === 'runup'
+              ? 'bottom-2.5 left-1/2 -translate-x-1/2 scale-100'
+              : step === 'kick' || step === 'outcome'
+              ? (outcome === 'saved'
+                  ? (gkDive === 'left' ? 'top-[48%] left-[24%] -translate-x-1/2 -translate-y-1/2 scale-90' : gkDive === 'right' ? 'top-[48%] left-[76%] -translate-x-1/2 -translate-y-1/2 scale-90' : 'top-[44%] left-1/2 -translate-x-1/2 -translate-y-1/2 scale-90')
+                  : outcome === 'post'
+                  ? (targetZone.includes('top') || targetZone === 'center'
+                      ? 'top-[22px] left-1/2 -translate-x-1/2 scale-95'
+                      : targetZone.includes('left')
+                      ? 'top-[65%] left-[34px] -translate-x-1/2 scale-95'
+                      : 'top-[65%] right-[34px] translate-x-1/2 scale-95')
+                  : outcome === 'wide'
+                  ? (targetZone.includes('left') ? 'top-[35%] left-[2px] -translate-x-1/2 scale-75' : 'top-[35%] right-[2px] translate-x-1/2 scale-75')
+                  : (/* goal */
+                      targetZone === 'top-left' ? 'top-[24%] left-[20%] -translate-x-1/2 -translate-y-1/2 scale-85' :
+                      targetZone === 'bottom-left' ? 'top-[68%] left-[20%] -translate-x-1/2 -translate-y-1/2 scale-85' :
+                      targetZone === 'center' ? 'top-[45%] left-1/2 -translate-x-1/2 -translate-y-1/2 scale-85' :
+                      targetZone === 'top-right' ? 'top-[24%] left-[80%] -translate-x-1/2 -translate-y-1/2 scale-85' :
+                      'top-[68%] left-[80%] -translate-x-1/2 -translate-y-1/2 scale-85'
+                    )
+                )
+              : 'bottom-2.5 left-1/2 -translate-x-1/2'
+          }`}
+        >
+          <div className={`relative flex items-center justify-center ${
+            step === 'outcome' && outcome === 'goal' ? 'animate-bounce' : ''
+          }`}>
+            <span className="text-xl sm:text-2xl leading-none filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">⚽</span>
+            {step === 'outcome' && outcome === 'post' && (
+              <span className="absolute -top-3 -right-2 text-base animate-ping">💥</span>
+            )}
+          </div>
+        </div>
+
+        {/* Interactive Aim Target Hotspots (only during 'aim' for user penalty) */}
+        {step === 'aim' && !isOpponent && (
+          <>
+            {(['top-left', 'bottom-left', 'center', 'top-right', 'bottom-right'] as PenaltyZone[]).map((zone) => {
+              const info = ZONE_INFO[zone];
+              const isSelected = targetZone === zone;
+              return (
+                <button
+                  key={zone}
+                  type="button"
+                  onClick={() => onSelectZone?.(zone)}
+                  style={{ top: info.top, left: info.left }}
+                  className={`absolute -translate-x-1/2 -translate-y-1/2 z-25 p-2 rounded-full cursor-pointer transition-all duration-200 ${
+                    isSelected
+                      ? 'bg-amber-500/80 ring-4 ring-amber-400 text-black scale-125 shadow-[0_0_25px_rgba(245,158,11,0.9)] animate-pulse'
+                      : 'bg-black/50 hover:bg-amber-500/30 border-2 border-white/60 hover:border-amber-400 text-white hover:scale-110'
+                  }`}
+                  title={info.label}
+                >
+                  <Target className="w-4 h-4 sm:w-5 sm:h-5" />
+                  {isSelected && (
+                    <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap bg-amber-950/95 text-amber-300 text-[10px] font-black px-2 py-0.5 rounded border border-amber-500/60 shadow-md">
+                      {info.label}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </>
+        )}
+      </div>
+    );
+  };
+
+  // ================= EXECUÇÃO DO PÊNALTI DO USUÁRIO =================
+  const handleExecuteUserPenalty = () => {
+    if (!pending || pending.kind !== 'penalty') return;
+    const currentTakerId = selectedPenaltyTakerId ?? pending.defaultTakerId ?? pending.eligibleIds[0];
+    const currentTaker = userTeam.players.find(p => p.id === currentTakerId) ?? userTeam.players[0];
     const oppGoalkeeper = oppTeam.players.find(p => 
       oppTeam.onFieldRoleByPlayerId[String(p.id)] === 'GOL' || p.position === 'GOL'
     ) ?? oppTeam.players[0];
 
+    // Despacha a decisão para o motor Rust e obtém o resultado imediatamente
+    const res = dispatchMatch({ type: 'choose_penalty_taker', player_id: currentTakerId });
+    const updated = res.updatedSession ?? session;
+    const latestEvent = updated.events[updated.events.length - 1];
+    const isGoal = latestEvent?.type === 'goal' || (latestEvent?.type === 'shootout_kick' && latestEvent?.description?.includes('gol')) || false;
+
+    // Determina o mergulho do goleiro e o desfecho visual e narrativo
+    let gkDive: 'left' | 'center' | 'right' = 'center';
+    let outcome: PenaltyOutcome = 'goal';
+    let outcomeTitle = 'GOOOOOOOOOOL!';
+    let outcomeNarrative = '';
+
+    const zoneDescriptions: Record<PenaltyZone, string> = {
+      'top-left': 'na gaveta esquerda',
+      'bottom-left': 'no cantinho rasteiro esquerdo',
+      'center': 'com frieza no meio do gol',
+      'top-right': 'na gaveta direita',
+      'bottom-right': 'no cantinho rasteiro direito',
+    };
+
+    if (isGoal) {
+      outcome = 'goal';
+      outcomeTitle = 'GOOOOOOOOOOL!';
+      const wrongWay = Math.random() < 0.65;
+      if (wrongWay) {
+        if (selectedPenaltyZone.includes('left')) gkDive = Math.random() < 0.6 ? 'right' : 'center';
+        else if (selectedPenaltyZone.includes('right')) gkDive = Math.random() < 0.6 ? 'left' : 'center';
+        else gkDive = Math.random() < 0.5 ? 'left' : 'right';
+
+        outcomeNarrative = `Bola de um lado, goleiro do outro! ${currentTaker.name} cobrou ${zoneDescriptions[selectedPenaltyZone]}, deslocou completamente ${oppGoalkeeper.name} e estufou as redes!`;
+      } else {
+        gkDive = selectedPenaltyZone.includes('left') ? 'left' : selectedPenaltyZone.includes('right') ? 'right' : 'center';
+        outcomeNarrative = `${oppGoalkeeper.name} acertou o canto e se esticou todo, mas a cobrança de ${currentTaker.name} foi perfeita ${zoneDescriptions[selectedPenaltyZone]}! Indefensável!`;
+      }
+    } else {
+      const roll = Math.random();
+      if (roll < 0.60) {
+        outcome = 'saved';
+        gkDive = selectedPenaltyZone.includes('left') ? 'left' : selectedPenaltyZone.includes('right') ? 'right' : 'center';
+        outcomeTitle = 'DEFEEEEEENDEU O GOLEIRO!';
+        outcomeNarrative = `${oppGoalkeeper.name} operou um milagre! O arqueiro adivinhou a intenção de ${currentTaker.name}, voou no canto certo e espalmou a bola!`;
+      } else if (roll < 0.85) {
+        outcome = 'post';
+        gkDive = selectedPenaltyZone.includes('left') ? 'left' : selectedPenaltyZone.includes('right') ? 'right' : 'center';
+        outcomeTitle = 'NA TRAVE! NO TRAVESSÃO!';
+        outcomeNarrative = selectedPenaltyZone.includes('top') || selectedPenaltyZone === 'center'
+          ? `${currentTaker.name} soltou uma bomba! A bola explodiu no travessão com um estrondo ensurdecedor e não entrou!`
+          : `${currentTaker.name} tirou do goleiro, mas a bola caprichosamente carimbou a trave e foi para longe!`;
+      } else {
+        outcome = 'wide';
+        gkDive = selectedPenaltyZone.includes('left') ? 'left' : selectedPenaltyZone.includes('right') ? 'right' : 'center';
+        outcomeTitle = 'PRA FOOOORA!';
+        outcomeNarrative = `${currentTaker.name} buscou o cantinho extremo e errou o alvo! A bola tirou tinta do poste e saiu pela linha de fundo!`;
+      }
+    }
+
+    const scoreDisplay = updated.phase === 'shootout'
+      ? `Pên: ${updated.penaltyScore[0]} x ${updated.penaltyScore[1]}`
+      : `${updated.score[0]} x ${updated.score[1]}`;
+
+    // Inicializa a fase de corrida (runup)
+    setUserPenaltyKick({
+      takerId: currentTaker.id,
+      takerName: currentTaker.name,
+      takerStrength: currentTaker.strength,
+      gkName: oppGoalkeeper.name,
+      gkStrength: oppGoalkeeper.strength,
+      selectedZone: selectedPenaltyZone,
+      step: 'runup',
+      gkDive,
+      outcome,
+      outcomeTitle,
+      outcomeNarrative,
+      isGoal,
+      scoreDisplay,
+    });
+
+    // Efeitos sonoros de início: apito do árbitro e batimentos cardíacos de tensão
+    sound.playWhistle(true);
+    sound.playHeartbeat();
+
+    // Timer parcial: Etapa da corrida -> Chute (1300ms)
+    window.setTimeout(() => {
+      setUserPenaltyKick(prev => prev ? { ...prev, step: 'kick' } : null);
+      sound.playKick();
+
+      // Timer parcial: Chute -> Desfecho emocionante no modal (950ms)
+      window.setTimeout(() => {
+        setUserPenaltyKick(prev => {
+          if (!prev) return null;
+          if (prev.isGoal) {
+            sound.playGoal();
+            try {
+              confetti({ particleCount: 85, spread: 80, origin: { y: 0.6 } });
+            } catch {}
+          } else if (prev.outcome === 'post') {
+            sound.playPostHit();
+            window.setTimeout(() => sound.playCrowdGasp(), 300);
+          } else {
+            sound.playCrowdGasp();
+          }
+          return { ...prev, step: 'outcome' };
+        });
+      }, 950);
+    }, 1300);
+  };
+
+  // ================= MODAL DE PÊNALTI DO USUÁRIO =================
+  const renderPenaltyModal = () => {
+    const isModalOpen = (!!pending && pending.kind === 'penalty') || !!userPenaltyKick;
+    if (!isModalOpen) return null;
+
+    const penaltyTakerId = selectedPenaltyTakerId ?? (pending?.defaultTakerId ?? pending?.eligibleIds[0] ?? userTeam.players[0].id);
+    const currentTaker = userTeam.players.find(p => p.id === penaltyTakerId) ?? userTeam.players[0];
+    const oppGoalkeeper = oppTeam.players.find(p => 
+      oppTeam.onFieldRoleByPlayerId[String(p.id)] === 'GOL' || p.position === 'GOL'
+    ) ?? oppTeam.players[0];
+
+    const currentStep: PenaltyStep = userPenaltyKick?.step ?? 'aim';
+    const currentZone: PenaltyZone = userPenaltyKick?.selectedZone ?? selectedPenaltyZone;
+    const currentGkDive = userPenaltyKick?.gkDive ?? 'center';
+    const currentOutcome = userPenaltyKick?.outcome ?? 'goal';
+
     return (
-      <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+      <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
         <div 
           role="dialog" 
           aria-label="Cobrança de Pênalti"
-          className="w-full max-w-lg rounded-2xl border-2 border-amber-500/90 bg-gradient-to-b from-slate-900 via-amber-950/40 to-slate-950 p-5 sm:p-6 text-white shadow-[0_0_60px_rgba(245,158,11,0.35)] space-y-4"
+          className="w-full max-w-lg rounded-2xl border-2 border-amber-500/90 bg-gradient-to-b from-slate-900 via-amber-950/30 to-slate-950 p-4 sm:p-6 text-white shadow-[0_0_60px_rgba(245,158,11,0.35)] space-y-4 max-h-[92vh] overflow-y-auto"
         >
           {/* Header */}
           <div className="text-center space-y-1">
             <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-amber-500/20 border border-amber-500/50 text-amber-300 text-xs font-black uppercase tracking-widest">
               <Flame className="w-4 h-4 animate-bounce text-amber-400" />
-              <span>Penalidade Máxima Marcada!</span>
+              <span>{session.phase === 'shootout' ? 'Disputa de Pênaltis!' : 'Penalidade Máxima Marcada!'}</span>
             </div>
             <h2 className="text-xl sm:text-2xl font-black text-white tracking-wide">
-              MOMENTO DA COBRANÇA
+              {currentStep === 'outcome' ? 'DESFECHO DO LANCE' : 'MOMENTO DA COBRANÇA'}
             </h2>
-            <p className="text-xs text-slate-300">
-              A bola está na marca da cal. Selecione o cobrador e ordene a batida para as redes!
-            </p>
           </div>
 
           {/* Duelo Visual: Cobrador vs Goleiro */}
-          <div className="grid grid-cols-2 gap-3 bg-black/50 p-3 sm:p-4 rounded-xl border border-amber-500/30">
+          <div className="grid grid-cols-2 gap-3 bg-black/50 p-3 rounded-xl border border-amber-500/30">
             {/* Cobrador */}
-            <div className="text-center space-y-1">
+            <div className="text-center space-y-0.5">
               <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400">
                 Cobrador ({userTeam.name})
               </span>
-              <div className="text-sm sm:text-base font-extrabold text-white truncate">
-                {currentTaker?.name ?? 'Cobrador'}
+              <div className="text-xs sm:text-sm font-extrabold text-white truncate">
+                {currentTaker?.name}
               </div>
-              <div className="inline-block font-mono text-xs font-bold text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-600/50">
-                Força: {currentTaker?.strength ?? 80}
+              <div className="inline-block font-mono text-[11px] font-bold text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-600/50">
+                Força: {currentTaker?.strength}
               </div>
             </div>
 
             {/* Goleiro */}
-            <div className="text-center space-y-1 border-l border-slate-800">
+            <div className="text-center space-y-0.5 border-l border-slate-800">
               <span className="text-[10px] font-bold uppercase tracking-wider text-sky-400">
                 Goleiro ({oppTeam.name})
               </span>
-              <div className="text-sm sm:text-base font-extrabold text-white truncate">
-                {oppGoalkeeper?.name ?? 'Goleiro'}
+              <div className="text-xs sm:text-sm font-extrabold text-white truncate">
+                {oppGoalkeeper?.name}
               </div>
-              <div className="inline-block font-mono text-xs font-bold text-sky-300 bg-sky-950/80 px-2 py-0.5 rounded border border-sky-600/50">
-                Força: {oppGoalkeeper?.strength ?? 80}
+              <div className="inline-block font-mono text-[11px] font-bold text-sky-300 bg-sky-950/80 px-2 py-0.5 rounded border border-sky-600/50">
+                Força: {oppGoalkeeper?.strength}
               </div>
             </div>
           </div>
 
-          {/* Seletor de Cobradores */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
-              <span>Trocar Cobrador:</span>
-              <span className="text-[11px] text-amber-400 font-mono">
-                {pending.eligibleIds.length} atletas aptos
-              </span>
-            </label>
-            <select
-              value={penaltyTakerId}
-              onChange={(e) => dispatchMatch({ type: 'select_penalty_taker', player_id: Number(e.target.value) })}
-              className="w-full bg-slate-900 border border-amber-500/60 p-2.5 rounded-lg text-white font-bold text-xs focus:ring-2 focus:ring-amber-400 outline-none cursor-pointer"
-            >
-              {pending.eligibleIds.map((id) => {
-                const player = userTeam.players.find(p => p.id === id);
-                return (
-                  <option key={id} value={id}>
-                    {player?.name} ({player?.position} • Força {player?.strength})
-                  </option>
-                );
-              })}
-            </select>
-          </div>
+          {/* Gráfico do Gol Interativo e Animação */}
+          {renderGoalVisual(
+            currentStep,
+            currentZone,
+            currentGkDive,
+            currentOutcome,
+            false,
+            (zone) => setSelectedPenaltyZone(zone),
+            undefined,
+            oppGoalkeeper?.name
+          )}
 
-          {/* Botão de Ação: Executar Pênalti */}
-          <button
-            onClick={() => {
-              sound.playKick();
-              dispatchMatch({ type: 'choose_penalty_taker', player_id: penaltyTakerId });
-            }}
-            className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-300 text-black font-black text-sm uppercase tracking-wider shadow-lg shadow-amber-500/30 cursor-pointer transition-all active:scale-95 flex items-center justify-center space-x-2"
-          >
-            <span>⚽ BATER PÊNALTI AGORA!</span>
-          </button>
+          {/* Etapa 1: Mira & Escolha */}
+          {currentStep === 'aim' && (
+            <div className="space-y-3">
+              {/* Dica da zona selecionada */}
+              <div className="p-2.5 rounded-lg bg-amber-950/40 border border-amber-500/40 text-center">
+                <span className="text-xs font-bold text-amber-300 block">
+                  🎯 Mira: {ZONE_INFO[selectedPenaltyZone].label}
+                </span>
+                <span className="text-[11px] text-slate-300">
+                  {ZONE_INFO[selectedPenaltyZone].desc}
+                </span>
+              </div>
+
+              {/* Seletor de Cobradores */}
+              {pending && pending.eligibleIds && pending.eligibleIds.length > 1 && (
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
+                    <span>Trocar Cobrador:</span>
+                    <span className="text-[11px] text-amber-400 font-mono">
+                      {pending.eligibleIds.length} atletas aptos
+                    </span>
+                  </label>
+                  <select
+                    value={penaltyTakerId}
+                    onChange={(e) => {
+                      const id = Number(e.target.value);
+                      setSelectedPenaltyTakerId(id);
+                      dispatchMatch({ type: 'select_penalty_taker', player_id: id });
+                    }}
+                    className="w-full bg-slate-900 border border-amber-500/60 p-2 rounded-lg text-white font-bold text-xs focus:ring-2 focus:ring-amber-400 outline-none cursor-pointer"
+                  >
+                    {pending.eligibleIds.map((id) => {
+                      const player = userTeam.players.find(p => p.id === id);
+                      return (
+                        <option key={id} value={id}>
+                          {player?.name} ({player?.position} • Força {player?.strength})
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+              )}
+
+              {/* Botão de Ação: Executar Pênalti */}
+              <button
+                type="button"
+                onClick={handleExecuteUserPenalty}
+                className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-300 text-black font-black text-sm uppercase tracking-wider shadow-lg shadow-amber-500/30 cursor-pointer transition-all active:scale-95 flex items-center justify-center space-x-2"
+              >
+                <span>⚽ PARTIR PARA A BATIDA!</span>
+              </button>
+            </div>
+          )}
+
+          {/* Etapa 2: A Corrida (Runup) */}
+          {currentStep === 'runup' && (
+            <div className="p-3.5 rounded-xl bg-black/60 border border-amber-500/50 text-center space-y-2 animate-pulse">
+              <div className="flex items-center justify-center space-x-2 text-amber-300 font-black text-sm uppercase tracking-wider">
+                <Footprints className="w-5 h-5 text-amber-400 animate-bounce" />
+                <span>O árbitro apita... Vai bater!</span>
+              </div>
+              <p className="text-xs text-slate-300">
+                {userPenaltyKick?.takerName} toma distância, respira fundo e parte para a bola...
+              </p>
+              <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden border border-slate-700">
+                <div className="h-full bg-gradient-to-r from-amber-500 to-amber-300 w-full animate-pulse" />
+              </div>
+            </div>
+          )}
+
+          {/* Etapa 3: O Chute (Kick) */}
+          {currentStep === 'kick' && (
+            <div className="p-3.5 rounded-xl bg-black/60 border border-amber-500/80 text-center space-y-1 shadow-[0_0_20px_rgba(245,158,11,0.3)]">
+              <div className="flex items-center justify-center space-x-2 text-white font-black text-base sm:text-lg uppercase tracking-widest animate-bounce">
+                <span>⚡ CHUTOU! PRA ONDE VAI A BOLA?!</span>
+              </div>
+              <p className="text-xs text-amber-200">
+                A bola viaja com curva em direção à meta! {userPenaltyKick?.gkName} salta para tentar o milagre!
+              </p>
+            </div>
+          )}
+
+          {/* Etapa 4: Desfecho com Emoção e Informação Completa */}
+          {currentStep === 'outcome' && userPenaltyKick && (
+            <div className="space-y-3">
+              <div className={`p-4 rounded-xl border-2 text-center space-y-1.5 shadow-xl animate-in zoom-in-95 duration-200 ${
+                userPenaltyKick.outcome === 'goal'
+                  ? 'bg-gradient-to-r from-emerald-950 via-green-900/60 to-emerald-950 border-emerald-500 shadow-emerald-500/30'
+                  : userPenaltyKick.outcome === 'post'
+                  ? 'bg-gradient-to-r from-amber-950 via-orange-900/60 to-amber-950 border-amber-500 shadow-amber-500/30'
+                  : userPenaltyKick.outcome === 'saved'
+                  ? 'bg-gradient-to-r from-sky-950 via-blue-900/60 to-sky-950 border-sky-500 shadow-sky-500/30'
+                  : 'bg-gradient-to-r from-rose-950 via-red-900/60 to-rose-950 border-rose-500 shadow-rose-500/30'
+              }`}>
+                <div className="text-2xl sm:text-3xl font-black tracking-wider flex items-center justify-center space-x-2 text-white">
+                  {userPenaltyKick.outcome === 'goal' && <Sparkles className="w-6 h-6 text-yellow-400 animate-spin" />}
+                  <span>{userPenaltyKick.outcomeTitle}</span>
+                  {userPenaltyKick.outcome === 'goal' && <Sparkles className="w-6 h-6 text-yellow-400 animate-spin" />}
+                </div>
+                <p className="text-xs sm:text-sm text-slate-200 font-medium leading-relaxed">
+                  {userPenaltyKick.outcomeNarrative}
+                </p>
+              </div>
+
+              {/* Placar Atualizado */}
+              <div className="flex items-center justify-center space-x-3 py-1.5 px-3 rounded-lg bg-black/60 border border-slate-700 text-xs font-mono font-bold text-slate-300">
+                <span>Placar do Jogo:</span>
+                <span className="text-amber-400 font-black text-sm">{userPenaltyKick.scoreDisplay}</span>
+              </div>
+
+              {/* Botão de Fechamento / Prosseguir */}
+              <button
+                type="button"
+                onClick={handleCloseUserPenaltyModal}
+                className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-300 text-black font-black text-sm uppercase tracking-wider shadow-lg shadow-amber-500/30 cursor-pointer transition-all active:scale-95 flex items-center justify-center space-x-2"
+              >
+                <span>CONTINUAR PARTIDA ➔</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
+  };
+
+  // ================= EXECUÇÃO DO PÊNALTI DO ADVERSÁRIO =================
+  const handleExecuteOpponentPenalty = () => {
+    if (!opponentPenalty) return;
+
+    setOpponentPenalty(prev => prev ? { ...prev, step: 'runup' } : null);
+    sound.playWhistle(true);
+    sound.playHeartbeat();
+
+    window.setTimeout(() => {
+      setOpponentPenalty(prev => prev ? { ...prev, step: 'kick' } : null);
+      sound.playKick();
+
+      window.setTimeout(() => {
+        setOpponentPenalty(prev => {
+          if (!prev) return null;
+          if (prev.isGoal) {
+            sound.playWhistle(true);
+          } else if (prev.outcome === 'post') {
+            sound.playPostHit();
+            window.setTimeout(() => sound.playCrowdGasp(), 300);
+          } else {
+            sound.playCrowdGasp();
+          }
+          return { ...prev, step: 'outcome' };
+        });
+      }, 950);
+    }, 1300);
   };
 
   // ================= MODAL DE PÊNALTI DO ADVERSÁRIO =================
   const renderOpponentPenaltyModal = () => {
     if (!opponentPenalty) return null;
 
+    const currentStep = opponentPenalty.step;
+
     return (
-      <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+      <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
         <div 
           role="dialog" 
           aria-label="Pênalti do Adversário"
-          className="w-full max-w-lg rounded-2xl border-2 border-rose-500/90 bg-gradient-to-b from-slate-900 via-rose-950/40 to-slate-950 p-5 sm:p-6 text-white shadow-[0_0_60px_rgba(244,63,94,0.35)] space-y-5"
+          className="w-full max-w-lg rounded-2xl border-2 border-rose-500/90 bg-gradient-to-b from-slate-900 via-rose-950/30 to-slate-950 p-4 sm:p-6 text-white shadow-[0_0_60px_rgba(244,63,94,0.35)] space-y-4 max-h-[92vh] overflow-y-auto"
         >
           {/* Header */}
           <div className="text-center space-y-1">
@@ -298,85 +772,143 @@ export const LiveMatchScreen: React.FC = () => {
               <span>Pênalti para o Adversário!</span>
             </div>
             <h2 className="text-xl sm:text-2xl font-black text-white tracking-wide">
-              MOMENTO DE TENSÃO
+              {currentStep === 'outcome' ? 'DESFECHO DO LANCE' : 'MOMENTO DE TENSÃO'}
             </h2>
-            <p className="text-xs text-slate-300">
-              O adversário vai para a cobrança da penalidade máxima contra o seu gol.
-            </p>
           </div>
 
           {/* Duelo Visual: Cobrador Adversário vs Nosso Goleiro */}
-          <div className="grid grid-cols-2 gap-3 bg-black/50 p-3 sm:p-4 rounded-xl border border-rose-500/30">
+          <div className="grid grid-cols-2 gap-3 bg-black/50 p-3 rounded-xl border border-rose-500/30">
             {/* Cobrador */}
-            <div className="text-center space-y-1">
+            <div className="text-center space-y-0.5">
               <span className="text-[10px] font-bold uppercase tracking-wider text-rose-400">
                 Cobrador ({oppTeam.name})
               </span>
-              <div className="text-sm sm:text-base font-extrabold text-white truncate">
+              <div className="text-xs sm:text-sm font-extrabold text-white truncate">
                 {opponentPenalty.takerName}
               </div>
-              <div className="inline-block font-mono text-xs font-bold text-rose-300 bg-rose-950/80 px-2 py-0.5 rounded border border-rose-600/50">
+              <div className="inline-block font-mono text-[11px] font-bold text-rose-300 bg-rose-950/80 px-2 py-0.5 rounded border border-rose-600/50">
                 Força: {opponentPenalty.takerStrength}
               </div>
             </div>
 
             {/* Nosso Goleiro */}
-            <div className="text-center space-y-1 border-l border-slate-800">
+            <div className="text-center space-y-0.5 border-l border-slate-800">
               <span className="text-[10px] font-bold uppercase tracking-wider text-sky-400">
                 Seu Goleiro ({userTeam.name})
               </span>
-              <div className="text-sm sm:text-base font-extrabold text-white truncate">
+              <div className="text-xs sm:text-sm font-extrabold text-white truncate">
                 {opponentPenalty.gkName}
               </div>
-              <div className="inline-block font-mono text-xs font-bold text-sky-300 bg-sky-950/80 px-2 py-0.5 rounded border border-sky-600/50">
+              <div className="inline-block font-mono text-[11px] font-bold text-sky-300 bg-sky-950/80 px-2 py-0.5 rounded border border-sky-600/50">
                 Força: {opponentPenalty.gkStrength}
               </div>
             </div>
           </div>
 
-          {/* Estado da Cobrança / Resultado */}
-          {!opponentPenalty.resolved ? (
-            <button
-              onClick={() => {
-                sound.playKick();
-                setOpponentPenalty({ ...opponentPenalty, resolved: true });
-                if (opponentPenalty.isGoal) {
-                  sound.playWhistle(true);
-                } else {
-                  sound.playWhistle(false);
-                }
-              }}
-              className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-rose-600 via-rose-500 to-rose-600 hover:from-rose-500 hover:to-rose-400 text-white font-black text-sm uppercase tracking-wider shadow-lg shadow-rose-600/30 cursor-pointer transition-all active:scale-95 flex items-center justify-center space-x-2"
-            >
-              <span>🧤 TORCER PARA O GOLEIRO DEFENDER!</span>
-            </button>
-          ) : (
+          {/* Gráfico do Gol com Mergulho */}
+          {renderGoalVisual(
+            currentStep,
+            opponentPenalty.takerTargetZone,
+            opponentPenalty.userGkChoice,
+            opponentPenalty.outcome,
+            true,
+            undefined,
+            opponentPenalty.userGkChoice,
+            opponentPenalty.gkName
+          )}
+
+          {/* Etapa 1: Preparação do Goleiro */}
+          {currentStep === 'aim' && (
             <div className="space-y-3">
-              <div className={`p-4 rounded-xl border text-center font-black text-base ${
-                opponentPenalty.isGoal 
-                  ? 'bg-rose-950/80 border-rose-500 text-rose-300' 
-                  : 'bg-emerald-950/80 border-emerald-500 text-emerald-300'
-              }`}>
-                {opponentPenalty.isGoal ? (
-                  <div>
-                    <div className="text-2xl mb-1">⚽ GOL DO ADVERSÁRIO</div>
-                    <div className="text-xs text-rose-200 font-normal">O cobrador bateu no canto e balançou as redes.</div>
-                  </div>
-                ) : (
-                  <div>
-                    <div className="text-2xl mb-1">🧤 DEFENDEU / PRA FORA!</div>
-                    <div className="text-xs text-emerald-200 font-normal">O seu goleiro operou um milagre ou a bola foi para fora!</div>
-                  </div>
-                )}
+              <div className="space-y-1.5 text-center">
+                <span className="text-xs font-bold text-slate-300 block">
+                  Escolha o canto para o seu goleiro ({opponentPenalty.gkName}) saltar:
+                </span>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['left', 'center', 'right'] as const).map((choice) => (
+                    <button
+                      key={choice}
+                      type="button"
+                      onClick={() => setOpponentPenalty({ ...opponentPenalty, userGkChoice: choice })}
+                      className={`py-2 px-1 rounded-lg border text-xs font-bold transition-all cursor-pointer ${
+                        opponentPenalty.userGkChoice === choice
+                          ? 'bg-rose-600 border-rose-400 text-white shadow-lg shadow-rose-600/40 ring-2 ring-rose-400'
+                          : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500'
+                      }`}
+                    >
+                      {choice === 'left' ? '⬅️ Canto Esq.' : choice === 'right' ? '➡️ Canto Dir.' : '🎯 Meio'}
+                    </button>
+                  ))}
+                </div>
               </div>
+
               <button
-                onClick={() => {
-                  setOpponentPenalty(null);
-                  dispatchMatch({ type: 'resume' });
-                }}
-                className="w-full py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs uppercase tracking-wider cursor-pointer transition-all active:scale-95"
+                type="button"
+                onClick={handleExecuteOpponentPenalty}
+                className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-rose-600 via-rose-500 to-rose-600 hover:from-rose-500 hover:to-rose-400 text-white font-black text-sm uppercase tracking-wider shadow-lg shadow-rose-600/30 cursor-pointer transition-all active:scale-95 flex items-center justify-center space-x-2"
               >
-                Continuar Partida
+                <span>🧤 AUTORIZAR E TENTAR DEFENDER!</span>
+              </button>
+            </div>
+          )}
+
+          {/* Etapa 2: A Corrida do Adversário */}
+          {currentStep === 'runup' && (
+            <div className="p-3.5 rounded-xl bg-black/60 border border-rose-500/50 text-center space-y-2 animate-pulse">
+              <div className="flex items-center justify-center space-x-2 text-rose-300 font-black text-sm uppercase tracking-wider">
+                <Footprints className="w-5 h-5 text-rose-400 animate-bounce" />
+                <span>O adversário parte para a cobrança...</span>
+              </div>
+              <p className="text-xs text-slate-300">
+                {opponentPenalty.takerName} corre em direção à bola sob pressão máxima!
+              </p>
+              <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden border border-slate-700">
+                <div className="h-full bg-gradient-to-r from-rose-500 to-rose-400 w-full animate-pulse" />
+              </div>
+            </div>
+          )}
+
+          {/* Etapa 3: O Chute do Adversário */}
+          {currentStep === 'kick' && (
+            <div className="p-3.5 rounded-xl bg-black/60 border border-rose-500/80 text-center space-y-1 shadow-[0_0_20px_rgba(244,63,94,0.3)]">
+              <div className="flex items-center justify-center space-x-2 text-white font-black text-base sm:text-lg uppercase tracking-widest animate-bounce">
+                <span>⚡ BATEU FORTE NA BOLA!</span>
+              </div>
+              <p className="text-xs text-rose-200">
+                {opponentPenalty.gkName} salta na bola para salvar o time!
+              </p>
+            </div>
+          )}
+
+          {/* Etapa 4: Desfecho Completo */}
+          {currentStep === 'outcome' && (
+            <div className="space-y-3">
+              <div className={`p-4 rounded-xl border-2 text-center space-y-1.5 shadow-xl animate-in zoom-in-95 duration-200 ${
+                opponentPenalty.outcome === 'goal'
+                  ? 'bg-gradient-to-r from-rose-950 via-red-900/60 to-rose-950 border-rose-500 shadow-rose-500/30'
+                  : 'bg-gradient-to-r from-emerald-950 via-green-900/60 to-emerald-950 border-emerald-500 shadow-emerald-500/30'
+              }`}>
+                <div className="text-2xl sm:text-3xl font-black tracking-wider text-white">
+                  {opponentPenalty.outcomeTitle}
+                </div>
+                <p className="text-xs sm:text-sm text-slate-200 font-medium leading-relaxed">
+                  {opponentPenalty.outcomeNarrative}
+                </p>
+              </div>
+
+              {/* Placar Atualizado */}
+              <div className="flex items-center justify-center space-x-3 py-1.5 px-3 rounded-lg bg-black/60 border border-slate-700 text-xs font-mono font-bold text-slate-300">
+                <span>Placar do Jogo:</span>
+                <span className="text-amber-400 font-black text-sm">{opponentPenalty.scoreDisplay}</span>
+              </div>
+
+              {/* Botão de Fechamento / Prosseguir */}
+              <button
+                type="button"
+                onClick={handleCloseOpponentPenaltyModal}
+                className="w-full py-3.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs uppercase tracking-wider cursor-pointer transition-all active:scale-95"
+              >
+                Continuar Partida ➔
               </button>
             </div>
           )}

@@ -127,6 +127,36 @@ class SoundEngine {
     osc.stop(now + 0.13);
   }
 
+  // Heartbeat / tension thud (lub-dub)
+  public playHeartbeat() {
+    if (!this.enabled || this.volume <= 0) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+    const beats = [0, 0.22];
+
+    beats.forEach((delay) => {
+      const startTime = now + delay;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(65, startTime);
+      osc.frequency.exponentialRampToValueAtTime(32, startTime + 0.16);
+
+      gain.gain.setValueAtTime(0, startTime);
+      gain.gain.linearRampToValueAtTime(0.45 * this.volume, startTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.16);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(startTime);
+      osc.stop(startTime + 0.18);
+    });
+  }
+
   // Crossbar / Post hit (metallic clack)
   public playPostHit() {
     if (!this.enabled || this.volume <= 0) return;

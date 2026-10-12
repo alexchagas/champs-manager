@@ -15,13 +15,15 @@
     "test:match": "node --experimental-strip-types --test tests/matchCycle.test.mjs"
   },
   "dependencies": {
+    "@sentry/react": "^11.7.0",
     "@types/canvas-confetti": "^1.9.0",
     "canvas-confetti": "^1.9.4",
     "clsx": "^2.1.1",
     "lucide-react": "^1.55.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "tailwind-merge": "^3.7.0"
+    "tailwind-merge": "^3.7.0",
+    "vite-plugin-pwa": "^2.0.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
