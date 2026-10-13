@@ -71,7 +71,7 @@ export const ManagersScreen: React.FC = () => {
   );
 
   return (
-    <div className="flex-1 overflow-auto bg-[var(--app-bg-deep)] text-slate-100 p-5 space-y-4 select-none">
+    <div className="flex-1 overflow-auto bg-[var(--app-bg-deep)] text-slate-100 p-4 sm:p-5 space-y-4 select-none pb-8 md:pb-5 min-h-0">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-black tracking-wide text-white">Carreira dos Técnicos</h1>
         <span className="text-xs bg-[var(--app-surface-2)] text-[var(--app-text-accent)] border border-[var(--app-border-highlight)] px-2.5 py-1 rounded font-mono font-bold">

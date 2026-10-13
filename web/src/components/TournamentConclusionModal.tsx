@@ -53,7 +53,7 @@ export const TournamentConclusionModal: React.FC<Props> = ({ record, userClubId,
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-fade-in select-none">
       <div 
-        className="relative w-full max-w-lg overflow-hidden rounded-xl border border-[var(--app-border-subtle)] bg-[var(--app-surface-1)] shadow-2xl transition-all"
+        className="relative w-full max-w-lg overflow-y-auto max-h-[90dvh] rounded-xl border border-[var(--app-border-subtle)] bg-[var(--app-surface-1)] shadow-2xl transition-all"
         style={
           isChampion
             ? { borderColor: 'var(--app-border-highlight)', boxShadow: '0 0 30px rgba(16, 185, 129, 0.15)' }

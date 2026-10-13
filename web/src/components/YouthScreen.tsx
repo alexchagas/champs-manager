@@ -151,9 +151,9 @@ export const YouthScreen: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-[var(--app-bg-deep)] p-3 gap-3 h-[calc(100vh-3.5rem)] select-none">
+    <div className="flex-1 flex flex-col md:overflow-hidden bg-[var(--app-bg-deep)] p-3 gap-3 md:h-[calc(100vh-3.5rem)] min-h-0 select-none pb-6 md:pb-0">
       {/* TOP HEADER SUMMARY BAR */}
-      <div className="grid grid-cols-4 gap-3 shrink-0">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 shrink-0">
         {/* Atletas na Base */}
         <div className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg p-3 shadow-md flex items-center justify-between">
           <div>

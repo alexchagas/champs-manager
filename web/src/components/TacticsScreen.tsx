@@ -259,7 +259,7 @@ export const TacticsScreen: React.FC = () => {
   ];
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-[var(--app-bg-deep)] p-2.5 sm:p-3 gap-2 sm:gap-2.5 h-full min-h-0 select-none">
+    <div className="flex-1 flex flex-col lg:overflow-hidden bg-[var(--app-bg-deep)] p-2.5 sm:p-3 gap-2 sm:gap-2.5 min-h-0 select-none pb-4 lg:pb-0">
       {/* MATCH PREPARATION ACTION BAR (RESPONSIVE WRAP & COMPACT SIZING) */}
       {userFixture && nextOpponent && (
         <div className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg py-2 px-3 sm:px-3.5 flex flex-wrap items-center justify-between gap-2 shadow-md shrink-0 relative overflow-hidden">
@@ -384,7 +384,7 @@ export const TacticsScreen: React.FC = () => {
       </div>
 
       {/* TACTICAL WORKSPACE */}
-      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden gap-2.5 sm:gap-3 min-h-0">
+      <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden gap-2.5 sm:gap-3 min-h-0">
         {/* LEFT: PITCH & TACTICAL BOARD (FULL ON MOBILE IF TAB=PITCH, SIDE-BY-SIDE ON LG) */}
         <div className={`bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col overflow-hidden shadow-lg shrink-0 min-h-0 ${mobileTab === 'pitch' ? 'flex flex-1' : 'hidden'} lg:flex lg:w-[440px] xl:w-[480px] 2xl:w-[500px]`}>
         {/* Top Control Bar: Formation, Mentality, Power summary */}
@@ -613,7 +613,7 @@ export const TacticsScreen: React.FC = () => {
       </div>
 
       {/* RIGHT: DENSE SQUAD LIST (TITULARES E BANCO DE RESERVAS) */}
-      <div className={`bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col overflow-hidden shadow-lg flex-1 min-h-0 ${mobileTab === 'squad' ? 'flex' : 'hidden lg:flex'}`}>
+      <div className={`bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col shadow-lg flex-1 min-h-0 lg:overflow-hidden ${mobileTab === 'squad' ? 'flex' : 'hidden lg:flex'}`}>
         {/* Table header */}
         <div className="px-3 py-2 bg-[var(--app-surface-2)] border-b border-[var(--app-border-highlight)] flex items-center justify-between shrink-0">
           <div className="flex items-center space-x-2">

@@ -175,7 +175,7 @@ export const BottomNavBar: React.FC = () => {
 
       {/* FIXED BOTTOM NAVIGATION BAR (< 768px) */}
       <nav 
-        className="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-[var(--app-surface-1)] border-t border-[var(--app-border-subtle)] pb-safe shadow-2xl flex items-center justify-around h-14"
+        className="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-[var(--app-surface-1)] border-t border-[var(--app-border-subtle)] pb-safe shadow-2xl flex items-center justify-around h-[calc(3.5rem+env(safe-area-inset-bottom,0px))]"
         role="navigation"
         aria-label="Navegação Principal Mobile"
       >
@@ -187,7 +187,7 @@ export const BottomNavBar: React.FC = () => {
             <button
               key={item.id}
               onClick={() => handleNav(item.id)}
-              className={`flex-1 flex flex-col items-center justify-center h-full relative transition-colors ${
+              className={`flex-1 flex flex-col items-center justify-center h-14 relative transition-colors ${
                 isActive 
                   ? 'text-[var(--app-text-accent)] font-bold' 
                   : 'text-slate-400 hover:text-slate-200'
@@ -220,7 +220,7 @@ export const BottomNavBar: React.FC = () => {
             sound.playClick();
             setIsMoreOpen(!isMoreOpen);
           }}
-          className={`flex-1 flex flex-col items-center justify-center h-full relative transition-colors ${
+          className={`flex-1 flex flex-col items-center justify-center h-14 relative transition-colors ${
             isMoreOpen || ['news', 'stats', 'managers', 'youth'].includes(activeScreen)
               ? 'text-[var(--app-text-accent)] font-bold'
               : 'text-slate-400 hover:text-slate-200'

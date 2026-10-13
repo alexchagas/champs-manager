@@ -468,9 +468,100 @@ export const MainMenu: React.FC = () => {
       </div>
 
       {/* Main Content Layout */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left Sidebar Menu Options */}
-        <div className="w-64 bg-[var(--app-surface-1)] border-r border-[var(--app-border-subtle)] p-3 flex flex-col justify-between shrink-0">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
+        {/* Mobile Navigation Tabs Bar (< md) */}
+        <div className="flex md:hidden bg-[var(--app-surface-1)] border-b border-[var(--app-border-subtle)] px-2.5 py-2 overflow-x-auto no-scrollbar shrink-0 gap-1.5 items-center">
+          <button
+            onClick={() => changeTab('new_game')}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all shrink-0 cursor-pointer ${
+              activeTab === 'new_game'
+                ? 'bg-emerald-600 text-black font-extrabold shadow-sm'
+                : 'bg-[#12231a] text-slate-300 border border-[#1e3c2d]'
+            }`}
+          >
+            <Play className="w-3.5 h-3.5 fill-current" />
+            <span>Novo Jogo</span>
+          </button>
+          <button
+            onClick={() => changeTab('load_game')}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all shrink-0 cursor-pointer ${
+              activeTab === 'load_game'
+                ? 'bg-emerald-600 text-black font-extrabold shadow-sm'
+                : 'bg-[#12231a] text-slate-300 border border-[#1e3c2d]'
+            }`}
+          >
+            <FolderOpen className="w-3.5 h-3.5" />
+            <span>Carregar</span>
+          </button>
+          <button
+            onClick={() => changeTab('editor')}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all shrink-0 cursor-pointer ${
+              activeTab === 'editor'
+                ? 'bg-emerald-600 text-black font-extrabold shadow-sm'
+                : 'bg-[#12231a] text-slate-300 border border-[#1e3c2d]'
+            }`}
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>Editor</span>
+          </button>
+          <button
+            onClick={() => changeTab('options')}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all shrink-0 cursor-pointer ${
+              activeTab === 'options'
+                ? 'bg-emerald-600 text-black font-extrabold shadow-sm'
+                : 'bg-[#12231a] text-slate-300 border border-[#1e3c2d]'
+            }`}
+          >
+            <Settings className="w-3.5 h-3.5" />
+            <span>Opções</span>
+          </button>
+          <button
+            onClick={() => changeTab('credits')}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all shrink-0 cursor-pointer ${
+              activeTab === 'credits'
+                ? 'bg-emerald-600 text-black font-extrabold shadow-sm'
+                : 'bg-[#12231a] text-slate-300 border border-[#1e3c2d]'
+            }`}
+          >
+            <Trophy className="w-3.5 h-3.5" />
+            <span>Créditos</span>
+          </button>
+          <button
+            onClick={() => {
+              sound.playClick();
+              window.dispatchEvent(new CustomEvent('champs:open-bug-report'));
+            }}
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap bg-emerald-950/60 border border-emerald-500/30 text-emerald-300 shrink-0 cursor-pointer"
+          >
+            <Bug className="w-3.5 h-3.5" />
+            <span>Feedback</span>
+          </button>
+        </div>
+
+        {/* Mobile Continue Career Banner (< md) */}
+        {hasActiveCareer && (
+          <div className="md:hidden px-3 pt-2">
+            <button
+              onClick={returnToGame}
+              className="w-full flex items-center justify-between p-2.5 bg-gradient-to-r from-emerald-900/90 via-emerald-800 to-teal-900 border border-emerald-500/50 text-white rounded-lg text-xs font-black shadow-md cursor-pointer"
+              data-testid="continue-career-mobile-btn"
+            >
+              <div className="flex items-center space-x-2 truncate">
+                <Play className="w-4 h-4 fill-emerald-300 text-emerald-300 shrink-0 animate-pulse" />
+                <div className="truncate text-left">
+                  <div className="font-extrabold text-xs">Continuar Carreira Ativa</div>
+                  <div className="text-[10px] text-emerald-200 truncate">
+                    {userClub.name} · {gameState.seasonYear} · Rodada {gameState.currentRound}
+                  </div>
+                </div>
+              </div>
+              <ClubCrest club={userClub} size="sm" />
+            </button>
+          </div>
+        )}
+
+        {/* Left Sidebar Menu Options (>= md) */}
+        <div className="hidden md:flex w-64 bg-[var(--app-surface-1)] border-r border-[var(--app-border-subtle)] p-3 flex-col justify-between shrink-0">
           <div className="space-y-2">
             {/* 1. SE HOUVER CARREIRA ATIVA: BOTÃO EM DESTAQUE "▶ Continuar Carreira" */}
             {hasActiveCareer && (
@@ -882,9 +973,9 @@ export const MainMenu: React.FC = () => {
               </div>
 
               {/* Main Selection Area: Club Grid (Left) + Selected Club Card (Right) */}
-              <div className="grid grid-cols-12 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-4 pb-20 md:pb-4">
                 {/* 3. Club Grid / List */}
-                <div className="col-span-7 bg-[#0f1d16] border border-[#1b3629] rounded-lg p-3 flex flex-col h-[460px] shadow-md">
+                <div className="col-span-1 md:col-span-7 bg-[#0f1d16] border border-[#1b3629] rounded-lg p-3 flex flex-col h-[380px] md:h-[460px] shadow-md">
                   {/* Search Bar + Results Counter */}
                   <div className="flex items-center gap-2 mb-2">
                     <div className="relative flex-1">
@@ -1008,7 +1099,7 @@ export const MainMenu: React.FC = () => {
 
                 {/* 4. Selected Club Preview Card & Options */}
                 <div 
-                  className="col-span-5 rounded-lg p-4 flex flex-col justify-between h-[460px] shadow-md relative overflow-hidden transition-all border"
+                  className="col-span-1 md:col-span-5 rounded-lg p-4 flex flex-col justify-between h-auto min-h-[380px] md:h-[460px] shadow-md relative overflow-hidden transition-all border"
                   style={{
                     backgroundColor: selectedClubAtmosphere.surface1,
                     borderColor: selectedClubAtmosphere.borderSubtle,
@@ -1188,6 +1279,30 @@ export const MainMenu: React.FC = () => {
                     </button>
                   </div>
                 </div>
+              </div>
+
+              {/* Mobile Sticky CTA to start career */}
+              <div className="md:hidden fixed bottom-0 left-0 right-0 p-3 bg-[#0c1511]/95 backdrop-blur-md border-t border-[#1b3629] pb-safe z-30 shadow-2xl">
+                <button
+                  onClick={handleStartGame}
+                  disabled={isStartingGame || activeCountryIds.length < 1}
+                  className={`w-full py-3 font-black rounded-lg shadow-xl text-xs uppercase tracking-wider transition-all transform active:scale-98 cursor-pointer flex items-center justify-center space-x-2 ${
+                    isStartingGame || activeCountryIds.length < 1 ? 'opacity-60 cursor-not-allowed' : ''
+                  }`}
+                  style={{
+                    backgroundColor: selectedClubTheme.primaryAccent,
+                    color: selectedClubTheme.onPrimaryAccent,
+                    boxShadow: `0 4px 16px ${selectedClubTheme.subtleBg}`,
+                  }}
+                  data-testid="start-career-mobile-sticky-btn"
+                >
+                  <Play className="w-4 h-4 fill-current" />
+                  <span className="truncate">
+                    {isStartingGame
+                      ? 'Carregando Ligas Ativas...'
+                      : `Iniciar Carreira com ${selectedClub.name} (${activeCountryIds.length} Ligas)`}
+                  </span>
+                </button>
               </div>
             </div>
           )}
@@ -1559,17 +1674,42 @@ export const MainMenu: React.FC = () => {
                     <span>Base Autêntica e Longevidade</span>
                   </div>
                   <ul className="text-xs text-slate-300 space-y-1.5 list-disc list-inside">
-                    <li>703 clubes reais (Séries A, B, C, D e 134 países)</li>
-                    <li>Mais de 14.600 atletas com atributos e contratos</li>
+                    <li>3.216 clubes reais (Séries A, B, C, D e ligas em 224 países)</li>
+                    <li>Mais de 76.500 atletas com atributos e contratos</li>
                     <li>Theming dinâmico por cores de clube (Atmosferas)</li>
                     <li>100% Offline-First para Web e Desktop (Tauri v2)</li>
                   </ul>
                 </div>
               </div>
 
+              {/* Aviso Legal / Disclaimer de Projeto para Amigos */}
+              <div className="p-5 rounded-xl bg-amber-950/20 border border-amber-500/30 space-y-3 shadow-md">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>Aviso Legal & Termo de Isenção (Patch Recreativo Fechado)</span>
+                  </div>
+                  <span className="px-2.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] font-mono font-semibold">
+                    Sem Fins Lucrativos • Acesso Limitado
+                  </span>
+                </div>
+
+                <div className="space-y-2 text-xs text-slate-300 leading-relaxed">
+                  <p>
+                    <strong className="text-amber-200">Finalidade Recreativa entre Amigos:</strong> Este projeto é desenvolvido exclusivamente para uso pessoal, lazer e experimentação técnica entre amigos próximos. Não possui qualquer fim comercial, não gera receita, doação ou lucro, e não contém publicidade. O acesso a este software é restrito e de caráter estritamente privado.
+                  </p>
+                  <p>
+                    <strong className="text-amber-200">Propriedade Intelectual & Marcas:</strong> Todos os nomes de agremiações esportivas, escudos, emblemas, uniformes, marcas registradas e nomes de atletas profissionais mencionados pertencem com exclusividade aos seus respectivos clubes, federações e detentores de direitos. O Champs Manager não é afiliado, patrocinado ou licenciado por nenhuma entidade desportiva. Trata-se de um <em>fan patch</em> não oficial construído como homenagem à história dos jogos de gerenciamento esportivo.
+                  </p>
+                  <p className="text-slate-400 text-[11px] pt-1 border-t border-amber-500/20">
+                    <strong className="text-slate-300">Arquitetura de Dados & Patches da Comunidade:</strong> O motor do jogo funciona como uma plataforma técnica e simulador neutro. As funcionalidades de importação de arquivos permitirão que cada usuário configure, baixe e instale seus próprios pacotes de dados, elencos e escudos customizados de forma independente.
+                  </p>
+                </div>
+              </div>
+
               {/* Rodapé de Versão */}
               <div className="text-center pt-2 text-[11px] text-slate-500 font-mono">
-                Champs Manager 2026 • Desenvolvido com carinho por lekD Games • Versão 0.1.0
+                Champs Manager 2026 • Desenvolvido com carinho por lekD Games • Versão 0.1.0 • Patch Recreativo para Amigos
               </div>
             </div>
           )}

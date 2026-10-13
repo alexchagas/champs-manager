@@ -162,7 +162,7 @@ export const FinancesScreen: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-[var(--app-bg-deep)] p-3 gap-3 h-[calc(100vh-3.5rem)] select-none">
+    <div className="flex-1 flex flex-col md:overflow-hidden bg-[var(--app-bg-deep)] p-3 gap-3 md:h-[calc(100vh-3.5rem)] min-h-0 select-none pb-6 md:pb-0">
       <div className="rounded border border-amber-800/80 bg-amber-950/40 px-3 py-2 text-xs text-amber-100 shrink-0 shadow-xs">
         <strong>Obrigações:</strong> salários atrasados {formatMoney(userClub.overdueWages || 0)} · dívida {formatMoney(currentDebt)} · próxima folha e manutenção {formatMoney(weeklyTotalPayroll + stadiumMaintenance)} · caixa projetado por rodada {formatMoney(projectedCash)}.
         {(userClub.boardActions || []).length > 0 && <span> Diretoria: {(userClub.boardActions || []).join('; ')}.</span>}

@@ -268,7 +268,7 @@ export const ClubOverview: React.FC = () => {
   const headlineArticle = newsList.find((a) => a.isHeadline) || newsList[0];
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-[var(--app-bg-deep)] p-2 sm:p-3 gap-2 sm:gap-2.5 h-full min-h-0 select-none">
+    <div className="flex-1 flex flex-col lg:overflow-hidden bg-[var(--app-bg-deep)] p-2 sm:p-3 gap-2 sm:gap-2.5 min-h-0 select-none pb-4 lg:pb-0">
       {/* TOP: CAREER & BOARD DASHBOARD WIDGET (ESTILO CLÁSSICO BRASFOOT) */}
       <div className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg p-2.5 sm:p-3 shadow-md shrink-0 relative overflow-hidden">
         {/* Top dual stripe */}
@@ -443,9 +443,9 @@ export const ClubOverview: React.FC = () => {
       )}
 
       {/* MAIN TWO-COLUMN WORKSPACE */}
-      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden gap-2.5 sm:gap-3 min-h-0">
+      <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden gap-2.5 sm:gap-3 min-h-0">
         {/* COLUMN 1: TABELA DE CLASSIFICAÇÃO (50% NO DESKTOP, CONDICIONAL NO MOBILE) */}
-        <div className={`bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col overflow-hidden shadow-lg order-2 lg:order-1 lg:w-1/2 min-h-0 ${mobileTab === 'standings' ? 'flex-1' : 'hidden lg:flex'}`}>
+        <div className={`bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col shadow-lg order-2 lg:order-1 lg:w-1/2 min-h-0 lg:overflow-hidden ${mobileTab === 'standings' ? 'flex-1' : 'hidden lg:flex'}`}>
         {/* Table Header */}
         <div className="px-3 py-2 bg-[var(--app-surface-2)] border-b border-[var(--app-border-highlight)] flex items-center justify-between shrink-0">
           <div className="flex items-center space-x-2 min-w-0">
@@ -855,7 +855,7 @@ export const ClubOverview: React.FC = () => {
       </div>
 
       {/* COLUMN 2: HUB DA PARTIDA & JOGOS DA RODADA (50% NO DESKTOP, ORDER-1 NO MOBILE) */}
-      <div className="flex flex-col gap-2.5 sm:gap-3 overflow-hidden order-1 lg:order-2 lg:w-1/2 min-h-0">
+      <div className="flex flex-col gap-2.5 sm:gap-3 lg:overflow-hidden order-1 lg:order-2 lg:w-1/2 min-h-0">
         {/* TOP ROW: NEXT MATCH HERO CARD */}
         {nextOpponent && userFixture && (
           <div className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg p-2.5 sm:p-3 flex flex-col gap-2 sm:gap-2.5 shadow-md shrink-0 relative overflow-hidden">
@@ -1031,7 +1031,7 @@ export const ClubOverview: React.FC = () => {
         </div>
 
         {/* BOTTOM: CALENDÁRIO DA TEMPORADA & JOGOS DA RODADA (EXPANDIDO) */}
-        <div className={`bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col overflow-hidden shadow-md flex-1 min-h-0 ${mobileTab === 'calendar' ? 'flex' : 'hidden lg:flex'}`}>
+        <div className={`bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col shadow-md flex-1 min-h-0 lg:overflow-hidden ${mobileTab === 'calendar' ? 'flex' : 'hidden lg:flex'}`}>
           {/* Header with Round Switcher */}
           <div className="px-3 py-2 bg-[var(--app-surface-2)] border-b border-[var(--app-border-highlight)] flex items-center justify-between shrink-0">
             <div className="flex items-center space-x-2 min-w-0">

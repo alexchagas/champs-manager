@@ -39,7 +39,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
       id="app-shell"
       data-testid="app-shell"
       data-club-family={atmosphere.family}
-      className="h-screen w-screen flex flex-col overflow-hidden bg-[var(--app-bg-deep)] text-slate-100 select-none transition-colors duration-300 pl-safe pr-safe"
+      className="h-[100dvh] w-full flex flex-col md:overflow-hidden bg-[var(--app-bg-deep)] text-slate-100 select-none transition-colors duration-300 pl-safe pr-safe"
       style={atmosphere.style as React.CSSProperties}
     >
       {children}
@@ -166,7 +166,7 @@ const MainAppContent: React.FC = () => {
       )}
       {matchError && activeScreen !== 'live_match' && activeScreen !== 'splash' && activeScreen !== 'round_results' && <p role="alert" className="p-2 text-amber-300 shrink-0">{matchError}</p>}
       {/* Screen Views */}
-      <main className={`flex-1 flex overflow-hidden relative ${showChrome ? 'pb-14 md:pb-0' : ''}`}>
+      <main className={`flex-1 flex flex-col relative min-h-0 ${showChrome ? 'overflow-y-auto md:overflow-hidden pb-[calc(3.75rem+env(safe-area-inset-bottom))] md:pb-0' : 'overflow-y-auto md:overflow-hidden'}`}>
         {activeScreen === 'splash' && (
           <SplashScreen 
             onFinish={() => setScreen('menu')} 

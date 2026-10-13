@@ -2042,7 +2042,7 @@ export const LiveMatchScreen: React.FC = () => {
       )}
 
       {/* ================= BARRA INFERIOR DE AÇÕES ================= */}
-      <div className="shrink-0 bg-[var(--app-surface-1)] border-t border-[var(--app-border-subtle)] p-2.5 sm:p-3 shadow-2xl flex items-center justify-between gap-2 z-20">
+      <div className="shrink-0 bg-[var(--app-surface-1)] border-t border-[var(--app-border-subtle)] p-2.5 sm:p-3 pb-safe shadow-2xl flex items-center justify-between gap-2 z-20">
         {/* Speed Controls: 1x, 2x, 5x */}
         <div className="flex items-center bg-[var(--app-surface-2)] p-1 rounded-lg border border-[var(--app-border-subtle)] shrink-0">
           {[1, 2, 5].map((speed) => (

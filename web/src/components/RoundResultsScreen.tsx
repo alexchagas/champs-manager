@@ -65,7 +65,7 @@ export const RoundResultsScreen: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-[var(--app-bg-deep)] p-3 sm:p-4 h-screen w-full select-none overflow-hidden">
+    <div className="flex-1 flex flex-col bg-[var(--app-bg-deep)] p-3 sm:p-4 lg:h-full lg:overflow-hidden min-h-0 w-full select-none pb-6 lg:pb-0">
       {/* Súmula / Detalhes da Partida Modal */}
       {selectedFixture && (() => {
         const home = gameState.clubs.find((c) => c.id === selectedFixture.homeClubId);
@@ -237,9 +237,9 @@ export const RoundResultsScreen: React.FC = () => {
       </div>
 
       {/* Main Split: Round Scores on Left + Standings Summary on Right */}
-      <div className="flex-1 grid grid-cols-12 gap-3 overflow-hidden min-h-0">
+      <div className="flex-1 grid grid-cols-12 gap-3 lg:overflow-hidden min-h-0">
         {/* MATCH RESULTS OF THE ROUND */}
-        <div className="col-span-12 lg:col-span-6 bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col overflow-hidden shadow-md">
+        <div className="col-span-12 lg:col-span-6 bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col shadow-md lg:overflow-hidden min-h-[320px] lg:min-h-0">
           <div className="px-3 py-2 bg-[var(--app-surface-2)] border-b border-[var(--app-border-subtle)] flex items-center justify-between shrink-0">
             <span className="text-xs font-bold text-white uppercase tracking-wider">
               Placares dos Jogos
@@ -368,7 +368,7 @@ export const RoundResultsScreen: React.FC = () => {
           });
 
           return (
-            <div className="col-span-12 lg:col-span-6 bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col overflow-hidden shadow-md">
+            <div className="col-span-12 lg:col-span-6 bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col shadow-md lg:overflow-hidden min-h-[320px] lg:min-h-0">
               <div className="px-3 py-2 bg-[var(--app-surface-2)] border-b border-[var(--app-border-subtle)] flex items-center justify-between shrink-0">
                 <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center space-x-1.5">
                   <Trophy className="w-3.5 h-3.5 text-[var(--app-text-accent)]" />

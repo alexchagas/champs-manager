@@ -35,8 +35,8 @@ Gramado tático interativo com posicionamento geométrico para todas as formaç�
 
 ---
 
-### Menu Principal & Base Real de 703 Clubes
-Selecione qualquer clube do Brasil (Séries A, B, C, D, Estaduais e Divisões de Acesso) ou das principais ligas de 134 países do mundo, com escudos oficiais, técnicos reais e editor de dados integrado.
+### Menu Principal & Base Global de Mais de 3.200 Clubes
+Selecione qualquer clube do Brasil (Séries A, B, C, D, Estaduais e Divisões de Acesso) ou das principais ligas de 224 países do mundo, com escudos oficiais, técnicos e editor de dados integrado.
 
 ![Menu Principal](docs/screenshots/main_menu.png)
 
@@ -71,10 +71,10 @@ O **Champs Manager** nasceu do amor e da nostalgia pelo clássico **Brasfoot**, 
 
 ## 🏆 Principais Recursos do Jogo
 
-- **Base de Dados Autêntica com 703 Clubes:**
+- **Base de Dados Global com Mais de 3.200 Clubes (3.216 equipes):**
   - Pirâmide do futebol brasileiro completa: Séries A, B, C, D, Campeonatos Estaduais e Divisões de Acesso.
-  - Ligas internacionais de mais de 130 países.
-  - Mais de 14.600 atletas com idades, forças, posições naturais e características técnicas.
+  - Ligas internacionais completas de 224 países.
+  - Mais de 76.500 atletas cadastrados com idades, forças, atributos e contratos.
 - **Ciclo da Partida Robusto e Autêntico:**
   - Simulação lance a lance minuto a minuto com proteção anti-goleada calibrada.
   - Regra oficial de 5 substituições em até 3 janelas de parada, além de substituições gratuitas no intervalo.
@@ -224,8 +224,9 @@ champs-manager/
 
 ---
 
-## 📜 Licença & Reconhecimentos
+## 📜 Licença, Isenção Legal & Reconhecimentos
 
 - Desenvolvido por **Alex Chagas** e colaboradores.
-- Projeto desenvolvido como tributo à rica história dos jogos brasileiros de gerenciamento esportivo, em especial ao eterno **Brasfoot**.
-- Todas as marcas, escudos e nomes de clubes pertencem às suas respectivas agremiações esportivas e são utilizados para fins culturais, de pesquisa e entretenimento.
+- **Projeto Estritamente Recreativo e Privado:** Criado como tributo nostálgico à história dos jogos clássicos de gerenciamento esportivo (em especial ao eterno **Brasfoot**), para uso pessoal e diversão entre amigos, sem fins lucrativos, sem anúncios e sem monetização de qualquer espécie.
+- **Marcas, Clubes e Atletas:** Todos os nomes de equipes, escudos, emblemas, uniformes, marcas e nomes de atletas pertencem integralmente às suas respectivas agremiações esportivas, federações e detentores de direitos. O Champs Manager não possui qualquer afiliação oficial nem licenciamento comercial, tratando-se de um patch/modificação comemorativa de fãs.
+- **Arquitetura Aberta e Patches Externos:** O motor funciona como plataforma neutra; atualizações futuras permitirão download e configuração customizada de pacotes de dados e elencos pelo próprio usuário.

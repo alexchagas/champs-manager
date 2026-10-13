@@ -136,7 +136,7 @@ export const ClubViewer: React.FC<ClubViewerProps> = ({ clubId: propClubId, onCl
 
   return (
     <div 
-      className="absolute inset-0 z-50 bg-[var(--app-bg-deep)] text-slate-100 flex flex-col select-none overflow-hidden animate-in fade-in duration-150"
+      className="absolute inset-0 z-50 bg-[var(--app-bg-deep)] text-slate-100 flex flex-col select-none overflow-y-auto md:overflow-hidden animate-in fade-in duration-150 pb-safe"
       style={atmosphere.style}
       data-testid="club-viewer"
       data-club-family={atmosphere.family}
@@ -337,9 +337,9 @@ export const ClubViewer: React.FC<ClubViewerProps> = ({ clubId: propClubId, onCl
       </div>
 
       {/* CONTENT AREA: SPLIT WITH CAMPAIGN & SQUAD */}
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden p-2.5 sm:p-3 gap-2.5 sm:gap-3 bg-[var(--app-bg-deep)] min-h-0">
+      <div className="flex-1 flex flex-col md:flex-row md:overflow-hidden p-2.5 sm:p-3 gap-2.5 sm:gap-3 bg-[var(--app-bg-deep)] min-h-0">
         {/* COLUMN 1: RESUMO DA CAMPANHA NA TEMPORADA ATUAL */}
-        <div className={`bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col overflow-hidden shadow-md min-h-0 ${
+        <div className={`bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col md:overflow-hidden shadow-md min-h-0 ${
           mobileTab === 'campaign' ? 'flex-1' : 'hidden md:flex'
         } md:w-[320px] lg:w-[360px] md:shrink-0`}>
           <div className="px-3 py-2 bg-[var(--app-surface-2)] border-b border-[var(--app-border-subtle)] flex items-center justify-between shrink-0">

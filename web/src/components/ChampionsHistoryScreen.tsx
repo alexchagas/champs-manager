@@ -75,7 +75,7 @@ export const ChampionsHistoryScreen: React.FC<Props> = ({ gameState, onBack }) =
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-[var(--app-bg-deep)] p-2 sm:p-4 h-[calc(100vh-3.5rem)] select-none overflow-hidden">
+    <div className="flex-1 flex flex-col bg-[var(--app-bg-deep)] p-2 sm:p-4 md:h-[calc(100vh-3.5rem)] select-none md:overflow-hidden min-h-0 pb-6 md:pb-0">
       {/* HEADER BANNER */}
       <div className="relative overflow-hidden bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg p-3 sm:p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-md mb-2 shrink-0">
         <div className="absolute top-0 left-0 right-0 h-1" style={{ background: clubTheme.stripeGradient }} />
