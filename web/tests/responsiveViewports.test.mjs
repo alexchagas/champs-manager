@@ -64,3 +64,16 @@ test('Gameplay screens unlock vertical scroll on mobile while preserving desktop
   const finances = fs.readFileSync(path.join(webDir, 'src/components/FinancesScreen.tsx'), 'utf-8');
   assert.ok(finances.includes('md:overflow-hidden'), 'FinancesScreen must use md:overflow-hidden');
 });
+
+test('DevToolsLauncher does not collide with BottomNavBar on mobile', () => {
+  const devLauncher = fs.readFileSync(path.join(webDir, 'src/dev/DevToolsLauncher.tsx'), 'utf-8');
+  assert.ok(
+    devLauncher.includes('bottom-[calc(4.5rem+env(safe-area-inset-bottom'),
+    'DevToolsLauncher must float above the BottomNavBar on mobile viewports'
+  );
+  assert.ok(
+    devLauncher.includes('md:bottom-3'),
+    'DevToolsLauncher must retain bottom-3 on desktop viewports'
+  );
+});
+

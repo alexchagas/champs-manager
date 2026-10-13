@@ -26,7 +26,12 @@ export const DevToolsLauncher: React.FC = () => {
     };
 
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    const handleOpenDevTools = () => setIsOpen(true);
+    window.addEventListener('champs:open-dev-tools', handleOpenDevTools);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('champs:open-dev-tools', handleOpenDevTools);
+    };
   }, []);
 
   // Check if active or enabled
@@ -41,11 +46,12 @@ export const DevToolsLauncher: React.FC = () => {
 
   return (
     <>
-      {/* Floating Dev Mode Trigger Button */}
+      {/* Floating Dev Mode Trigger Button (posicionado acima da BottomNavBar no mobile para não sobrepor o menu Mais) */}
       <button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-3 right-3 z-40 flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-900/90 hover:bg-emerald-950 border border-emerald-500/50 hover:border-emerald-400 text-emerald-400 hover:text-emerald-300 rounded-full shadow-lg text-[11px] font-bold tracking-wider uppercase transition-all backdrop-blur-md cursor-pointer group"
+        className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] md:bottom-3 right-3 z-30 flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-900/95 hover:bg-emerald-950 border border-emerald-500/50 hover:border-emerald-400 text-emerald-400 hover:text-emerald-300 rounded-full shadow-2xl text-[11px] font-bold tracking-wider uppercase transition-all backdrop-blur-md cursor-pointer group"
         title="Abrir Modo Desenvolvedor & Sandbox (Ctrl+Shift+D)"
+        data-testid="dev-tools-launcher-btn"
       >
         <Zap className="w-3.5 h-3.5 text-emerald-400 group-hover:scale-110 transition-transform" />
         <span className="hidden sm:inline">DEV</span>
