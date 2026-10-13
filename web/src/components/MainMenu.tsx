@@ -84,7 +84,7 @@ export const MainMenu: React.FC = () => {
   const [selectedStateCode, setSelectedStateCode] = useState<string>('all');
   const [selectedClubId, setSelectedClubId] = useState<number>(gameState.userClubId || 255); // Flamengo
   const [searchFilter, setSearchFilter] = useState('');
-  const [activeCountryIds, setActiveCountryIds] = useState<number[]>([29, 154, 65]); // Brasil, Portugal, Espanha
+  const [activeCountryIds, setActiveCountryIds] = useState<number[]>([29]); // Brasil padrão (1 a 5 países suportados)
   const [isStartingGame, setIsStartingGame] = useState<boolean>(false);
   const [leaguesMeta, setLeaguesMeta] = useState<LeaguesMeta | null>(null);
 
@@ -312,7 +312,9 @@ export const MainMenu: React.FC = () => {
 
     // Automatically ensure the selected primary country is active
     if (!activeCountryIds.includes(cid)) {
-      if (activeCountryIds.length >= 5) {
+      if (activeCountryIds.length === 1) {
+        setActiveCountryIds([cid]);
+      } else if (activeCountryIds.length >= 5) {
         setActiveCountryIds([cid, ...activeCountryIds.slice(0, 4)]);
       } else {
         setActiveCountryIds([cid, ...activeCountryIds]);
@@ -333,8 +335,8 @@ export const MainMenu: React.FC = () => {
         showToast('info', 'A liga principal do seu clube de largada não pode ser desmarcada.');
         return; // Primary league cannot be deselected
       }
-      if (activeCountryIds.length <= 3) {
-        showToast('warning', 'Mínimo de 3 ligas ativas requerido para simulação paralela.');
+      if (activeCountryIds.length <= 1) {
+        showToast('warning', 'Pelo menos 1 liga ativa deve permanecer selecionada.');
         return;
       }
       setActiveCountryIds((prev) => prev.filter((id) => id !== cid));
@@ -645,23 +647,19 @@ export const MainMenu: React.FC = () => {
                   </div>
                 </div>
 
-                {/* 1.5 Active Leagues Selector (3 to 5 countries) */}
+                {/* 1.5 Active Leagues Selector (1 a 5 countries) */}
                 <div className="pt-2 border-t border-[#162e21]">
                   <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1 flex items-center justify-between">
                     <span className="flex items-center gap-1.5">
                       <Zap className="w-3.5 h-3.5 text-amber-400" />
-                      Ligas Ativas Simultâneas (3 a 5 países)
+                      Ligas Ativas Simultâneas (1 a 5 países)
                     </span>
-                    <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${
-                      activeCountryIds.length >= 3 && activeCountryIds.length <= 5
-                        ? 'bg-emerald-950/80 text-emerald-400 border-emerald-600/40'
-                        : 'bg-amber-950/80 text-amber-400 border-amber-600/40'
-                    }`}>
-                      {activeCountryIds.length} de 5 selecionadas {activeCountryIds.length < 3 ? '(mínimo 3)' : ''}
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded border bg-emerald-950/80 text-emerald-400 border-emerald-600/40">
+                      {activeCountryIds.length} de 5 selecionadas {activeCountryIds.length === 1 ? '· Modo Focado' : '· Multi-Liga'}
                     </span>
                   </div>
                   <p className="text-[10px] text-slate-400 mb-2">
-                    Ligas simuladas simultaneamente no calendário. Você poderá receber ofertas e mudar de clube entre elas.
+                    Ligas simuladas simultaneamente no calendário (torneios continentais ocorrem sempre). Você poderá receber ofertas e mudar de clube entre elas.
                   </p>
 
                   {/* Active Leagues Pills (expanded list showing all currently active countries) */}

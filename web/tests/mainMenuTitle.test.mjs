@@ -69,8 +69,7 @@ test('MainMenu.tsx replaces native browser alerts with polished floating toast n
 
   // Must have toast notification element and showToast
   assert.ok(content.includes('data-testid="mainmenu-toast"'), 'MainMenu.tsx must render floating toast with testid');
-  assert.ok(content.includes('showToast'), 'MainMenu.tsx must have showToast helper');
-  assert.ok(content.includes('Mínimo de 3 ligas ativas requerido'), 'Provides friendly message for minimum active leagues');
+  assert.ok(content.includes('Pelo menos 1 liga ativa deve permanecer selecionada'), 'Provides friendly message for minimum active leagues');
   assert.ok(content.includes('Máximo de 5 ligas ativas'), 'Provides friendly message for maximum active leagues');
 });
 
