@@ -73,32 +73,49 @@ COUNTRY_LEVELS = {
     186: 17,# Suíça
 }
 
-COUNTRY_NAMES = {
-    1: "África do Sul", 2: "Albânia", 3: "Alemanha", 4: "Andorra", 5: "Angola",
-    6: "Anguilla", 7: "Antígua e Barbuda", 8: "Curaçao", 9: "Arábia Saudita", 10: "Argélia",
-    11: "Argentina", 12: "Armênia", 13: "Aruba", 14: "Austrália", 15: "Áustria",
-    16: "Azerbaijão", 17: "Bahamas", 18: "Bahrein", 19: "Bangladesh", 20: "Barbados",
-    21: "Bélgica", 22: "Belize", 23: "Benin", 24: "Bermudas", 25: "Belarus",
-    26: "Bolívia", 27: "Bósnia e Herzegovina", 28: "Botsuana", 29: "Brasil", 30: "Brunei",
-    31: "Bulgária", 32: "Burkina Faso", 33: "Burundi", 34: "Butão", 35: "Cabo Verde",
-    36: "Camarões", 37: "Camboja", 38: "Canadá", 39: "Catar", 40: "Cazaquistão",
-    41: "Chade", 42: "Chile", 43: "China", 44: "Chipre", 45: "Timor-Leste",
-    46: "Colômbia", 47: "Congo", 48: "Coreia do Norte", 49: "Coreia do Sul", 50: "Costa do Marfim",
-    51: "Costa Rica", 52: "Croácia", 53: "Cuba", 54: "Dinamarca", 55: "Djibuti",
-    56: "Dominica", 57: "Egito", 58: "El Salvador", 59: "Emirados Árabes", 60: "Equador",
-    61: "Eritreia", 62: "Escócia", 63: "Eslováquia", 64: "Eslovênia", 65: "Espanha",
-    66: "Essuatíni", 67: "Estônia", 68: "México", 69: "Etiópia", 70: "Fiji",
-    71: "Filipinas", 72: "França", 73: "Gabão", 74: "Gâmbia", 75: "Gana",
-    76: "Geórgia", 77: "Gibraltar", 78: "Granada", 79: "Grécia", 80: "Guam",
-    81: "Guatemala", 82: "Guiana", 83: "Guiana Francesa", 84: "Guiné", 85: "Holanda",
-    86: "Honduras", 87: "Hong Kong", 88: "Hungria", 89: "Iêmen", 90: "Índia",
-    91: "Indonésia", 92: "Inglaterra", 93: "Irã", 94: "Iraque", 95: "Irlanda",
-    96: "Irlanda do Norte", 97: "Inglaterra", 98: "Islândia", 99: "Israel", 100: "Itália",
-    104: "Itália", 107: "Japão", 131: "Estados Unidos", 141: "Marrocos", 143: "Nova Zelândia",
-    148: "Noruega", 150: "Paraguai", 151: "Peru", 154: "Portugal", 162: "Rússia",
-    174: "Suécia", 175: "Suíça", 186: "Suíça", 188: "Turquia", 190: "Ucrânia", 195: "Uruguai",
-    198: "Venezuela"
-}
+def _load_all_country_names() -> dict:
+    names = {
+        1: "África do Sul", 2: "Albânia", 3: "Alemanha", 4: "Andorra", 5: "Angola",
+        6: "Anguilla", 7: "Antígua e Barbuda", 8: "Curaçao", 9: "Arábia Saudita", 10: "Argélia",
+        11: "Argentina", 12: "Armênia", 13: "Aruba", 14: "Austrália", 15: "Áustria",
+        16: "Azerbaijão", 17: "Bahamas", 18: "Bahrein", 19: "Bangladesh", 20: "Barbados",
+        21: "Bélgica", 22: "Belize", 23: "Benin", 24: "Bermudas", 25: "Belarus",
+        26: "Bolívia", 27: "Bósnia e Herzegovina", 28: "Botsuana", 29: "Brasil", 30: "Brunei",
+        31: "Bulgária", 32: "Burkina Faso", 33: "Burundi", 34: "Butão", 35: "Cabo Verde",
+        36: "Camarões", 37: "Camboja", 38: "Canadá", 39: "Catar", 40: "Cazaquistão",
+        41: "Chade", 42: "Chile", 43: "China", 44: "Chipre", 45: "Timor-Leste",
+        46: "Colômbia", 47: "Congo", 48: "Coreia do Norte", 49: "Coreia do Sul", 50: "Costa do Marfim",
+        51: "Costa Rica", 52: "Croácia", 53: "Cuba", 54: "Dinamarca", 55: "Djibuti",
+        56: "Dominica", 57: "Egito", 58: "El Salvador", 59: "Emirados Árabes", 60: "Equador",
+        61: "Eritreia", 62: "Escócia", 63: "Eslováquia", 64: "Eslovênia", 65: "Espanha",
+        66: "Essuatíni", 67: "Estônia", 68: "EUA", 69: "Etiópia", 70: "Fiji",
+        71: "Filipinas", 72: "França", 73: "Gabão", 74: "Gâmbia", 75: "Gana",
+        76: "Geórgia", 77: "Gibraltar", 78: "Granada", 79: "Grécia", 80: "Guam",
+        81: "Guatemala", 82: "Guiana", 83: "Guiana Francesa", 84: "Guiné", 85: "Holanda",
+        86: "Honduras", 87: "Hong Kong", 88: "Hungria", 89: "Iêmen", 90: "Índia",
+        91: "Indonésia", 92: "Inglaterra", 93: "Irã", 94: "Iraque", 95: "Irlanda",
+        96: "Irlanda do Norte", 97: "Inglaterra", 98: "Islândia", 99: "Israel", 100: "Itália",
+        104: "Itália", 107: "Japão", 131: "México", 141: "Marrocos", 143: "Nova Zelândia",
+        148: "Noruega", 150: "Paraguai", 151: "Peru", 154: "Portugal", 162: "Rússia",
+        174: "Suécia", 175: "Suíça", 186: "Suíça", 188: "Turquia", 190: "Ucrânia", 195: "Uruguai",
+        198: "Venezuela"
+    }
+    # Load authoritative country names from official Brasfoot default_lang.xml
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    lang_xml = os.path.join(root, "Brasfoot 2026/arquivos/default_lang.xml")
+    if os.path.exists(lang_xml):
+        try:
+            import xml.etree.ElementTree as ET
+            tree = ET.parse(lang_xml)
+            for entry in tree.getroot():
+                k = entry.attrib.get("key")
+                if k and k.startswith("P") and k[1:].isdigit():
+                    names[int(k[1:])] = entry.text.strip()
+        except Exception:
+            pass
+    return names
+
+COUNTRY_NAMES = _load_all_country_names()
 
 def map_club_level_to_n7(level: int) -> int:
     """Non-linear level mapping from Brasfoot best/f_0.java:596"""
@@ -256,8 +273,7 @@ def main():
     club_by_orig_id = {c["id"]: c for c in clubs}
     selected = set()
 
-    # 1. Brazil: exactly 196 clubs
-    # Division 1 (Série A, 20), Division 2 (Série B, 20), Division 3 (Série C, 20), Division 4 (Série D, 64)
+    # 1. Brazil: divisions 1-4 and division 5 (Acesso / Estaduais)
     bra_leagues = [l for l in leagues if l["country_id"] == 29]
     div1_raw = bra_leagues[0]["club_ids"][:20] if len(bra_leagues) > 0 else []
     div2_raw = bra_leagues[1]["club_ids"][:20] if len(bra_leagues) > 1 else []
@@ -265,73 +281,11 @@ def main():
     div4_raw = bra_leagues[3]["club_ids"][:64] if len(bra_leagues) > 3 else []
 
     national_bra = list(div1_raw + div2_raw + div3_raw + div4_raw)
-    for cid in national_bra:
-        selected.add(cid)
+    div5_raw = [c["id"] for c in clubs if c["country_id"] == 29 and c["id"] not in national_bra]
 
-    # State championship quotas for Brazil (total clubs in database)
-    target_state_totals = {
-        18: 13, # RJ (Campeonato Carioca needs 12 clubs)
-        25: 19, # SP (Paulistão)
-        10: 12, # MG (Mineiro)
-        22: 12, # RS (Gaúcho)
-        17: 12, # PR (Paranaense)
-        23: 12, # SC (Catarinense)
-        8: 12,  # GO (Goiano)
-        4: 10,  # BA (Baiano)
-        15: 10, # PE (Pernambucano)
-        5: 10,  # CE (Cearense)
-    }
-
-    nat_by_state = defaultdict(int)
-    for cid in national_bra:
-        nat_by_state[club_by_orig_id[cid].get("state_id", 0)] += 1
-
-    state_pool_selected = set()
-    bra_by_state = defaultdict(list)
-    for c in clubs:
-        if c["country_id"] == 29 and c["id"] not in selected:
-            bra_by_state[c.get("state_id", 0)].append(c)
-
-    for sid, sclubs in bra_by_state.items():
-        sclubs.sort(key=lambda x: (-x.get("level", 0), -x.get("reputation", 0), x["name"]))
-        needed = target_state_totals.get(sid, 3) - nat_by_state[sid]
-        for c in sclubs[:max(0, needed)]:
-            state_pool_selected.add(c["id"])
-
-    # Target state pool size is 72 clubs (196 - 124 = 72)
-    if len(state_pool_selected) < 72:
-        rem_bra = [c for c in clubs if c["country_id"] == 29 and c["id"] not in selected and c["id"] not in state_pool_selected]
-        rem_bra.sort(key=lambda x: (-x.get("level", 0), -x.get("reputation", 0), x["name"]))
-        for c in rem_bra[:72 - len(state_pool_selected)]:
-            state_pool_selected.add(c["id"])
-    elif len(state_pool_selected) > 72:
-        removable = [c for c in clubs if c["id"] in state_pool_selected]
-        removable.sort(key=lambda x: (x.get("level", 0), x.get("reputation", 0)))
-        for c in removable:
-            sid = c.get("state_id", 0)
-            total_for_state = nat_by_state[sid] + sum(1 for cid in state_pool_selected if club_by_orig_id[cid].get("state_id") == sid)
-            if total_for_state > target_state_totals.get(sid, 3) and len(state_pool_selected) > 72:
-                state_pool_selected.remove(c["id"])
-
-    div5_raw = list(state_pool_selected)
-    for cid in div5_raw:
-        selected.add(cid)
-
-    # 2. International: target = 704 - 196 = 508 clubs
-    priority_countries = [
-        65, 97, 104, 3, 72, 154, 11, 85, 21, 188, 68, 131, 9, 107, 195,
-        46, 42, 60, 150, 151, 186, 174, 148, 54, 79, 162, 190, 52, 14,
-        1, 10, 141, 57, 43, 49, 143, 26, 198
-    ]
-
-    for cid in priority_countries:
-        c_leagues = [l for l in leagues if l["country_id"] == cid]
-        for l in c_leagues:
-            for team_id in l["club_ids"]:
-                if len(selected) < 704 and team_id not in selected:
-                    selected.add(team_id)
-
-    print(f"Exact clubs selected: {len(selected)} clubs.")
+    # Select ALL 3,216 clubs from Brasfoot (no artificial cutoffs!)
+    selected = set(c["id"] for c in clubs)
+    print(f"Total clubs selected: {len(selected)} clubs across all countries.")
 
     # Build stable ID map preserving legacy IDs where available
     id_map = {}
@@ -382,11 +336,12 @@ def main():
         for mid in club_ids:
             club_league_info[mid] = (div, div_name, l_name, "Brasil")
 
+    bra_total = len([c for c in clubs if c["country_id"] == 29])
     countries_map[29] = {
         "id": 29,
         "name": "Brasil",
-        "clubCount": 196,
-        "divisionCount": 4
+        "clubCount": bra_total,
+        "divisionCount": 5
     }
 
     # International leagues
@@ -438,8 +393,15 @@ def main():
 
         cid = id_map[orig_id]
         c_id = c["country_id"]
-        if c_id in countries_map:
-            countries_map[c_id]["clubCount"] += 1
+        if c_id not in countries_map:
+            c_name = COUNTRY_NAMES.get(c_id, f"País {c_id}")
+            countries_map[c_id] = {
+                "id": c_id,
+                "name": c_name,
+                "clubCount": 0,
+                "divisionCount": 1
+            }
+        countries_map[c_id]["clubCount"] += 1
 
         div_info = club_league_info.get(cid)
         if div_info:
@@ -589,6 +551,26 @@ def main():
                 "captainId": captain_id
             },
             "squad": squad_out
+        })
+
+    # Ensure any country with clubs has at least one league entry in leagues_out
+    existing_league_cids = set(l["countryId"] for l in leagues_out)
+    unleagued_clubs_by_c = defaultdict(list)
+    for c in clubs_out:
+        if c["countryId"] not in existing_league_cids:
+            unleagued_clubs_by_c[c["countryId"]].append(c["id"])
+
+    for c_id, c_club_ids in unleagued_clubs_by_c.items():
+        c_name = COUNTRY_NAMES.get(c_id, f"País {c_id}")
+        leagues_out.append({
+            "countryId": c_id,
+            "countryName": c_name,
+            "name": f"Liga {c_name}",
+            "division": 1,
+            "divisionName": "1ª Divisão",
+            "teamCount": len(c_club_ids),
+            "clubIds": c_club_ids,
+            "relegated": 0
         })
 
     states_out = []

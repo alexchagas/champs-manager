@@ -46,7 +46,7 @@ export default defineConfig({
         ]
       },
       workbox: {
-        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
+        maximumFileSizeToCacheInBytes: 35 * 1024 * 1024,
         globPatterns: ['**/*.{js,css,html,ico,svg,wasm}', 'pwa-*.png', 'apple-touch-icon.png'],
         runtimeCaching: [
           {
@@ -123,6 +123,7 @@ export default defineConfig({
     },
   ],
   build: {
+    chunkSizeWarningLimit: 30000,
     sourcemap: process.env.SENTRY_AUTH_TOKEN ? true : false,
   },
   server: {

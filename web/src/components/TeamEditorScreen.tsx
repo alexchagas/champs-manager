@@ -15,6 +15,7 @@ export const TeamEditorScreen: React.FC<{ onBack: () => void; onDirtyChange: (di
   const [clubs, setClubs] = useState<Club[]>(() => [...getAllClubs()]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [query, setQuery] = useState('');
+  const [countryFilter, setCountryFilter] = useState<number | 'all'>('all');
   const [dirtyIds, setDirtyIds] = useState<Set<number>>(() => new Set());
   const [playerDraft, setPlayerDraft] = useState<PlayerDraft | null>(null);
   const [transferId, setTransferId] = useState<number | null>(null);
@@ -26,9 +27,12 @@ export const TeamEditorScreen: React.FC<{ onBack: () => void; onDirtyChange: (di
   const selected = clubs.find((club) => club.id === selectedId);
   const filtered = useMemo(() => {
     const text = query.trim().toLocaleLowerCase();
-    return clubs.filter((club) => !text || club.name.toLocaleLowerCase().includes(text))
-      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')).slice(0, 80);
-  }, [clubs, query]);
+    return clubs.filter((club) => {
+      if (countryFilter !== 'all' && club.countryId !== countryFilter) return false;
+      if (text && !club.name.toLocaleLowerCase().includes(text)) return false;
+      return true;
+    }).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')).slice(0, 100);
+  }, [clubs, query, countryFilter]);
 
   const updateClubs = (updates: Club[]) => {
     const byId = new Map(updates.map((club) => [club.id, club]));
@@ -116,6 +120,17 @@ export const TeamEditorScreen: React.FC<{ onBack: () => void; onDirtyChange: (di
     <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
       <aside className="rounded-lg border border-[#254433] bg-[#102018] p-3">
         <div className="relative"><Search className="absolute left-2 top-2.5 h-4 w-4 text-slate-500"/><input aria-label="Buscar clube" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar qualquer clube" className={`${inputClass} pl-8`}/></div>
+        <select
+          aria-label="Filtrar por país"
+          value={countryFilter}
+          onChange={(e) => setCountryFilter(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+          className={`${inputClass} mt-2 text-xs`}
+        >
+          <option value="all">Todos os Países ({countries.length})</option>
+          {countries.map((c) => (
+            <option key={c.id} value={c.id}>{c.name} ({c.clubCount})</option>
+          ))}
+        </select>
         <button onClick={createClub} className="mt-2 w-full rounded bg-emerald-600 px-3 py-2 text-xs font-bold text-black"><Plus className="mr-1 inline h-4 w-4"/>Criar Novo Clube</button>
         <div className="mt-3 max-h-[62vh] space-y-1 overflow-y-auto">{filtered.map((club) => <button key={club.id} onClick={() => setSelectedId(club.id)} className={`w-full rounded px-2 py-2 text-left text-xs ${selectedId === club.id ? 'bg-emerald-700 text-white' : 'hover:bg-[#1a3626] text-slate-300'}`}>{club.name}{dirtyIds.has(club.id) && <span className="ml-1 text-amber-400">●</span>}</button>)}</div>
       </aside>
