@@ -2,7 +2,7 @@
   "name": "champs-manager-root",
   "private": true,
   "scripts": {
-    "build": "npm --prefix web install && npm --prefix web run build",
+    "build": "NODE_OPTIONS='--max-old-space-size=4096' npm --prefix web install && NODE_OPTIONS='--max-old-space-size=4096' npm --prefix web run build",
     "deploy": "wrangler deploy"
   },
   "devDependencies": {
