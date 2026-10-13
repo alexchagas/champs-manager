@@ -1212,9 +1212,9 @@ export const MainMenu: React.FC = () => {
                   >
                     <button
                       onClick={handleStartGame}
-                      disabled={isStartingGame || activeCountryIds.length < 3}
+                      disabled={isStartingGame || activeCountryIds.length < 1}
                       className={`w-full py-3 font-black rounded-lg shadow-xl text-xs uppercase tracking-wider transition-all transform active:scale-98 cursor-pointer flex items-center justify-center space-x-2 ${
-                        isStartingGame || activeCountryIds.length < 3 ? 'opacity-60 cursor-not-allowed' : ''
+                        isStartingGame || activeCountryIds.length < 1 ? 'opacity-60 cursor-not-allowed' : ''
                       }`}
                       style={{
                         backgroundColor: selectedClubTheme.primaryAccent,
