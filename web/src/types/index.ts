@@ -360,6 +360,7 @@ export interface GameState {
   leagueName?: string;
   divisionName?: string;
   countryName?: string;
+  activeCountryIds?: number[];
   stateChampionshipName?: string;
   nationalLeagueName?: string;
   continentalCupName?: string;

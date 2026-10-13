@@ -176,18 +176,29 @@ export function generateSingleYouthPlayer(clubId: number, nextId: number, clubLe
 export function createNewGame(
   userClubId: number = 255, 
   managerName: string = 'Alex Chagas',
-  customOptions?: Partial<GameOptions>
+  customOptions?: Partial<GameOptions>,
+  activeCountryIds?: number[],
+  loadedClubs?: Club[]
 ): GameState {
-  const { competitionClubs, leagueName, divisionName, countryName } = getCompetitionClubs(userClubId);
+  const basePool = loadedClubs && loadedClubs.length > 0
+    ? [...new Map([...getAllClubs(), ...loadedClubs].map(c => [c.id, c])).values()]
+    : getAllClubs();
+
+  const { competitionClubs, leagueName, divisionName, countryName } = getCompetitionClubs(userClubId, basePool);
 
   // Deep clone clubs so state is completely isolated and ensure contractYears are initialized
-  const sourceClub = competitionClubs.find(c => c.id === userClubId) || competitionClubs[0];
-  const statePool = sourceClub.countryId === 29 ? getAllClubs().filter(c => c.countryId === 29 && (
+  const sourceClub = competitionClubs.find(c => c.id === userClubId) || basePool.find(c => c.id === userClubId) || competitionClubs[0];
+  const activeCountries = activeCountryIds && activeCountryIds.length > 0
+    ? Array.from(new Set([sourceClub.countryId || 29, ...activeCountryIds]))
+    : [sourceClub.countryId || 29];
+
+  const activeCountryClubs = basePool.filter(c => activeCountries.includes(c.countryId || 29));
+  const statePool = sourceClub.countryId === 29 ? basePool.filter(c => c.countryId === 29 && (
     (sourceClub.stateId != null && c.stateId === sourceClub.stateId) ||
     (sourceClub.stateCode != null && c.stateCode === sourceClub.stateCode)
   )) : [];
-  const continentalPool = getAllClubs().filter(c => c.countryId === sourceClub.countryId && c.id !== userClubId).slice(0, 15);
-  const activeClubs = [...new Map([...competitionClubs, ...statePool, ...continentalPool].map(c => [c.id, c])).values()];
+  const continentalPool = basePool.filter(c => c.countryId === sourceClub.countryId && c.id !== userClubId).slice(0, 15);
+  const activeClubs = [...new Map([...competitionClubs, ...statePool, ...continentalPool, ...activeCountryClubs].map(c => [c.id, c])).values()];
   const clonedClubs: Club[] = JSON.parse(JSON.stringify(activeClubs)).map((c: Club) => ({
     ...c,
     debt: c.debt ?? 0,
@@ -203,7 +214,6 @@ export function createNewGame(
       contractYears: p.contractYears ?? (1 + ((idx + p.id) % 3)),
     })),
   }));
-
 
   const userClub = clonedClubs.find((c) => c.id === userClubId) || clonedClubs[0];
 
@@ -260,6 +270,7 @@ export function createNewGame(
     leagueName,
     divisionName,
     countryName,
+    activeCountryIds: activeCountries,
     stateChampionshipName: twoSemesterData.estadualName,
     nationalLeagueName: twoSemesterData.nacionalName,
     continentalCupName: twoSemesterData.continentalName,

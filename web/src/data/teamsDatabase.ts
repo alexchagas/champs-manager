@@ -52,6 +52,39 @@ for (const country of database.countries) {
   countriesById.set(country.id, country);
 }
 
+export function registerClubs(newClubs: Club[]): void {
+  for (const club of newClubs) {
+    if (!clubsById.has(club.id)) {
+      clubsById.set(club.id, club);
+      database.clubs.push(club);
+    } else {
+      // Update with full squad if previously had incomplete squad
+      const existing = clubsById.get(club.id)!;
+      if ((!existing.squad || existing.squad.length === 0) && club.squad && club.squad.length > 0) {
+        Object.assign(existing, club);
+      }
+    }
+  }
+  database.totalClubs = database.clubs.length;
+}
+
+export function registerCountries(newCountries: CountryInfo[]): void {
+  for (const c of newCountries) {
+    if (!countriesById.has(c.id)) {
+      countriesById.set(c.id, c);
+      database.countries.push(c);
+    }
+  }
+}
+
+export function registerLeagues(newLeagues: LeagueInfo[]): void {
+  for (const l of newLeagues) {
+    if (!database.leagues.some((item) => item.id === l.id || (item.countryId === l.countryId && item.division === l.division))) {
+      database.leagues.push(l);
+    }
+  }
+}
+
 export function getAllClubs(): Club[] {
   return database.clubs;
 }
@@ -133,23 +166,25 @@ export function findLeagueForClub(clubId: number): LeagueInfo | undefined {
  * If in an international league -> returns the teams of that league.
  * If in an Estadual / Access division -> returns the teams of that state or a balanced 8-12 team pool.
  */
-export function getCompetitionClubs(selectedClubId: number): {
+export function getCompetitionClubs(selectedClubId: number, customPool?: Club[]): {
   competitionClubs: Club[];
   leagueName: string;
   divisionName: string;
   countryName: string;
 } {
-  const selectedClub = clubsById.get(selectedClubId) || database.clubs[0];
+  const selectedClub = (customPool ? customPool.find((c) => c.id === selectedClubId) : undefined) || clubsById.get(selectedClubId) || database.clubs[0];
   const league = findLeagueForClub(selectedClub.id);
 
   let competitionClubs: Club[] = [];
   let leagueName = league?.name || selectedClub.leagueName || 'Campeonato Nacional';
   let divisionName = league?.divisionName || selectedClub.divisionName || '1ª Divisão';
   const country = countriesById.get(selectedClub.countryId || 29);
-  const countryName = country?.name || (selectedClub.countryId === 29 ? 'Brasil' : 'Internacional');
+  const countryName = country?.name || (selectedClub as { countryName?: string }).countryName || (selectedClub.countryId === 29 ? 'Brasil' : 'Internacional');
 
   if (league && league.clubIds.length > 0) {
-    const allLeagueClubs = getClubsByLeague(league);
+    const allLeagueClubs = customPool
+      ? league.clubIds.map((id) => customPool.find((c) => c.id === id) || clubsById.get(id)!).filter(Boolean)
+      : getClubsByLeague(league);
 
     // If it's Série D (64 clubs), take the 8-team subgroup containing the chosen club
     if (allLeagueClubs.length > 24) {
@@ -167,15 +202,19 @@ export function getCompetitionClubs(selectedClubId: number): {
 
   // Fallback if no clubs found or only 1 club:
   if (competitionClubs.length < 2) {
-    // Collect clubs from the same country or state
-    const sameCountryClubs = getClubsByCountry(selectedClub.countryId || 29);
+    const pool = customPool || database.clubs;
+    const sameCountryClubs = pool.filter((c) => c.countryId === (selectedClub.countryId || 29) && (selectedClub.division ? c.division === selectedClub.division : true));
     if (sameCountryClubs.length >= 4) {
       competitionClubs = sameCountryClubs.slice(0, 20);
     } else {
-      // Pick top clubs with similar reputation
-      competitionClubs = database.clubs
-        .filter((c) => Math.abs(c.reputation - selectedClub.reputation) <= 1)
-        .slice(0, 20);
+      const allSameCountry = pool.filter((c) => c.countryId === (selectedClub.countryId || 29));
+      if (allSameCountry.length >= 2) {
+        competitionClubs = allSameCountry.slice(0, 20);
+      } else {
+        competitionClubs = pool
+          .filter((c) => Math.abs(c.reputation - selectedClub.reputation) <= 1)
+          .slice(0, 20);
+      }
     }
   }
 

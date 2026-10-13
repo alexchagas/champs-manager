@@ -34,8 +34,12 @@ import {
   getAllLeagues, 
   getAllStates, 
   getClubsByLeague,
-  getClubById 
+  getClubById,
+  registerClubs,
+  registerCountries,
+  registerLeagues
 } from '../data/teamsDatabase';
+import { getLeaguesMeta, loadClubsForActiveCountries, LeaguesMeta } from '../data/leagueBundleLoader';
 import { AutoSaveMode, Club } from '../types';
 import { getClubTheme, deriveClubAtmosphere } from '../theme/clubTheme';
 
@@ -75,6 +79,9 @@ export const MainMenu: React.FC = () => {
   const [selectedStateCode, setSelectedStateCode] = useState<string>('all');
   const [selectedClubId, setSelectedClubId] = useState<number>(gameState.userClubId || 255); // Flamengo
   const [searchFilter, setSearchFilter] = useState('');
+  const [activeCountryIds, setActiveCountryIds] = useState<number[]>([29, 154, 65]); // Brasil, Portugal, Espanha
+  const [isStartingGame, setIsStartingGame] = useState<boolean>(false);
+  const [leaguesMeta, setLeaguesMeta] = useState<LeaguesMeta | null>(null);
 
   // In-game simulation options
   const [simSpeed, setSimSpeed] = useState<1 | 2 | 5>(gameState.options.simSpeed || 2);
@@ -85,11 +92,49 @@ export const MainMenu: React.FC = () => {
   const [saveTitle, setSaveTitle] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
 
-  // Cached database collections
-  const allClubs = useMemo(() => getAllClubs(), []);
-  const allCountries = useMemo(() => getAllCountries(), []);
-  const allStates = useMemo(() => getAllStates(), []);
-  const allLeagues = useMemo(() => getAllLeagues(), []);
+  // Pre-load lightweight league metadata index for snappy UI
+  React.useEffect(() => {
+    let mounted = true;
+    getLeaguesMeta().then((meta) => {
+      if (mounted && meta) {
+        setLeaguesMeta(meta);
+        if (meta.countries && meta.countries.length > 0) registerCountries(meta.countries);
+        if (meta.leagues && meta.leagues.length > 0) registerLeagues(meta.leagues);
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // Database collections (with fallback to bundled static db)
+  const allClubs = useMemo(() => {
+    if (leaguesMeta && leaguesMeta.clubsIndex && leaguesMeta.clubsIndex.length > 0) {
+      return leaguesMeta.clubsIndex as unknown as Club[];
+    }
+    return getAllClubs();
+  }, [leaguesMeta]);
+
+  const allCountries = useMemo(() => {
+    if (leaguesMeta && leaguesMeta.countries && leaguesMeta.countries.length > 0) {
+      return leaguesMeta.countries;
+    }
+    return getAllCountries();
+  }, [leaguesMeta]);
+
+  const allStates = useMemo(() => {
+    if (leaguesMeta && leaguesMeta.states && leaguesMeta.states.length > 0) {
+      return leaguesMeta.states;
+    }
+    return getAllStates();
+  }, [leaguesMeta]);
+
+  const allLeagues = useMemo(() => {
+    if (leaguesMeta && leaguesMeta.leagues && leaguesMeta.leagues.length > 0) {
+      return leaguesMeta.leagues;
+    }
+    return getAllLeagues();
+  }, [leaguesMeta]);
 
   // Leagues for currently selected country
   const countryLeagues = useMemo(() => {
@@ -151,7 +196,7 @@ export const MainMenu: React.FC = () => {
 
   // Selected Club details
   const selectedClub = useMemo(() => {
-    return getClubById(selectedClubId) || filteredClubs[0] || allClubs[0];
+    return getClubById(selectedClubId) || filteredClubs.find((c) => c.id === selectedClubId) || filteredClubs[0] || allClubs[0];
   }, [selectedClubId, filteredClubs, allClubs, activeTab]);
 
   const selectedClubTheme = useMemo(() => getClubTheme(selectedClub), [selectedClub]);
@@ -159,21 +204,52 @@ export const MainMenu: React.FC = () => {
 
   // Average strength of starter squad (top 11)
   const selectedClubAvgStrength = useMemo(() => {
+    if (!selectedClub.squad || selectedClub.squad.length === 0) {
+      return Math.round(50 + (selectedClub.level || 10) * 1.8);
+    }
     const starters = selectedClub.squad.filter((p) => p.isStarter);
     const pool = starters.length === 11 ? starters : selectedClub.squad.slice(0, 11);
     if (pool.length === 0) return 70;
     return Math.round(pool.reduce((acc, p) => acc + p.strength, 0) / pool.length);
   }, [selectedClub]);
 
-  // Start new career
-  const handleStartGame = () => {
+  // Start new career with multi-league dynamic loading
+  const handleStartGame = async () => {
     sound.playWhistle();
-    startNewGame(selectedClub.id, managerName.trim() || 'Alex Chagas', {
-      simSpeed,
-      soundEnabled,
-      autoPauseOnGoal,
-    });
-    setScreen('overview');
+    setIsStartingGame(true);
+    try {
+      // Ensure primary league is always included
+      const activeIds = Array.from(new Set([selectedClub.countryId || selectedCountryId, ...activeCountryIds]));
+      const loadedClubs = await loadClubsForActiveCountries(activeIds);
+      registerClubs(loadedClubs);
+      startNewGame(
+        selectedClub.id,
+        managerName.trim() || 'Alex Chagas',
+        {
+          simSpeed,
+          soundEnabled,
+          autoPauseOnGoal,
+        },
+        activeIds,
+        loadedClubs
+      );
+      setScreen('overview');
+    } catch (err) {
+      console.warn('Fallback starting game without extra bundles:', err);
+      startNewGame(
+        selectedClub.id,
+        managerName.trim() || 'Alex Chagas',
+        {
+          simSpeed,
+          soundEnabled,
+          autoPauseOnGoal,
+        },
+        activeCountryIds
+      );
+      setScreen('overview');
+    } finally {
+      setIsStartingGame(false);
+    }
   };
 
   const [saveStatus, setSaveStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -206,10 +282,40 @@ export const MainMenu: React.FC = () => {
     setSelectedCountryId(cid);
     setSelectedDivision(1);
     setSelectedStateCode('all');
+
+    // Automatically ensure the selected primary country is active
+    if (!activeCountryIds.includes(cid)) {
+      if (activeCountryIds.length >= 5) {
+        setActiveCountryIds([cid, ...activeCountryIds.slice(0, 4)]);
+      } else {
+        setActiveCountryIds([cid, ...activeCountryIds]);
+      }
+    }
+
     // Pre-select first club of this country
     const firstClub = allClubs.find((c) => c.countryId === cid);
     if (firstClub) {
       setSelectedClubId(firstClub.id);
+    }
+  };
+
+  const toggleActiveCountry = (cid: number) => {
+    sound.playClick();
+    if (activeCountryIds.includes(cid)) {
+      if (cid === selectedCountryId) {
+        return; // Primary league cannot be deselected
+      }
+      if (activeCountryIds.length <= 3) {
+        alert('Mínimo de 3 ligas ativas requerido para simulação paralela.');
+        return;
+      }
+      setActiveCountryIds((prev) => prev.filter((id) => id !== cid));
+    } else {
+      if (activeCountryIds.length >= 5) {
+        alert('Máximo de 5 ligas ativas permitido.');
+        return;
+      }
+      setActiveCountryIds((prev) => [...prev, cid]);
     }
   };
 
@@ -221,13 +327,15 @@ export const MainMenu: React.FC = () => {
   // Popular quick countries list
   const popularCountries = [
     { id: 29, name: 'Brasil' },
+    { id: 154, name: 'Portugal' },
     { id: 65, name: 'Espanha' },
-    { id: 11, name: 'Argentina' },
     { id: 97, name: 'Inglaterra' },
+    { id: 11, name: 'Argentina' },
     { id: 104, name: 'Itália' },
     { id: 3, name: 'Alemanha' },
     { id: 72, name: 'França' },
-    { id: 154, name: 'Portugal' },
+    { id: 85, name: 'Holanda' },
+    { id: 131, name: 'Estados Unidos' },
   ];
 
   return (
@@ -454,6 +562,72 @@ export const MainMenu: React.FC = () => {
                         {allCountries.map((c) => (
                           <option key={c.id} value={c.id} className="bg-[#0b1611] text-white">
                             {c.name} ({c.clubCount} {c.clubCount === 1 ? 'clube' : 'clubes'})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 1.5 Active Leagues Selector (3 to 5 countries) */}
+                <div className="pt-2 border-t border-[#162e21]">
+                  <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Zap className="w-3.5 h-3.5 text-amber-400" />
+                      Ligas Ativas Simultâneas (3 a 5 países)
+                    </span>
+                    <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${
+                      activeCountryIds.length >= 3 && activeCountryIds.length <= 5
+                        ? 'bg-emerald-950/80 text-emerald-400 border-emerald-600/40'
+                        : 'bg-amber-950/80 text-amber-400 border-amber-600/40'
+                    }`}>
+                      {activeCountryIds.length} de 5 selecionadas {activeCountryIds.length < 3 ? '(mínimo 3)' : ''}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mb-2">
+                    Ligas simuladas simultaneamente no calendário. Você poderá receber ofertas e mudar de clube entre elas.
+                  </p>
+
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {popularCountries.map((c) => {
+                      const isActive = activeCountryIds.includes(c.id);
+                      const isPrimary = c.id === selectedCountryId;
+                      return (
+                        <button
+                          key={`active-${c.id}`}
+                          onClick={() => toggleActiveCountry(c.id)}
+                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-semibold transition-all cursor-pointer border ${
+                            isActive
+                              ? isPrimary
+                                ? 'bg-emerald-700 text-white border-emerald-400 shadow-sm'
+                                : 'bg-[#193b29] text-emerald-300 border-emerald-600/60 hover:bg-[#204933]'
+                              : 'bg-[#101e16] text-slate-400 border-[#183324] hover:text-white hover:bg-[#152a20]'
+                          }`}
+                        >
+                          {isActive ? <Check className="w-3 h-3 text-emerald-400" /> : <span className="w-3 h-3 text-slate-500 text-[10px]">+</span>}
+                          <span>{c.name}</span>
+                          {isPrimary && (
+                            <span className="text-[9px] bg-black/40 text-emerald-300 px-1 py-0.2 rounded font-mono font-bold">
+                              Principal
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+
+                    {/* Add any other country to active set */}
+                    <div className="relative inline-block">
+                      <select
+                        value=""
+                        onChange={(e) => {
+                          if (e.target.value) toggleActiveCountry(Number(e.target.value));
+                        }}
+                        className="bg-[#101e16] border border-[#183324] text-slate-400 hover:text-white text-xs px-2 py-1 rounded cursor-pointer focus:outline-none focus:border-emerald-500 font-semibold"
+                      >
+                        <option value="" disabled>+ Outra Liga ({allCountries.filter(c => !activeCountryIds.includes(c.id)).length})...</option>
+                        {allCountries.filter(c => !activeCountryIds.includes(c.id)).map((c) => (
+                          <option key={`opt-active-${c.id}`} value={c.id} className="bg-[#0b1611] text-white">
+                            + {c.name} ({c.clubCount} {c.clubCount === 1 ? 'clube' : 'clubes'})
                           </option>
                         ))}
                       </select>
@@ -830,7 +1004,7 @@ export const MainMenu: React.FC = () => {
                         </span>
                       </div>
                       <div className="flex flex-wrap gap-1">
-                        {selectedClub.squad.slice(0, 4).map((p) => (
+                        {(selectedClub.squad || []).slice(0, 4).map((p) => (
                           <span
                             key={p.id}
                             className="border px-2 py-0.5 rounded text-[11px] font-semibold flex items-center space-x-1"
@@ -941,7 +1115,10 @@ export const MainMenu: React.FC = () => {
                   >
                     <button
                       onClick={handleStartGame}
-                      className="w-full py-3 font-black rounded-lg shadow-xl text-xs uppercase tracking-wider transition-all transform active:scale-98 cursor-pointer flex items-center justify-center space-x-2"
+                      disabled={isStartingGame || activeCountryIds.length < 3}
+                      className={`w-full py-3 font-black rounded-lg shadow-xl text-xs uppercase tracking-wider transition-all transform active:scale-98 cursor-pointer flex items-center justify-center space-x-2 ${
+                        isStartingGame || activeCountryIds.length < 3 ? 'opacity-60 cursor-not-allowed' : ''
+                      }`}
                       style={{
                         backgroundColor: selectedClubTheme.primaryAccent,
                         color: selectedClubTheme.onPrimaryAccent,
@@ -949,7 +1126,11 @@ export const MainMenu: React.FC = () => {
                       }}
                     >
                       <Play className="w-4 h-4 fill-current" />
-                      <span>Iniciar Carreira com o {selectedClub.name}</span>
+                      <span>
+                        {isStartingGame
+                          ? 'Carregando Ligas Ativas...'
+                          : `Iniciar Carreira com o ${selectedClub.name} (${activeCountryIds.length} Ligas)`}
+                      </span>
                     </button>
                   </div>
                 </div>

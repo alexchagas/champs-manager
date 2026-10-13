@@ -79,7 +79,7 @@ interface GameContextType {
   viewClub: (clubId: number) => void;
   closeClubViewer: () => void;
   setScreen: (screen: ActiveScreen) => void;
-  startNewGame: (clubId: number, managerName: string, customOptions?: Partial<GameOptions>) => void;
+  startNewGame: (clubId: number, managerName: string, customOptions?: Partial<GameOptions>, activeCountryIds?: number[], loadedClubs?: Club[]) => void;
   loadGame: (slotId: string) => Promise<{ success: boolean; error?: string }>;
   saveGame: (title?: string) => Promise<{ success: boolean; error?: string }>;
   deleteSave: (slotId: string) => void;
@@ -348,9 +348,15 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const startNewGame = async (clubId: number, managerName: string, customOptions?: Partial<GameOptions>) => {
+  const startNewGame = async (
+    clubId: number,
+    managerName: string,
+    customOptions?: Partial<GameOptions>,
+    activeCountryIds?: number[],
+    loadedClubs?: Club[]
+  ) => {
     if (matchInProgress() && !window.confirm('Abandonar a partida em curso e iniciar outra carreira?')) return;
-    const migrated = migrateCareer(createNewGame(clubId, managerName, customOptions));
+    const migrated = migrateCareer(createNewGame(clubId, managerName, customOptions, activeCountryIds, loadedClubs));
     const newState = { ...migrated, newsFeed: generateKickoffNews(migrated), activeScreen: 'overview' as const };
     setMatchError('');
     setHasActiveCareer(true);

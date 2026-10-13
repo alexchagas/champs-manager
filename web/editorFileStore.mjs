@@ -31,7 +31,7 @@ async function atomicJson(file, value) {
 }
 
 export async function persistClubEdits(root, clubs) {
-  if (!Array.isArray(clubs) || !clubs.length || clubs.length > 704) throw new Error('Lista de clubes inválida');
+  if (!Array.isArray(clubs) || !clubs.length || clubs.length > 10000) throw new Error('Lista de clubes inválida');
   const ids = new Set();
   for (const club of clubs) {
     if (!Number.isSafeInteger(club.id) || club.id < 1 || ids.has(club.id) ||

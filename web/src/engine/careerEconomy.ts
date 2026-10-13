@@ -198,10 +198,35 @@ export function changeManagers(state: GameState): { state: GameState; dismissals
 export function appointHuman(state: GameState, clubId: number): GameState {
   const human = state.managers?.find(m => m.id === state.humanManagerId);
   const club = state.clubs.find(c => c.id === clubId);
-  if (!human?.available || !club) return state;
+  if (!human || !club) return state;
   const incumbent = state.managers?.find(m => m.id === club.managerId);
   const managers = (state.managers || []).map(m => {
-    if (m.id === human.id) return { ...m, available: false, currentClubId: clubId, boardRating: 55, jobs: [...m.jobs, { clubId, clubName: club.name, startSeason: state.seasonYear, startRound: state.currentRound, wins: 0, draws: 0, losses: 0, points: 0, initialBalance: club.balance, initialSquadValue: club.squad.reduce((n, p) => n + p.marketValue, 0), initialExpectation: managerExpectation(club, state.clubs), initialOverdueWages: club.overdueWages || 0 }], events: [...m.events, `Contratado pelo ${club.name} na rodada ${state.currentRound}`] };
+    if (m.id === human.id) {
+      const baseJobs = !human.available && m.currentClubId
+        ? m.jobs.map((j, i) => i === m.jobs.length - 1 ? { ...j, endSeason: state.seasonYear, endRound: state.currentRound, reason: 'Mudança de clube', finalScore: m.seasonScore } : j)
+        : m.jobs;
+      return {
+        ...m,
+        available: false,
+        currentClubId: clubId,
+        boardRating: 55,
+        jobs: [...baseJobs, {
+          clubId,
+          clubName: club.name,
+          startSeason: state.seasonYear,
+          startRound: state.currentRound,
+          wins: 0,
+          draws: 0,
+          losses: 0,
+          points: 0,
+          initialBalance: club.balance,
+          initialSquadValue: club.squad.reduce((n, p) => n + p.marketValue, 0),
+          initialExpectation: managerExpectation(club, state.clubs),
+          initialOverdueWages: club.overdueWages || 0
+        }],
+        events: [...m.events, `Contratado pelo ${club.name} na rodada ${state.currentRound}`]
+      };
+    }
     if (m.id === incumbent?.id) return { ...m, available: true, currentClubId: undefined, jobs: m.jobs.map((j, i) => i === m.jobs.length - 1 ? { ...j, endSeason: state.seasonYear, endRound: state.currentRound, reason: 'Substituído', finalScore: m.seasonScore } : j) };
     return m;
   }) as Manager[];
