@@ -1,4 +1,4 @@
-import { Club, MatchEvent, Player } from '../types';
+import type { Club, MatchEvent, Player } from '../types/index.ts';
 
 export interface SimulatedMatchResult {
   homeScore: number;

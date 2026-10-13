@@ -15,7 +15,8 @@ import {
   Newspaper, 
   BarChart3,
   ChevronDown,
-  MoreHorizontal
+  MoreHorizontal,
+  Globe
 } from 'lucide-react';
 
 export const Header: React.FC = () => {
@@ -87,6 +88,12 @@ export const Header: React.FC = () => {
       icon: GraduationCap, 
       badgeText: youthCount > 0 ? `${youthCount}` : undefined 
     },
+    {
+      id: 'world_cup',
+      label: 'Copa do Mundo',
+      icon: Globe,
+      badgeText: (gameState.nationalTeamOffers || []).filter(o => o.status === 'pending').length > 0 ? 'Convite' : undefined
+    },
   ];
 
   const allNavItems: HeaderNavItem[] = [
@@ -98,6 +105,7 @@ export const Header: React.FC = () => {
     secondaryNavItems[3], // Juniores
     primaryNavItems[2], // Mercado
     primaryNavItems[3], // Finanças
+    secondaryNavItems[4], // Copa do Mundo
   ];
 
   const isSecondaryActive = secondaryNavItems.some((item) => item.id === activeScreen);

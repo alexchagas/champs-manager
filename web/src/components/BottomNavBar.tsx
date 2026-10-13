@@ -13,7 +13,8 @@ import {
   GraduationCap, 
   Menu as MenuIcon,
   X,
-  Bug
+  Bug,
+  Globe
 } from 'lucide-react';
 
 export const BottomNavBar: React.FC = () => {
@@ -69,6 +70,13 @@ export const BottomNavBar: React.FC = () => {
       desc: 'Promessas das categorias de base',
       icon: GraduationCap, 
       badge: youthCount > 0 ? `${youthCount}` : undefined 
+    },
+    {
+      id: 'world_cup',
+      label: 'Copa do Mundo',
+      desc: 'Torneio de Seleções Nacionais e grupos',
+      icon: Globe,
+      badge: (gameState.nationalTeamOffers || []).filter(o => o.status === 'pending').length > 0 ? 'Convite' : undefined
     },
     { 
       id: 'menu', 

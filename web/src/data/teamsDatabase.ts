@@ -79,7 +79,7 @@ export function registerCountries(newCountries: CountryInfo[]): void {
 
 export function registerLeagues(newLeagues: LeagueInfo[]): void {
   for (const l of newLeagues) {
-    if (!database.leagues.some((item) => item.id === l.id || (item.countryId === l.countryId && item.division === l.division))) {
+    if (!database.leagues.some((item) => item.countryId === l.countryId && item.division === l.division)) {
       database.leagues.push(l);
     }
   }

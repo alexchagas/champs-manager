@@ -110,5 +110,41 @@ export function resolvePendingFixtures(state: GameState): GameState {
   const continentalFinalSecond = continental.find(f => f.stage === 'Final' && f.leg === 2);
   if (continentalFinalFirst?.played && continentalFinalSecond?.played) recordAggregateTie(continentalFinalFirst, continentalFinalSecond);
 
+  // Single-leg World Cup Knockout
+  const wc = calendar.filter(f => f.competitionType === 'copa_do_mundo');
+  for (const [sourceStage, targetStage] of [['Oitavas de Final', 'Quartas de Final'], ['Quartas de Final', 'Semifinal'], ['Semifinal', 'Grande Final']] as const) {
+    const source = wc.filter(f => f.stage === sourceStage || f.competitionRound === sourceStage).sort(byId);
+    const target = wc.filter(f => f.stage === targetStage || f.competitionRound === targetStage).sort(byId);
+    if (source.length && target.length && source.length === target.length * 2 && source.every(f => f.played)) {
+      source.filter(f => f.homeScore === f.awayScore).forEach(f => recordPenalties(f.id, [5, 4]));
+      updatePairs(target, target.map((_, i) => [winner(calendar.find(f => f.id === source[2 * i].id)!), winner(calendar.find(f => f.id === source[2 * i + 1].id)!)]));
+    }
+  }
+  wc.filter(f => (f.stage === 'Final' || f.competitionRound === 'Grande Final') && f.played && f.homeScore === f.awayScore)
+    .forEach(f => recordPenalties(f.id, [5, 4]));
+
+  // Super Mundial de Clubes Knockout
+  const sm = calendar.filter(f => f.competitionType === 'supermundial');
+  for (const [sourceStage, targetStage] of [['Quartas de Final', 'Semifinal'], ['Semifinal', 'Grande Final']] as const) {
+    const source = sm.filter(f => f.stage === sourceStage || f.competitionRound === sourceStage).sort(byId);
+    const target = sm.filter(f => f.stage === targetStage || f.competitionRound === targetStage).sort(byId);
+    if (source.length && target.length && source.length === target.length * 2 && source.every(f => f.played)) {
+      source.filter(f => f.homeScore === f.awayScore).forEach(f => recordPenalties(f.id, [5, 4]));
+      updatePairs(target, target.map((_, i) => [winner(calendar.find(f => f.id === source[2 * i].id)!), winner(calendar.find(f => f.id === source[2 * i + 1].id)!)]));
+    }
+  }
+  sm.filter(f => (f.stage === 'Final' || f.competitionRound === 'Grande Final') && f.played && f.homeScore === f.awayScore)
+    .forEach(f => recordPenalties(f.id, [5, 4]));
+
+  // Copa Intercontinental Knockout
+  const ic = calendar.filter(f => f.competitionType === 'intercontinental');
+  const icSemis = ic.filter(f => f.stage === 'Semifinal' || f.competitionRound?.startsWith('Semifinal')).sort(byId);
+  const icFinal = ic.filter(f => f.stage === 'Final' || f.competitionRound === 'Grande Final').sort(byId);
+  if (icSemis.length === 2 && icFinal.length === 1 && icSemis.every(f => f.played)) {
+    icSemis.filter(f => f.homeScore === f.awayScore).forEach(f => recordPenalties(f.id, [5, 4]));
+    updatePairs(icFinal, [[winner(calendar.find(f => f.id === icSemis[0].id)!), winner(calendar.find(f => f.id === icSemis[1].id)!)]]);
+  }
+  icFinal.filter(f => f.played && f.homeScore === f.awayScore).forEach(f => recordPenalties(f.id, [5, 4]));
+
   return calendar === state.calendar ? state : { ...state, calendar };
 }

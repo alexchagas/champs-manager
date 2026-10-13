@@ -189,8 +189,85 @@ export interface MatchEvent {
   clock?: MatchClock;
 }
 
-export type CompetitionType = 'estadual' | 'nacional' | 'copa' | 'libertadores' | 'sulamericana' | 'champions';
-export type MatchDay = 'quarta' | 'quinta' | 'domingo';
+export type CompetitionType = 'estadual' | 'nacional' | 'copa' | 'libertadores' | 'sulamericana' | 'champions' | 'copa_do_mundo' | 'supermundial' | 'intercontinental';
+export type MatchDay = 'domingo' | 'segunda' | 'terça' | 'quarta' | 'quinta' | 'sexta' | 'sábado';
+
+export interface NationalTeam {
+  id: number;
+  name: string;
+  countryId: number;
+  code: string;
+  reputation: number; // 1-5
+  flag: string;
+  shirtUrl: string;
+  shirt2Url?: string;
+  isElite?: boolean;
+  coach: string;
+  squad: Player[];
+  tactics?: ClubTactics;
+}
+
+export interface WorldCupGroup {
+  groupLetter: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H';
+  teamIds: number[];
+  teams: NationalTeam[];
+  standings: StandingRow[];
+  fixtures: MatchFixture[];
+}
+
+export interface WorldCupTournament {
+  seasonYear: number;
+  status: 'upcoming' | 'groups' | 'round_of_16' | 'quarter_finals' | 'semi_finals' | 'final' | 'finished';
+  groups: WorldCupGroup[];
+  fixtures: MatchFixture[];
+  champion?: { id: number; name: string; flag: string };
+  runnerUp?: { id: number; name: string; flag: string };
+  bestPlayer?: { id: number; name: string; nationalTeam: string };
+  topScorer?: { id: number; name: string; goals: number; nationalTeam: string };
+}
+
+export interface SuperClubWorldCup {
+  seasonYear: number;
+  status: 'upcoming' | 'groups' | 'knockout' | 'finished';
+  participantClubIds: number[];
+  fixtures: MatchFixture[];
+  champion?: { id: number; name: string };
+  runnerUp?: { id: number; name: string };
+}
+
+export interface IntercontinentalCup {
+  seasonYear: number;
+  status: 'upcoming' | 'in_progress' | 'finished';
+  participantClubIds: number[];
+  fixtures: MatchFixture[];
+  champion?: { id: number; name: string };
+  runnerUp?: { id: number; name: string };
+}
+
+export interface NationalTeamOffer {
+  id: number;
+  nationalTeamId: number;
+  nationalTeamName: string;
+  countryId: number;
+  code: string;
+  flag: string;
+  reputation: number;
+  date: string;
+  status: 'pending' | 'accepted' | 'rejected';
+}
+
+export interface NationalCallup {
+  playerId: number;
+  playerName: string;
+  clubId: number;
+  countryId: number;
+  nationalTeamName: string;
+  tournamentName: string;
+  marketValueBoostPercent: number;
+  originalMarketValue: number;
+  boostedMarketValue: number;
+  date: string;
+}
 
 export interface MatchFixture {
   id: number;
@@ -265,7 +342,9 @@ export type ActiveScreen =
   | 'news'
   | 'stats'
   | 'managers'
-  | 'club_viewer';
+  | 'club_viewer'
+  | 'world_cup'
+  | 'national_team_offer';
 
 export interface TransferOffer {
   id: number;
@@ -377,6 +456,12 @@ export interface GameState {
   freeAgents?: Player[];
   transferOffers?: TransferOffer[];
   newsFeed?: NewsArticle[];
+  nationalJob?: { nationalTeamId: number; nationalTeamName: string; countryId: number; code: string };
+  worldCup?: WorldCupTournament;
+  superClubWorldCup?: SuperClubWorldCup;
+  intercontinentalCup?: IntercontinentalCup;
+  nationalTeamOffers?: NationalTeamOffer[];
+  nationalCallups?: NationalCallup[];
 }
 
 export interface MatchClock { period: number; minute: number; added: number; elapsed: number }

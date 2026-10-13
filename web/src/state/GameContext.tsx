@@ -52,7 +52,19 @@ import {
   generateWeeklyNews, 
   generateKickoffNews, 
 } from '../engine/newsEngine';
-import type { MarketFilter, MarketSearchResult, NewsArticle } from '../types';
+import {
+  initializeNationalTeams,
+  isWorldCupYear,
+  isSuperClubWorldCupYear,
+  isIntercontinentalYear,
+  createWorldCupTournament,
+  createSuperClubWorldCup,
+  createIntercontinentalCup,
+  getAvailableNationalTeamOffers,
+  evaluateUserSquadCallups,
+  advanceWorldCupRound,
+} from '../data/nationalTeamsData';
+import type { MarketFilter, MarketSearchResult, NewsArticle, NationalTeamOffer, WorldCupTournament } from '../types';
 import { 
   saveActiveGameToStorage, 
   loadActiveGameFromStorage, 
@@ -111,6 +123,9 @@ interface GameContextType {
   releaseYouthPlayer: (playerId: number) => { success: boolean; error?: string };
   scoutYouthPlayer: () => { success: boolean; error?: string };
   acceptManagerJob: (clubId: number) => void;
+  acceptNationalTeamOffer: (offerId: number) => { success: boolean; error?: string };
+  rejectNationalTeamOffer: (offerId: number) => void;
+  advanceWorldCup: (round?: number) => void;
   markNewsAsRead: (articleId: string) => void;
   markAllNewsAsRead: () => void;
 }
@@ -706,6 +721,94 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const acceptManagerJob = (clubId: number) => { if (!matchInProgress()) setGameState(prev => appointHuman(prev, clubId)); };
 
+  const acceptNationalTeamOffer = (offerId: number) => {
+    const offer = gameState.nationalTeamOffers?.find(o => o.id === offerId);
+    if (!offer) return { success: false, error: 'Proposta não encontrada.' };
+
+    const updatedOffers = (gameState.nationalTeamOffers || []).map(o =>
+      o.id === offerId ? { ...o, status: 'accepted' as const } : { ...o, status: 'rejected' as const }
+    );
+
+    const nationalJob = {
+      nationalTeamId: offer.nationalTeamId,
+      nationalTeamName: offer.nationalTeamName,
+      countryId: offer.countryId,
+      code: offer.code,
+    };
+
+    const newsArticle: NewsArticle = {
+      id: `job_national_${Date.now()}`,
+      round: gameState.currentRound,
+      category: 'geral',
+      title: `${gameState.managerName.toUpperCase()} ASSUME A SELEÇÃO ${offer.nationalTeamName.toUpperCase()}!`,
+      subtitle: `${offer.flag} O técnico comandará o país na Copa do Mundo FIFA ${gameState.seasonYear}`,
+      content: `A confederação oficializou a contratação de ${gameState.managerName} para o comando técnico da Seleção ${offer.nationalTeamName}. Ele acumulará o cargo com o comando de seu clube durante o torneio.`,
+      clubId: gameState.userClubId,
+      clubName: gameState.clubs.find(c => c.id === gameState.userClubId)?.name,
+      date: `Temporada ${gameState.seasonYear}`,
+      isHeadline: true,
+      badgeText: 'SELEÇÃO NACIONAL',
+      read: false,
+    };
+
+    setGameState(prev => ({
+      ...prev,
+      nationalJob,
+      nationalTeamOffers: updatedOffers,
+      newsFeed: [newsArticle, ...(prev.newsFeed || [])],
+    }));
+
+    return { success: true };
+  };
+
+  const rejectNationalTeamOffer = (offerId: number) => {
+    setGameState(prev => ({
+      ...prev,
+      nationalTeamOffers: (prev.nationalTeamOffers || []).map(o =>
+        o.id === offerId ? { ...o, status: 'rejected' as const } : o
+      ),
+    }));
+  };
+
+  const advanceWorldCup = (round?: number) => {
+    if (!gameState.worldCup) return;
+    const nationalTeams = initializeNationalTeams(gameState.clubs);
+    const teamsMap = new Map(nationalTeams.map(t => [t.id, t]));
+
+    const targetRound = round || (() => {
+      for (let r = 1; r <= 7; r++) {
+        const fix = gameState.worldCup!.fixtures.filter(f => f.round === r);
+        if (fix.length > 0 && !fix.every(f => f.played)) return r;
+      }
+      return 7;
+    })();
+
+    const updatedWc = advanceWorldCupRound(gameState.worldCup, targetRound, teamsMap);
+
+    // If finished and user was champion, update manager titles
+    let updatedManagers = gameState.managers;
+    if (updatedWc.status === 'finished' && gameState.nationalJob && updatedWc.champion?.id === gameState.nationalJob.nationalTeamId) {
+      updatedManagers = (gameState.managers || []).map(m => {
+        if (m.id === gameState.humanManagerId) {
+          const title = `${gameState.seasonYear} · Campeão da Copa do Mundo FIFA (${gameState.nationalJob!.nationalTeamName})`;
+          return {
+            ...m,
+            titles: m.titles.includes(title) ? m.titles : [...m.titles, title],
+            careerScore: m.careerScore + 50,
+            reputation: 100,
+          };
+        }
+        return m;
+      });
+    }
+
+    setGameState(prev => ({
+      ...prev,
+      worldCup: { ...updatedWc },
+      managers: updatedManagers,
+    }));
+  };
+
   const advanceRound = () => {
     if (matchInProgress()) { setMatchError('Comando bloqueado durante a partida. Volte à escalação da sessão.'); return; }
     const lastSlot = Math.max(...gameState.calendar.map(f => f.fixtureDateIndex ?? f.round));
@@ -713,12 +816,37 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const club = gameState.clubs.find(c => c.id === gameState.userClubId) || gameState.clubs[0];
       const nationalIds = new Set(gameState.standingsNacional?.map(row => row.clubId));
       const nationalClubs = gameState.clubs.filter(c => nationalIds.has(c.id));
-      const next = generateTwoSemesterCalendar(club, nationalClubs, gameState.clubs, gameState.seasonYear + 1);
+      const nextYear = gameState.seasonYear + 1;
+      const next = generateTwoSemesterCalendar(club, nationalClubs, gameState.clubs, nextYear);
       const rolled = rolloverManagers(gameState);
+
+      // Apply post-World Cup market value boosts to called-up players
+      let updatedClubs = rolled.clubs;
+      if (gameState.nationalCallups && gameState.nationalCallups.length > 0) {
+        const callupMap = new Map(gameState.nationalCallups.map(c => [c.playerId, c.boostedMarketValue]));
+        updatedClubs = rolled.clubs.map(c => ({
+          ...c,
+          squad: c.squad.map(p => {
+            const boosted = callupMap.get(p.id);
+            return boosted ? { ...p, marketValue: boosted } : p;
+          }),
+        }));
+      }
+
+      // Initialize Quadrennial Cycle Tournaments for next season
+      const nationalTeams = initializeNationalTeams(updatedClubs);
+      const worldCup = isWorldCupYear(nextYear) ? createWorldCupTournament(nextYear, nationalTeams) : undefined;
+      const superClubWorldCup = isSuperClubWorldCupYear(nextYear) ? createSuperClubWorldCup(nextYear, updatedClubs) : undefined;
+      const intercontinentalCup = isIntercontinentalYear(nextYear) ? createIntercontinentalCup(nextYear, updatedClubs) : undefined;
+      const human = rolled.managers?.find(m => m.id === rolled.humanManagerId) || { id: 'human-1', name: gameState.managerName, reputation: 1, titles: [] } as any;
+      const nationalTeamOffers = isWorldCupYear(nextYear) ? getAvailableNationalTeamOffers(human, nextYear, nationalTeams) : undefined;
+      const { callups, newsArticles: callupNews } = isWorldCupYear(nextYear) ? evaluateUserSquadCallups(club, nextYear, nationalTeams) : { callups: [], newsArticles: [] };
+
       const nextSeasonState: GameState = {
         ...rolled,
+        clubs: updatedClubs,
         activeMatch: undefined, activeMatchFixtureId: undefined,
-        seasonYear: gameState.seasonYear + 1,
+        seasonYear: nextYear,
         currentRound: 1,
         currentSemester: 1,
         calendar: next.calendar,
@@ -731,6 +859,12 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         continentalCupName: next.continentalName,
         activeScreen: 'overview',
         transferOffers: [],
+        worldCup,
+        superClubWorldCup,
+        intercontinentalCup,
+        nationalTeamOffers,
+        nationalCallups: callups,
+        newsFeed: [...callupNews, ...(rolled.newsFeed || [])],
       };
       setGameState(nextSeasonState);
       if (
@@ -1220,6 +1354,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         releaseYouthPlayer,
         scoutYouthPlayer,
         acceptManagerJob,
+        acceptNationalTeamOffer,
+        rejectNationalTeamOffer,
+        advanceWorldCup,
         markNewsAsRead,
         markAllNewsAsRead,
       }}

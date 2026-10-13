@@ -1,8 +1,19 @@
-import type { Club, GameOptions, GameState } from '../types/index.ts';
+import type { Club, GameOptions, GameState, Manager } from '../types/index.ts';
 import { generateLeagueCalendar, generateTwoSemesterCalendar, initializeStandings, sortStandings } from './calendarGenerator.ts';
 import { getContinentalTournamentField } from './continentalRepresentatives.ts';
 import { getAllClubs, getCompetitionClubs } from './teamsDatabase.ts';
 import { generateKickoffNews } from '../engine/newsEngine.ts';
+import {
+  initializeNationalTeams,
+  isWorldCupYear,
+  isSuperClubWorldCupYear,
+  isIntercontinentalYear,
+  createWorldCupTournament,
+  createSuperClubWorldCup,
+  createIntercontinentalCup,
+  getAvailableNationalTeamOffers,
+  evaluateUserSquadCallups,
+} from './nationalTeamsData.ts';
 
 export const DEFAULT_CLUBS: Club[] = getAllClubs();
 
@@ -260,12 +271,40 @@ export function createNewGame(
 
   const careerId = `career-${userClubId}-${Date.now()}`;
 
+  const seasonYear = 2026;
+  const nationalTeams = initializeNationalTeams(clonedClubs);
+
+  const initialHumanManager: Manager = {
+    id: 'human-1',
+    name: managerName.trim() || 'Alex Chagas',
+    kind: 'human',
+    reputation: 1,
+    boardRating: 60,
+    riskProfile: 'balanced',
+    currentClubId: userClubId,
+    available: false,
+    jobs: [],
+    titles: [],
+    events: [],
+    seasonScore: 0,
+    careerScore: 0,
+    scoreComponents: { results: 0, competitions: 0, squad: 0, finances: 0 },
+  };
+
+  const worldCup = isWorldCupYear(seasonYear) ? createWorldCupTournament(seasonYear, nationalTeams) : undefined;
+  const nationalTeamOffers = isWorldCupYear(seasonYear) ? getAvailableNationalTeamOffers(initialHumanManager, seasonYear, nationalTeams) : undefined;
+  const { callups, newsArticles: callupNews } = isWorldCupYear(seasonYear) ? evaluateUserSquadCallups(userClub, seasonYear, nationalTeams) : { callups: [], newsArticles: [] };
+  const superClubWorldCup = isSuperClubWorldCupYear(seasonYear) ? createSuperClubWorldCup(seasonYear, clonedClubs) : undefined;
+  const intercontinentalCup = isIntercontinentalYear(seasonYear) ? createIntercontinentalCup(seasonYear, clonedClubs) : undefined;
+
   const baseState: GameState = {
     careerId,
     autoSaveMatchCounter: 0,
     userClubId,
     managerName: managerName.trim() || 'Alex Chagas',
-    seasonYear: 2026,
+    humanManagerId: 'human-1',
+    managers: [initialHumanManager],
+    seasonYear,
     currentRound: 1,
     currentSemester: 1,
     leagueName,
@@ -285,9 +324,15 @@ export function createNewGame(
     activeScreen: 'overview',
     freeAgents,
     transferOffers: initialOffers,
+    worldCup,
+    superClubWorldCup,
+    intercontinentalCup,
+    nationalTeamOffers,
+    nationalCallups: callups,
   };
 
-  const newsFeed = generateKickoffNews(baseState);
+  const kickoffNews = generateKickoffNews(baseState);
+  const newsFeed = [...callupNews, ...kickoffNews];
 
   return {
     ...baseState,
