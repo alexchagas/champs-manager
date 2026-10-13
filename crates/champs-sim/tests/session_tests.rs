@@ -496,3 +496,52 @@ fn second_half_interruption_is_distinct_from_first_half_even_before_next_tick() 
     .unwrap();
     assert_eq!(s.teams[0].opportunities_used, 2);
 }
+
+#[test]
+fn unbalanced_match_anti_blowout_caps_unrealistic_goleadas() {
+    let strong = team(100, true);
+    let weak_players: Vec<_> = (0..25)
+        .map(|i| MatchPlayer {
+            id: 200 + i,
+            name: format!("P{}", 200 + i),
+            position: if i == 0 || i == 11 {
+                "GOL"
+            } else if i < 6 {
+                "ZAG"
+            } else if i < 9 {
+                "MEI"
+            } else {
+                "ATA"
+            }
+            .into(),
+            strength: 12.0,
+            energy: 100.0,
+            eligible: true,
+        })
+        .collect();
+    let weak = MatchSide::new(
+        200,
+        "Weak".into(),
+        "5-3-2".into(),
+        weak_players,
+        (200..211).collect(),
+        (211..222).collect(),
+        &MatchRules::default(),
+    )
+    .unwrap();
+    let mut max_goals = 0;
+    for seed in 1..=50u32 {
+        let mut s = ActiveMatchSession::new(
+            seed,
+            [strong.clone(), weak.clone()],
+            MatchRules::default(),
+            seed * 1000 + 42,
+            None,
+        );
+        while !s.is_finished() {
+            advance(&mut s);
+        }
+        max_goals = max_goals.max(s.score[0]);
+    }
+    assert!(max_goals <= 8, "Placar discrepante detectado: {max_goals} gols!");
+}

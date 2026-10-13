@@ -911,7 +911,9 @@ impl ActiveMatchSession {
             self.teams[0].sector_strength(&["VOL", "MEI"]) * 1.1,
             self.teams[1].sector_strength(&["VOL", "MEI"]) * 0.9,
         ];
-        let side = if self.random() < mid[0] / (mid[0] + mid[1]) {
+        let raw_p = mid[0] / (mid[0] + mid[1]);
+        let p_home = raw_p.clamp(0.24, 0.76);
+        let side = if self.random() < p_home {
             0
         } else {
             1
@@ -940,13 +942,40 @@ impl ActiveMatchSession {
             } else {
                 let attack = self.teams[side].sector_strength(&["ATA", "MEI"]);
                 let defense = self.teams[1 - side].sector_strength(&["GOL", "ZAG", "LAT", "VOL"]);
-                if self.random()
-                    < crate::engine::BASE_CREATION * 2.0 * attack.powi(2)
-                        / (attack.powi(2) + defense.powi(2))
-                {
+                
+                // Efeito retranca: se o adversário tem 5 ou mais defensores em campo
+                let def_count = self.teams[1 - side]
+                    .on_field_role_by_player_id
+                    .values()
+                    .filter(|r| r.as_str() == "ZAG" || r.as_str() == "LAT")
+                    .count();
+                let retranca_factor = if def_count >= 5 { 0.75 } else { 1.0 };
+
+                // Desaceleração de ritmo (tirar o pé com placar elástico)
+                let lead = (self.score[side] as i32) - (self.score[1 - side] as i32);
+                let momentum_factor = if lead >= 4 {
+                    0.45
+                } else if lead >= 3 {
+                    0.70
+                } else {
+                    1.0
+                };
+
+                let base_create = crate::engine::BASE_CREATION * 2.0 * attack.powi(2)
+                    / (attack.powi(2) + defense.powi(2));
+                let p_create = (base_create * retranca_factor * momentum_factor).clamp(0.08, 0.52);
+
+                if self.random() < p_create {
                     self.stats.shots[side] += 1;
-                    let ratio = attack / defense;
-                    let goal_probability = (0.095 * ratio).clamp(0.03, 0.28);
+
+                    // Matrizes anti-goleada clássicas do Brasfoot (TU, TV, TW, TX)
+                    let vs_stronger = self.teams[1 - side].sector_strength(&["GOL", "ZAG", "LAT", "VOL", "MEI", "ATA"])
+                        > self.teams[side].sector_strength(&["GOL", "ZAG", "LAT", "VOL", "MEI", "ATA"]);
+                    let matrix = crate::engine::finishing_matrix(self.score[side], vs_stronger);
+                    let base_goal_prob = matrix[0] / (matrix[0] + matrix[1] + matrix[2]);
+
+                    let ratio = (attack / defense).clamp(0.4, 2.2);
+                    let goal_probability = (base_goal_prob * ratio).clamp(0.015, 0.22);
                     let roll = self.random();
                     let shooter = self.teams[side]
                         .on_field_role_by_player_id

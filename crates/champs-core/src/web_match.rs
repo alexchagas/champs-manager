@@ -348,10 +348,15 @@ pub fn commit_match(state: &mut WebGameState) -> Result<bool, String> {
 
                     let minutes = *team.minutes_played.get(&p.id).unwrap_or(&0);
                     if minutes > 0 {
+                        let drain_rate = match p.position.as_str() {
+                            "GOL" => 0.02,
+                            "ZAG" | "VOL" => 0.09,
+                            _ => 0.13,
+                        };
                         p.energy =
-                            (p.energy as f64 - minutes as f64 * 0.16).max(20.0).round() as u8;
+                            (p.energy as f64 - minutes as f64 * drain_rate).max(25.0).round() as u8;
                     } else {
-                        p.energy = p.energy.saturating_add(15).min(100);
+                        p.energy = p.energy.saturating_add(22).min(100);
                     }
                     p.yellow_cards += *team.yellow_cards.get(&p.id).unwrap_or(&0) as u32;
                     if team.sent_off_ids.contains(&p.id) {

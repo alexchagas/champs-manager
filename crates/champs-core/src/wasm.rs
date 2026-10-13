@@ -812,10 +812,15 @@ impl WasmCareerEngine {
         if let Some(user_club) = self.state.clubs.iter_mut().find(|c| c.id == user_club_id) {
             for p in &mut user_club.squad {
                 if p.is_starter {
-                    let drain = 10 + rng.next_int(8) as u8;
+                    let drain = match p.position.as_str() {
+                        "GOL" => 2,
+                        "ZAG" | "VOL" => 8,
+                        _ => 12,
+                    };
                     p.energy = p.energy.saturating_sub(drain).max(45);
+                    p.energy = (p.energy + 8).min(100);
                 } else {
-                    p.energy = (p.energy + 15).min(100);
+                    p.energy = (p.energy + 22).min(100);
                 }
             }
         }
@@ -832,7 +837,6 @@ impl WasmCareerEngine {
             _ => self.state.standings.clone(),
         };
         self.state.active_screen = "round_results".to_string();
-
         self.get_state_json()
     }
 
@@ -844,6 +848,40 @@ impl WasmCareerEngine {
         if self.state.current_round < last_slot {
             self.state.current_round += 1;
         }
+
+        // Descanso semanal e progressão de atletas entre rodadas
+        for club in &mut self.state.clubs {
+            for p in &mut club.squad {
+                // Recuperação semanal de energia
+                if p.energy < 100 {
+                    let recovery = if p.is_starter { 8 } else { 22 };
+                    p.energy = (p.energy + recovery).min(100);
+                }
+
+                // Progressão e desenvolvimento de atletas
+                if p.is_starter && !p.injured && !p.suspended {
+                    let xp_gain = match p.age {
+                        0..=20 => 18,
+                        21..=23 => 12,
+                        24..=28 => 7,
+                        29..=31 => 2,
+                        _ => 0,
+                    };
+                    if xp_gain > 0 {
+                        let current_xp = p.extra.get("xp").and_then(|v| v.as_u64()).unwrap_or(0);
+                        let new_xp = current_xp + xp_gain;
+                        if new_xp >= 100 && p.strength < 99 {
+                            p.strength += 1;
+                            p.market_value = (p.strength as u64) * (p.strength as u64) * 800;
+                            p.extra.insert("xp".into(), (new_xp - 100).into());
+                        } else {
+                            p.extra.insert("xp".into(), new_xp.into());
+                        }
+                    }
+                }
+            }
+        }
+
         self.state.active_screen = "overview".to_string();
         self.get_state_json()
     }
