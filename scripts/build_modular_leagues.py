@@ -221,27 +221,20 @@ def main():
                 }
     print(f"Found {len(prev_meta)} clubs with existing stable IDs.")
 
-    used_ids = set(info["id"] for info in prev_meta.values())
+    db_by_ref = {pc.get("fileRef"): pc["id"] for pc in prev_json.get("clubs", []) if pc.get("fileRef")}
+    db_by_name_c = {(pc["name"], pc["countryId"]): pc["id"] for pc in prev_json.get("clubs", [])}
+
     id_map = {} # orig_id -> mapped_id
-
     for c in clubs:
-        cname = c["name"]
-        if cname in prev_meta:
-            id_map[c["id"]] = prev_meta[cname]["id"]
+        ref = c.get("file_ref", "")
+        if ref and ref in db_by_ref:
+            id_map[c["id"]] = db_by_ref[ref]
+        elif (c["name"], c["country_id"]) in db_by_name_c:
+            id_map[c["id"]] = db_by_name_c[(c["name"], c["country_id"])]
+        else:
+            id_map[c["id"]] = c["id"]
 
-    next_id = 1001
-    for c in clubs:
-        if c["id"] not in id_map:
-            # If original ID is free and >= 1000, keep it; else allocate next_id
-            cand_id = c["id"]
-            if cand_id >= 1000 and cand_id not in used_ids:
-                id_map[c["id"]] = cand_id
-                used_ids.add(cand_id)
-            else:
-                while next_id in used_ids:
-                    next_id += 1
-                id_map[c["id"]] = next_id
-                used_ids.add(next_id)
+    print(f"Mapped {len(id_map)} clubs directly to teamsDatabase.json IDs.")
 
     # Map leagues
     leagues_out = []
@@ -258,6 +251,10 @@ def main():
 
         if not mapped_ids:
             continue
+
+        if len(mapped_ids) < 16 and div > 1:
+            div_name = "Divisão de Acesso"
+            l_name = f"{c_name} • Divisão de Acesso"
 
         leagues_out.append({
             "id": len(leagues_out) + 1,

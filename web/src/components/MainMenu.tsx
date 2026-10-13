@@ -166,8 +166,9 @@ export const MainMenu: React.FC = () => {
         list = allClubs.filter((c) => c.countryId === 29);
       } else {
         const league = countryLeagues.find((l) => l.division === selectedDivision);
-        if (league && league.clubIds.length > 0) {
-          list = getClubsByLeague(league);
+        if (league && league.clubIds && league.clubIds.length > 0) {
+          const clubIdSet = new Set(league.clubIds);
+          list = allClubs.filter((c) => clubIdSet.has(c.id));
         } else {
           list = allClubs.filter((c) => c.countryId === 29 && c.division === selectedDivision);
         }
@@ -183,9 +184,13 @@ export const MainMenu: React.FC = () => {
         list = allClubs.filter((c) => c.countryId === selectedCountryId);
       } else {
         const league = countryLeagues.find((l) => l.division === selectedDivision);
-        if (league && league.clubIds.length > 0) {
-          list = getClubsByLeague(league);
+        if (league && league.clubIds && league.clubIds.length > 0) {
+          const clubIdSet = new Set(league.clubIds);
+          list = allClubs.filter((c) => clubIdSet.has(c.id));
         } else {
+          list = allClubs.filter((c) => c.countryId === selectedCountryId && c.division === selectedDivision);
+        }
+        if (list.length === 0) {
           list = allClubs.filter((c) => c.countryId === selectedCountryId);
         }
       }
@@ -194,9 +199,14 @@ export const MainMenu: React.FC = () => {
     return list.sort((a, b) => b.reputation - a.reputation || a.name.localeCompare(b.name));
   }, [allClubs, countryLeagues, selectedCountryId, selectedDivision, selectedStateCode, searchFilter, activeTab]);
 
-  // Selected Club details
+  // Selected Club details (prioritize currently filtered list of the selected country)
   const selectedClub = useMemo(() => {
-    return getClubById(selectedClubId) || filteredClubs.find((c) => c.id === selectedClubId) || filteredClubs[0] || allClubs[0];
+    return (
+      filteredClubs.find((c) => c.id === selectedClubId) ||
+      filteredClubs[0] ||
+      allClubs.find((c) => c.id === selectedClubId) ||
+      allClubs[0]
+    );
   }, [selectedClubId, filteredClubs, allClubs, activeTab]);
 
   const selectedClubTheme = useMemo(() => getClubTheme(selectedClub), [selectedClub]);
@@ -324,19 +334,68 @@ export const MainMenu: React.FC = () => {
     setSelectedDivision(div);
   };
 
-  // Popular quick countries list
-  const popularCountries = [
-    { id: 29, name: 'Brasil' },
-    { id: 154, name: 'Portugal' },
-    { id: 65, name: 'Espanha' },
-    { id: 97, name: 'Inglaterra' },
-    { id: 11, name: 'Argentina' },
-    { id: 104, name: 'Itália' },
-    { id: 3, name: 'Alemanha' },
-    { id: 72, name: 'França' },
-    { id: 85, name: 'Holanda' },
-    { id: 131, name: 'Estados Unidos' },
-  ];
+  const getCountryFlag = (cid: number): string => {
+    const flags: Record<number, string> = {
+      29: '🇧🇷',
+      154: '🇵🇹',
+      65: '🇪🇸',
+      97: '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
+      11: '🇦🇷',
+      104: '🇮🇹',
+      3: '🇩🇪',
+      72: '🇫🇷',
+      85: '🇳🇱',
+      131: '🇲🇽',
+      68: '🇺🇸',
+      195: '🇺🇾',
+      42: '🇨🇱',
+      46: '🇨🇴',
+      150: '🇵🇾',
+      151: '🇵🇪',
+      60: '🇪🇨',
+      26: '🇧🇴',
+      198: '🇻🇪',
+      9: '🇸🇦',
+      107: '🇯🇵',
+      188: '🇹🇷',
+      162: '🇷🇺',
+      21: '🇧🇪',
+      186: '🇨🇭',
+      148: '🇳🇴',
+      174: '🇸🇪',
+      54: '🇩🇰',
+      62: '🏴󠁧󠁢󠁳󠁣󠁴󠁿',
+    };
+    return flags[cid] || '🌐';
+  };
+
+  // Popular quick countries list with authentic emoji flags
+  const popularCountries = useMemo(() => [
+    { id: 29, name: 'Brasil', flag: '🇧🇷' },
+    { id: 154, name: 'Portugal', flag: '🇵🇹' },
+    { id: 65, name: 'Espanha', flag: '🇪🇸' },
+    { id: 97, name: 'Inglaterra', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+    { id: 11, name: 'Argentina', flag: '🇦🇷' },
+    { id: 104, name: 'Itália', flag: '🇮🇹' },
+    { id: 3, name: 'Alemanha', flag: '🇩🇪' },
+    { id: 72, name: 'França', flag: '🇫🇷' },
+    { id: 85, name: 'Holanda', flag: '🇳🇱' },
+    { id: 131, name: 'México', flag: '🇲🇽' },
+    { id: 68, name: 'Estados Unidos', flag: '🇺🇸' },
+    { id: 195, name: 'Uruguai', flag: '🇺🇾' },
+  ], []);
+
+  // Primary countries list: includes popular list plus currently selected country if not in popular
+  const visiblePrimaryCountries = useMemo(() => {
+    const list = [...popularCountries];
+    if (!list.some((c) => c.id === selectedCountryId)) {
+      const custom = allCountries.find((c) => c.id === selectedCountryId);
+      if (custom) {
+        list.push({ id: custom.id, name: custom.name, flag: getCountryFlag(custom.id) });
+      }
+    }
+    return list;
+  }, [popularCountries, allCountries, selectedCountryId]);
 
   return (
     <div className="flex-1 flex flex-col bg-[#09120e] text-slate-100 select-none overflow-hidden h-full">
@@ -537,17 +596,18 @@ export const MainMenu: React.FC = () => {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-1.5">
-                    {popularCountries.map((c) => (
+                    {visiblePrimaryCountries.map((c) => (
                       <button
                         key={c.id}
                         onClick={() => handleCountryChange(c.id)}
-                        className={`px-3 py-1.5 rounded text-xs font-semibold transition-all cursor-pointer ${
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold transition-all cursor-pointer ${
                           selectedCountryId === c.id
                             ? 'bg-emerald-600 text-black font-extrabold shadow-sm'
                             : 'bg-[#12231a] text-slate-300 hover:bg-[#183324] hover:text-white border border-[#1e3c2d]'
                         }`}
                       >
-                        {c.name}
+                        <span>{c.flag}</span>
+                        <span>{c.name}</span>
                       </button>
                     ))}
 
@@ -561,7 +621,7 @@ export const MainMenu: React.FC = () => {
                         <option value="" disabled>Outros Países ({allCountries.length})...</option>
                         {allCountries.map((c) => (
                           <option key={c.id} value={c.id} className="bg-[#0b1611] text-white">
-                            {c.name} ({c.clubCount} {c.clubCount === 1 ? 'clube' : 'clubes'})
+                            {getCountryFlag(c.id)} {c.name} ({c.clubCount} {c.clubCount === 1 ? 'clube' : 'clubes'})
                           </option>
                         ))}
                       </select>
@@ -588,32 +648,55 @@ export const MainMenu: React.FC = () => {
                     Ligas simuladas simultaneamente no calendário. Você poderá receber ofertas e mudar de clube entre elas.
                   </p>
 
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {popularCountries.map((c) => {
-                      const isActive = activeCountryIds.includes(c.id);
-                      const isPrimary = c.id === selectedCountryId;
+                  {/* Active Leagues Pills (expanded list showing all currently active countries) */}
+                  <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                    {activeCountryIds.map((cid) => {
+                      const cObj = allCountries.find((c) => c.id === cid) || popularCountries.find((c) => c.id === cid);
+                      const cName = cObj?.name || `País ${cid}`;
+                      const isPrimary = cid === selectedCountryId;
                       return (
-                        <button
-                          key={`active-${c.id}`}
-                          onClick={() => toggleActiveCountry(c.id)}
-                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-semibold transition-all cursor-pointer border ${
-                            isActive
-                              ? isPrimary
-                                ? 'bg-emerald-700 text-white border-emerald-400 shadow-sm'
-                                : 'bg-[#193b29] text-emerald-300 border-emerald-600/60 hover:bg-[#204933]'
-                              : 'bg-[#101e16] text-slate-400 border-[#183324] hover:text-white hover:bg-[#152a20]'
+                        <span
+                          key={`badge-active-${cid}`}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-semibold border shadow-sm ${
+                            isPrimary
+                              ? 'bg-emerald-700 text-white border-emerald-400 font-bold'
+                              : 'bg-[#193b29] text-emerald-300 border-emerald-600/60'
                           }`}
                         >
-                          {isActive ? <Check className="w-3 h-3 text-emerald-400" /> : <span className="w-3 h-3 text-slate-500 text-[10px]">+</span>}
-                          <span>{c.name}</span>
-                          {isPrimary && (
-                            <span className="text-[9px] bg-black/40 text-emerald-300 px-1 py-0.2 rounded font-mono font-bold">
+                          <span>{getCountryFlag(cid)}</span>
+                          <span>{cName}</span>
+                          {isPrimary ? (
+                            <span className="text-[9px] bg-black/40 text-emerald-200 px-1 py-0.2 rounded font-mono font-bold">
                               Principal
                             </span>
+                          ) : (
+                            <button
+                              onClick={() => toggleActiveCountry(cid)}
+                              title={`Remover ${cName} das ligas ativas`}
+                              className="hover:text-red-400 ml-1 text-slate-400 hover:text-white font-black cursor-pointer text-xs"
+                            >
+                              ✕
+                            </button>
                           )}
-                        </button>
+                        </span>
                       );
                     })}
+                  </div>
+
+                  {/* Quick-add other leagues */}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[10px] text-slate-400 font-bold mr-1">Adicionar rápida:</span>
+                    {popularCountries.filter((c) => !activeCountryIds.includes(c.id)).map((c) => (
+                      <button
+                        key={`add-quick-${c.id}`}
+                        onClick={() => toggleActiveCountry(c.id)}
+                        className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-[#101e16] text-slate-400 border border-[#183324] hover:text-white hover:bg-[#152a20] cursor-pointer"
+                      >
+                        <span className="text-emerald-400 font-bold">+</span>
+                        <span>{c.flag}</span>
+                        <span>{c.name}</span>
+                      </button>
+                    ))}
 
                     {/* Add any other country to active set */}
                     <div className="relative inline-block">
@@ -627,7 +710,7 @@ export const MainMenu: React.FC = () => {
                         <option value="" disabled>+ Outra Liga ({allCountries.filter(c => !activeCountryIds.includes(c.id)).length})...</option>
                         {allCountries.filter(c => !activeCountryIds.includes(c.id)).map((c) => (
                           <option key={`opt-active-${c.id}`} value={c.id} className="bg-[#0b1611] text-white">
-                            + {c.name} ({c.clubCount} {c.clubCount === 1 ? 'clube' : 'clubes'})
+                            + {getCountryFlag(c.id)} {c.name} ({c.clubCount} {c.clubCount === 1 ? 'clube' : 'clubes'})
                           </option>
                         ))}
                       </select>

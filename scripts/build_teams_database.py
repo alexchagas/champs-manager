@@ -358,6 +358,10 @@ def main():
         if not filtered_ids:
             continue
 
+        if len(filtered_ids) < 16 and div > 1:
+            div_name = "Divisão de Acesso"
+            l_name = f"{c_name} • Divisão de Acesso"
+
         leagues_out.append({
             "countryId": c_id,
             "countryName": c_name,

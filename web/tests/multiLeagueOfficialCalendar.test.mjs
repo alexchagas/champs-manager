@@ -80,3 +80,30 @@ test('multi-league new game supports 3 to 5 active leagues (e.g. Portugal, Brasi
   const userClub = updatedState.clubs.find(c => c.id === updatedState.userClubId);
   assert.equal(userClub.coach, 'Alex Chagas');
 });
+
+test('new game starting with Mexico initializes valid Mexican league career', () => {
+  const allClubs = getAllClubs();
+  const americaMex = allClubs.find(c => c.countryId === 131 && c.name.toLowerCase().includes('américa'));
+  assert.ok(americaMex, 'Club América (Mexico) must exist');
+  assert.equal(americaMex.countryId, 131);
+
+  const state = migrateCareer(createNewGame(americaMex.id, 'Técnico Mexicano', {}, [131, 29, 68]));
+  assert.equal(state.userClubId, americaMex.id);
+  assert.equal(state.countryName, 'México');
+  assert.ok(state.leagueName.includes('Mexicano') || state.leagueName.includes('México'));
+  assert.ok(state.calendar.length >= 30, 'Calendar has complete schedule');
+});
+
+test('starting with Access Pool club (e.g. Valencia B or York City) generates balanced 20-team league', () => {
+  const allClubs = getAllClubs();
+  const valenciaB = allClubs.find(c => c.countryId === 65 && c.name.toLowerCase() === 'valencia b');
+  assert.ok(valenciaB, 'Valencia B must exist');
+
+  const state = migrateCareer(createNewGame(valenciaB.id, 'Técnico Acesso', {}, [65, 29, 97]));
+  assert.equal(state.userClubId, valenciaB.id);
+  assert.equal(state.countryName, 'Espanha');
+  assert.ok(state.divisionName.includes('Acesso') || state.leagueName.includes('Acesso'));
+  // Must NOT be a 2-team dead league
+  assert.ok(state.standings.length >= 16, `Standings must have at least 16 teams, got ${state.standings.length}`);
+  assert.ok(state.calendar.length >= 30, `Calendar must have at least 30 matches, got ${state.calendar.length}`);
+});

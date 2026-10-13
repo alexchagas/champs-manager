@@ -200,21 +200,37 @@ export function getCompetitionClubs(selectedClubId: number, customPool?: Club[])
     }
   }
 
-  // Fallback if no clubs found or only 1 club:
-  if (competitionClubs.length < 2) {
+  // If division has fewer than 16 clubs (e.g. access pool, incomplete division like Spain Div 7 or England Div 7):
+  // Supplement with peers of similar level/reputation from that same country to build a viable competitive tournament group
+  if (competitionClubs.length < 16) {
     const pool = customPool || database.clubs;
-    const sameCountryClubs = pool.filter((c) => c.countryId === (selectedClub.countryId || 29) && (selectedClub.division ? c.division === selectedClub.division : true));
-    if (sameCountryClubs.length >= 4) {
-      competitionClubs = sameCountryClubs.slice(0, 20);
-    } else {
-      const allSameCountry = pool.filter((c) => c.countryId === (selectedClub.countryId || 29));
-      if (allSameCountry.length >= 2) {
-        competitionClubs = allSameCountry.slice(0, 20);
-      } else {
-        competitionClubs = pool
-          .filter((c) => Math.abs(c.reputation - selectedClub.reputation) <= 1)
-          .slice(0, 20);
+    const sameCountry = pool.filter((c) => c.countryId === (selectedClub.countryId || 29));
+    
+    if (sameCountry.length > competitionClubs.length) {
+      const existingIds = new Set(competitionClubs.map((c) => c.id));
+      const candidates = sameCountry
+        .filter((c) => !existingIds.has(c.id))
+        .sort((a, b) => {
+          const diffA = Math.abs((a.level || 10) - (selectedClub.level || 10)) * 2 + Math.abs((a.reputation || 1) - (selectedClub.reputation || 1));
+          const diffB = Math.abs((b.level || 10) - (selectedClub.level || 10)) * 2 + Math.abs((b.reputation || 1) - (selectedClub.reputation || 1));
+          return diffA - diffB;
+        });
+
+      const targetSize = Math.min(sameCountry.length, 20);
+      for (const cand of candidates) {
+        if (competitionClubs.length >= targetSize) break;
+        competitionClubs.push(cand);
       }
+    }
+
+    if (
+      divisionName.toLowerCase().includes('acesso') || 
+      divisionName.toLowerCase().includes('7ª') || 
+      divisionName.toLowerCase().includes('8ª') ||
+      divisionName.toLowerCase().includes('estaduais')
+    ) {
+      divisionName = 'Divisão de Acesso';
+      leagueName = `${countryName} • Divisão de Acesso`;
     }
   }
 
