@@ -1,4 +1,5 @@
 import type { Club, MatchFixture, StandingRow } from '../types/index.ts';
+import { getContinentalTournamentField } from './continentalRepresentatives.ts';
 
 // Standard Berger / round-robin scheduling algorithm
 export function generateLeagueCalendar(clubs: Club[]): MatchFixture[] {
@@ -107,9 +108,6 @@ export function generateTwoSemesterCalendar(
   const isBrazil = userClub.countryId === 29;
   const estadualName = getStateChampionshipName(userClub.stateCode, userClub.stateId);
   const nacionalName = userClub.leagueName || 'Brasileirão Série A';
-  const continentalName = isBrazil
-    ? (userClub.reputation >= 3 || (userClub.division ?? 1) <= 1 ? 'Copa Libertadores' : 'Copa Sul-Americana')
-    : 'UEFA Champions League';
 
   const pool = allAvailableClubs && allAvailableClubs.length > 0 ? allAvailableClubs : nationalClubs;
   const sameState = (c: Club) => c.countryId === 29 && (
@@ -119,8 +117,10 @@ export function generateTwoSemesterCalendar(
   const stateClubs = isBrazil ? [userClub, ...pool.filter(c => c.id !== userClub.id && sameState(c))] : [];
   const semester1Clubs = stateClubs.slice(0, 12);
   const semester2Clubs = nationalClubs.length >= 2 ? nationalClubs : pool.slice(0, 20);
-  const continentalPool = pool.filter(c => c.id !== userClub.id && c.countryId === userClub.countryId).slice(0, 15);
-  const continentalClubs = [userClub, ...continentalPool];
+
+  const continentalInfo = getContinentalTournamentField(userClub, pool);
+  const continentalName = continentalInfo.name;
+  const continentalClubs = continentalInfo.clubs;
   const allFixtures: MatchFixture[] = [];
   let nextId = 1;
   const firstSunday = new Date(Date.UTC(seasonYear, 0, 1));
@@ -159,7 +159,7 @@ export function generateTwoSemesterCalendar(
   for (let r = 1; r <= nationalRounds; r++) addRound(nationalRaw, r, nationalStart + r - 1, 'nacional', nacionalName, `Rodada ${r}`);
 
   if (continentalClubs.length === 16) {
-    const continentalType = isBrazil ? (continentalName.includes('Sul-Americana') ? 'sulamericana' : 'libertadores') : 'champions';
+    const continentalType = continentalInfo.type === 'sulamericana' ? 'sulamericana' : continentalInfo.type === 'libertadores' ? 'libertadores' : 'champions';
     for (let group = 0; group < 4; group++) {
       const raw = generateLeagueCalendar(continentalClubs.slice(group * 4, group * 4 + 4));
       for (let r = 1; r <= 6; r++) addRound(raw, r, nationalStart + r * 2, continentalType, continentalName,

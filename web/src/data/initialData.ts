@@ -1,5 +1,6 @@
 import type { Club, GameOptions, GameState } from '../types/index.ts';
 import { generateLeagueCalendar, generateTwoSemesterCalendar, initializeStandings, sortStandings } from './calendarGenerator.ts';
+import { getContinentalTournamentField } from './continentalRepresentatives.ts';
 import { getAllClubs, getCompetitionClubs } from './teamsDatabase.ts';
 import { generateKickoffNews } from '../engine/newsEngine.ts';
 
@@ -197,8 +198,8 @@ export function createNewGame(
     (sourceClub.stateId != null && c.stateId === sourceClub.stateId) ||
     (sourceClub.stateCode != null && c.stateCode === sourceClub.stateCode)
   )) : [];
-  const continentalPool = basePool.filter(c => c.countryId === sourceClub.countryId && c.id !== userClubId).slice(0, 15);
-  const activeClubs = [...new Map([...competitionClubs, ...statePool, ...continentalPool, ...activeCountryClubs].map(c => [c.id, c])).values()];
+  const continentalField = getContinentalTournamentField(sourceClub, basePool).clubs;
+  const activeClubs = [...new Map([...competitionClubs, ...statePool, ...continentalField, ...activeCountryClubs].map(c => [c.id, c])).values()];
   const clonedClubs: Club[] = JSON.parse(JSON.stringify(activeClubs)).map((c: Club) => ({
     ...c,
     debt: c.debt ?? 0,
