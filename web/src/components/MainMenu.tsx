@@ -23,7 +23,11 @@ import {
   Sparkles,
   Heart,
   Info,
-  Bug
+  Bug,
+  AlertTriangle,
+  AlertCircle,
+  CheckCircle2,
+  X
 } from 'lucide-react';
 import { sound } from '../audio/soundEngine';
 import { TeamEditorScreen } from './TeamEditorScreen';
@@ -92,6 +96,18 @@ export const MainMenu: React.FC = () => {
   // Save/Load tab state
   const [saveTitle, setSaveTitle] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
+
+  // Floating feedback toast notification
+  const [toast, setToast] = useState<{ type: 'warning' | 'error' | 'info' | 'success'; message: string } | null>(null);
+  const showToast = (type: 'warning' | 'error' | 'info' | 'success', message: string) => {
+    setToast({ type, message });
+  };
+
+  React.useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   // Pre-load lightweight league metadata index for snappy UI
   React.useEffect(() => {
@@ -314,16 +330,17 @@ export const MainMenu: React.FC = () => {
     sound.playClick();
     if (activeCountryIds.includes(cid)) {
       if (cid === selectedCountryId) {
+        showToast('info', 'A liga principal do seu clube de largada não pode ser desmarcada.');
         return; // Primary league cannot be deselected
       }
       if (activeCountryIds.length <= 3) {
-        alert('Mínimo de 3 ligas ativas requerido para simulação paralela.');
+        showToast('warning', 'Mínimo de 3 ligas ativas requerido para simulação paralela.');
         return;
       }
       setActiveCountryIds((prev) => prev.filter((id) => id !== cid));
     } else {
       if (activeCountryIds.length >= 5) {
-        alert('Máximo de 5 ligas ativas permitido.');
+        showToast('warning', 'Máximo de 5 ligas ativas simultâneas permitido.');
         return;
       }
       setActiveCountryIds((prev) => [...prev, cid]);
@@ -351,7 +368,53 @@ export const MainMenu: React.FC = () => {
   }, [popularCountries, allCountries, selectedCountryId]);
 
   return (
-    <div className="flex-1 flex flex-col bg-[#09120e] text-slate-100 select-none overflow-hidden h-full">
+    <div className="flex-1 flex flex-col bg-[#09120e] text-slate-100 select-none overflow-hidden h-full relative">
+      {/* Floating Feedback Toast Notification */}
+      {toast && (
+        <div
+          role="status"
+          aria-live="polite"
+          data-testid="mainmenu-toast"
+          className="fixed top-16 right-6 z-50 flex items-center gap-2.5 px-4 py-2.5 rounded-lg border shadow-2xl backdrop-blur-md transition-all animate-in fade-in slide-in-from-top-2"
+          style={{
+            backgroundColor:
+              toast.type === 'warning'
+                ? 'rgba(41, 26, 7, 0.95)'
+                : toast.type === 'error'
+                ? 'rgba(45, 11, 14, 0.95)'
+                : 'rgba(9, 28, 19, 0.95)',
+            borderColor:
+              toast.type === 'warning'
+                ? 'rgba(217, 119, 6, 0.7)'
+                : toast.type === 'error'
+                ? 'rgba(225, 29, 72, 0.7)'
+                : 'rgba(16, 185, 129, 0.7)',
+            color:
+              toast.type === 'warning'
+                ? '#fef3c7'
+                : toast.type === 'error'
+                ? '#ffe4e6'
+                : '#d1fae5',
+          }}
+        >
+          {toast.type === 'warning' ? (
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+          ) : toast.type === 'error' ? (
+            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+          ) : (
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          )}
+          <span className="text-xs font-semibold">{toast.message}</span>
+          <button
+            onClick={() => setToast(null)}
+            className="ml-2 text-slate-400 hover:text-white transition-colors cursor-pointer p-0.5 rounded"
+            aria-label="Fechar notificação"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Top Banner with Brand and Return Button */}
       <div className="h-14 bg-[#0d1a14] border-b border-[#1b3629] px-6 flex items-center justify-between shadow-md shrink-0">
         <div className="flex items-center space-x-3">

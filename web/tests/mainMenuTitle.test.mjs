@@ -59,3 +59,18 @@ test('App.tsx esc handling and GameContext contract guarantee safe title navigat
   const contextContent = fs.readFileSync(contextPath, 'utf8');
   assert.ok(contextContent.includes('hasActiveCareer: boolean;'), 'GameContextType declares hasActiveCareer');
 });
+
+test('MainMenu.tsx replaces native browser alerts with polished floating toast notifications', () => {
+  const menuPath = path.join(__dirname, '../src/components/MainMenu.tsx');
+  const content = fs.readFileSync(menuPath, 'utf8');
+
+  // Must not use window.alert or alert()
+  assert.ok(!content.includes('alert('), 'MainMenu.tsx must not use native browser alert()');
+
+  // Must have toast notification element and showToast
+  assert.ok(content.includes('data-testid="mainmenu-toast"'), 'MainMenu.tsx must render floating toast with testid');
+  assert.ok(content.includes('showToast'), 'MainMenu.tsx must have showToast helper');
+  assert.ok(content.includes('Mínimo de 3 ligas ativas requerido'), 'Provides friendly message for minimum active leagues');
+  assert.ok(content.includes('Máximo de 5 ligas ativas'), 'Provides friendly message for maximum active leagues');
+});
+
