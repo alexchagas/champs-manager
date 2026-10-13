@@ -384,11 +384,11 @@ export const TacticsScreen: React.FC = () => {
       </div>
 
       {/* TACTICAL WORKSPACE */}
-      <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden gap-2.5 sm:gap-3 min-h-0">
+      <div className="flex-none lg:flex-1 flex flex-col lg:flex-row lg:overflow-hidden gap-2.5 sm:gap-3 lg:min-h-0">
         {/* LEFT: PITCH & TACTICAL BOARD (FULL ON MOBILE IF TAB=PITCH, SIDE-BY-SIDE ON LG) */}
-        <div className={`bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col overflow-hidden shadow-lg shrink-0 min-h-0 ${mobileTab === 'pitch' ? 'flex flex-1' : 'hidden'} lg:flex lg:w-[440px] xl:w-[480px] 2xl:w-[500px]`}>
+        <div className={`bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col overflow-hidden shadow-lg shrink-0 min-h-0 ${mobileTab === 'pitch' ? 'flex flex-none lg:flex-1' : 'hidden'} lg:flex lg:w-[440px] xl:w-[480px] 2xl:w-[500px]`}>
         {/* Top Control Bar: Formation, Mentality, Power summary */}
-        <div className="px-3 py-2 bg-[var(--app-surface-2)] border-b border-[var(--app-border-highlight)] flex items-center justify-between shrink-0">
+        <div className="px-3 py-2 bg-[var(--app-surface-2)] border-b border-[var(--app-border-highlight)] flex flex-wrap gap-y-1.5 items-center justify-between shrink-0">
           <div className="flex items-center space-x-2">
             <span className="text-xs text-slate-300 font-semibold">Formação:</span>
             <select
@@ -439,7 +439,7 @@ export const TacticsScreen: React.FC = () => {
 
 
         {/* VISUAL FOOTBALL PITCH */}
-        <div className="flex-1 relative pitch-pattern overflow-hidden border border-[#0d2618] m-2 rounded shadow-inner">
+        <div className="h-[34rem] flex-none lg:h-auto lg:flex-1 relative pitch-pattern overflow-hidden border border-[#0d2618] m-2 rounded shadow-inner">
           {/* Pitch Markings SVG Overlay */}
           <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-40" viewBox="0 0 100 100" preserveAspectRatio="none">
             {/* Outer border */}
@@ -489,7 +489,7 @@ export const TacticsScreen: React.FC = () => {
                   transform: 'translate(-50%, -50%)',
                   borderColor: isSelected ? undefined : clubTheme.subtleBorder,
                 }}
-                className={`absolute w-[84px] sm:w-[88px] p-1 rounded-md text-center cursor-pointer transition-all duration-150 shadow-md overflow-hidden ${
+                className={`absolute w-[64px] sm:w-[88px] p-1 rounded-md text-center cursor-pointer transition-all duration-150 shadow-md overflow-hidden ${
                   isSelected
                     ? 'bg-amber-400 text-black ring-4 ring-amber-300 ring-offset-2 ring-offset-black scale-110 z-30 shadow-[0_0_15px_rgba(251,191,36,0.8)] animate-pulse'
                     : 'bg-[#0a1811]/92 hover:bg-[#12281d] text-white border z-20 hover:scale-105'
@@ -520,13 +520,13 @@ export const TacticsScreen: React.FC = () => {
                 </div>
 
                 {/* Player Name */}
-                <div className={`text-[11px] font-bold truncate leading-tight ${isSelected ? 'text-black' : 'text-slate-100'}`}>
+                <div className={`text-[10px] sm:text-[11px] font-bold truncate leading-tight ${isSelected ? 'text-black' : 'text-slate-100'}`}>
                   {player.name}
                 </div>
 
                 {/* Energy Indicator & Mini-bar */}
-                <div className="mt-1 space-y-0.5">
-                  <div className="flex items-center justify-between text-[8px] font-mono leading-none px-0.5">
+                <div className="mt-0.5 sm:mt-1 space-y-0.5">
+                  <div className="hidden sm:flex items-center justify-between text-[8px] font-mono leading-none px-0.5">
                     <span className={isSelected ? 'text-black font-black' : player.energy >= 80 ? 'text-emerald-400 font-bold' : player.energy >= 60 ? 'text-amber-300 font-bold' : 'text-rose-400 font-bold'}>
                       ⚡ {player.energy}%
                     </span>
@@ -613,7 +613,7 @@ export const TacticsScreen: React.FC = () => {
       </div>
 
       {/* RIGHT: DENSE SQUAD LIST (TITULARES E BANCO DE RESERVAS) */}
-      <div className={`bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col shadow-lg flex-1 min-h-0 lg:overflow-hidden ${mobileTab === 'squad' ? 'flex' : 'hidden lg:flex'}`}>
+      <div className={`bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col shadow-lg flex-none lg:flex-1 lg:min-h-0 lg:overflow-hidden ${mobileTab === 'squad' ? 'flex' : 'hidden lg:flex'}`}>
         {/* Table header */}
         <div className="px-3 py-2 bg-[var(--app-surface-2)] border-b border-[var(--app-border-highlight)] flex items-center justify-between shrink-0">
           <div className="flex items-center space-x-2">
@@ -681,20 +681,20 @@ export const TacticsScreen: React.FC = () => {
         </div>
 
         {/* Dense Squad Table with horizontal scroll support */}
-        <div className="flex-1 overflow-x-auto overflow-y-auto">
-          <table className="w-full text-left text-xs brasfoot-table border-collapse min-w-[580px] lg:min-w-0">
+        <div className="flex-none lg:flex-1 sm:overflow-x-auto sm:overflow-y-auto">
+          <table className="w-full text-left text-xs brasfoot-table border-collapse sm:min-w-[580px] lg:min-w-0">
             <thead>
               <tr className="sticky top-0 z-10">
                 <th className="w-16 sm:w-18 text-center">Status</th>
                 <th className="w-11 text-center">Pos</th>
                 <th>Nome</th>
-                <th className="w-10 text-center">Idade</th>
+                <th className="w-10 text-center hidden sm:table-cell">Idade</th>
                 <th className="w-12 text-center">Força</th>
-                <th className="w-20 text-center">Energia</th>
+                <th className="w-14 sm:w-20 text-center">Energia</th>
                 <th className="w-8 text-center hidden xl:table-cell">Pé</th>
                 <th className="hidden lg:table-cell">Características</th>
                 <th className="w-18 text-right hidden sm:table-cell">Salário</th>
-                <th className="w-9 text-center">Troca</th>
+                <th className="w-9 text-center hidden sm:table-cell">Troca</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#14281f] font-mono-numbers">
@@ -793,7 +793,7 @@ export const TacticsScreen: React.FC = () => {
                     </td>
 
                     {/* Age */}
-                    <td className="text-center py-1 text-slate-300">{player.age}</td>
+                    <td className="text-center py-1 text-slate-300 hidden sm:table-cell">{player.age}</td>
 
                     {/* Strength */}
                     <td className="text-center py-1 font-bold text-emerald-400 text-[12px]">
@@ -801,9 +801,9 @@ export const TacticsScreen: React.FC = () => {
                     </td>
 
                     {/* Energy bar */}
-                    <td className="py-1 px-2">
+                    <td className="py-1 px-1 sm:px-2">
                       <div className="flex items-center space-x-1.5">
-                        <div className="flex-1 bg-black/40 h-2 rounded-full overflow-hidden">
+                        <div className="hidden sm:block flex-1 bg-black/40 h-2 rounded-full overflow-hidden">
                           <div
                             className={`h-full rounded-full ${energyColor}`}
                             style={{ width: `${player.energy}%` }}
@@ -836,7 +836,7 @@ export const TacticsScreen: React.FC = () => {
                     </td>
 
                     {/* Swap button icon */}
-                    <td className="text-center py-1">
+                    <td className="text-center py-1 hidden sm:table-cell">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
