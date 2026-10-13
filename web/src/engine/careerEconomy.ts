@@ -1,4 +1,5 @@
 import type { Club, FinancialEntry, GameState, Manager, MatchFixture, Player, TransferOffer, WeeklyFinancialStatement } from '../types';
+import { sanitizePrematureChampionships } from './tournamentCompletion.ts';
 
 const wage = (players: Player[]) => Math.round(players.reduce((n, p) => n + p.salary, 0) / 4);
 export const weeklyObligations = (c: Club) => wage(c.squad) + wage(c.youth || []) + Math.round(c.capacity * 0.7) + (c.loans || []).reduce((n, l) => n + Math.min(l.installmentAmount, l.remainingAmount), 0);
@@ -96,6 +97,7 @@ export function managerExpectation(c: Club, clubs: Club[]): number {
 
 export function migrateCareer(state: GameState): GameState {
   state = migrateMatchState(state);
+  state = sanitizePrematureChampionships(state);
 
   const needsSaveMigration = state.options?.autoSaveMode === undefined || !state.careerId;
   const migratedAutoSaveMode = state.options?.autoSaveMode !== undefined

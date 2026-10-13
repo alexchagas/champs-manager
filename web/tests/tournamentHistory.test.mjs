@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { 
   detectNewlyCompletedCompetitions, 
   isSeasonComplete, 
-  getCompetitionPrizeMoney 
+  getCompetitionPrizeMoney,
+  sanitizePrematureChampionships
 } from '../src/engine/tournamentCompletion.ts';
 import { createChampionshipNews } from '../src/engine/newsEngine.ts';
 
@@ -201,3 +202,101 @@ test('createChampionshipNews - generates headline and golden boot articles', () 
   assert.ok(news[1].title.includes('GABRIEL BARBOSA'));
   assert.equal(news[1].badgeText, '⚽ CHUTEIRA DE OURO');
 });
+
+test('tournamentCompletion - Copa do Brasil two-legged format does NOT complete prematurely at round 4 (Quartas)', () => {
+  const dummyClubs = [
+    { id: 255, name: 'Cruzeiro', squad: [] },
+    { id: 20, name: 'Palmeiras', squad: [] },
+    { id: 30, name: 'Botafogo', squad: [] },
+  ];
+
+  // Simulating state after round 4 (Quartas de Final - Volta) where Cruzeiro played Palmeiras
+  const state = {
+    seasonYear: 2026,
+    userClubId: 255,
+    managerName: 'Professor',
+    clubs: dummyClubs,
+    calendar: [
+      { id: 1, round: 1, competitionType: 'copa', competitionName: 'Copa do Brasil', stage: 'Oitavas de Final', leg: 1, homeClubId: 255, awayClubId: 10, played: true },
+      { id: 2, round: 2, competitionType: 'copa', competitionName: 'Copa do Brasil', stage: 'Oitavas de Final', leg: 2, homeClubId: 10, awayClubId: 255, played: true },
+      { id: 3, round: 3, competitionType: 'copa', competitionName: 'Copa do Brasil', stage: 'Quartas de Final', leg: 1, homeClubId: 255, awayClubId: 20, homeScore: 2, awayScore: 0, played: true },
+      { id: 4, round: 4, competitionType: 'copa', competitionName: 'Copa do Brasil', stage: 'Quartas de Final', leg: 2, homeClubId: 20, awayClubId: 255, homeScore: 1, awayScore: 0, played: true },
+      // Semifinal and Final are still scheduled / pending!
+      { id: 5, round: 5, competitionType: 'copa', competitionName: 'Copa do Brasil', stage: 'Semifinal', leg: 1, homeClubId: 255, awayClubId: 30, played: false },
+      { id: 6, round: 6, competitionType: 'copa', competitionName: 'Copa do Brasil', stage: 'Semifinal', leg: 2, homeClubId: 30, awayClubId: 255, played: false },
+      { id: 7, round: 7, competitionType: 'copa', competitionName: 'Copa do Brasil', stage: 'Final', leg: 1, homeClubId: 0, awayClubId: 0, played: false },
+      { id: 8, round: 8, competitionType: 'copa', competitionName: 'Copa do Brasil', stage: 'Final', leg: 2, homeClubId: 0, awayClubId: 0, played: false },
+    ],
+    championshipHistory: [],
+  };
+
+  const records = detectNewlyCompletedCompetitions(state);
+  assert.equal(records.length, 0, 'Copa do Brasil must NOT complete when only Quartas de Final (round 4) is played');
+});
+
+test('tournamentCompletion - Copa do Brasil two-legged format completes when Final (Volta) is played and awards aggregate winner', () => {
+  const dummyClubs = [
+    { id: 255, name: 'Cruzeiro', squad: [] },
+    { id: 10, name: 'Flamengo', squad: [] },
+  ];
+
+  const state = {
+    seasonYear: 2026,
+    userClubId: 255,
+    managerName: 'Professor',
+    clubs: dummyClubs,
+    calendar: [
+      { id: 7, round: 7, competitionType: 'copa', competitionName: 'Copa do Brasil', stage: 'Final', leg: 1, homeClubId: 255, awayClubId: 10, homeScore: 3, awayScore: 1, played: true },
+      { id: 8, round: 8, competitionType: 'copa', competitionName: 'Copa do Brasil', stage: 'Final', leg: 2, homeClubId: 10, awayClubId: 255, homeScore: 1, awayScore: 1, played: true },
+    ],
+    championshipHistory: [],
+  };
+
+  const records = detectNewlyCompletedCompetitions(state);
+  assert.equal(records.length, 1);
+  assert.equal(records[0].competitionType, 'copa');
+  assert.equal(records[0].championClubId, 255); // Cruzeiro won 4 x 2 aggregate!
+  assert.equal(records[0].championClubName, 'Cruzeiro');
+  assert.equal(records[0].runnerUpClubId, 10);
+  assert.equal(records[0].runnerUpClubName, 'Flamengo');
+  assert.equal(records[0].userPositionText, 'Campeão 🏆');
+  assert.equal(records[0].finalScoreText, '4 x 2 (Agregado)');
+});
+
+test('sanitizePrematureChampionships - removes bogus Copa championship records from saves before the Final is completed', () => {
+  const dummyClubs = [
+    { id: 255, name: 'Cruzeiro', squad: [] },
+    { id: 20, name: 'Palmeiras', squad: [] },
+  ];
+
+  const corruptedState = {
+    seasonYear: 2026,
+    userClubId: 255,
+    clubs: dummyClubs,
+    calendar: [
+      { id: 3, round: 3, competitionType: 'copa', competitionName: 'Copa do Brasil', stage: 'Quartas de Final', leg: 1, homeClubId: 255, awayClubId: 20, played: true },
+      { id: 4, round: 4, competitionType: 'copa', competitionName: 'Copa do Brasil', stage: 'Quartas de Final', leg: 2, homeClubId: 20, awayClubId: 255, played: true },
+      { id: 7, round: 7, competitionType: 'copa', competitionName: 'Copa do Brasil', stage: 'Final', leg: 1, homeClubId: 0, awayClubId: 0, played: false },
+      { id: 8, round: 8, competitionType: 'copa', competitionName: 'Copa do Brasil', stage: 'Final', leg: 2, homeClubId: 0, awayClubId: 0, played: false },
+    ],
+    championshipHistory: [
+      {
+        id: '2026-copa',
+        seasonYear: 2026,
+        competitionType: 'copa',
+        competitionName: 'Copa do Brasil',
+        championClubId: 20,
+        runnerUpClubId: 255,
+      }
+    ],
+    pendingTournamentConclusion: {
+      id: '2026-copa',
+      competitionType: 'copa',
+    },
+  };
+
+  const repaired = sanitizePrematureChampionships(corruptedState);
+  assert.equal(repaired.championshipHistory.length, 0, 'Premature Copa record should be cleaned up');
+  assert.equal(repaired.pendingTournamentConclusion, undefined, 'Pending conclusion modal should be cleared');
+});
+

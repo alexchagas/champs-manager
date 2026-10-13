@@ -56,10 +56,41 @@ export function getCompetitionPrizeMoney(type: string, isChampion: boolean, isRu
 }
 
 /**
+ * Sanitizes championshipHistory by removing any records for tournaments whose final matches
+ * have not actually concluded (e.g., if a tournament was prematurely marked complete due to a bug).
+ */
+export function sanitizePrematureChampionships(state: GameState): GameState {
+  if (!state.championshipHistory || state.championshipHistory.length === 0 || !state.calendar) {
+    return state;
+  }
+
+  const cupMatches = state.calendar.filter(f => f.competitionType === 'copa');
+  if (cupMatches.length === 0) return state;
+
+  const isTwoLegged = cupMatches.some(f => f.leg === 1);
+  const finals = cupMatches.filter(f => f.stage === 'Final' || (!isTwoLegged && f.round === 4));
+  const finalsCompleted = finals.length > 0 && finals.every(f => f.played && f.homeClubId > 0 && f.awayClubId > 0);
+
+  // If Copa matches exist in calendar but the final is not completed, remove any premature copa record for this season
+  const hasPrematureCopa = !finalsCompleted && state.championshipHistory.some(r => r.competitionType === 'copa' && r.seasonYear === state.seasonYear);
+
+  if (hasPrematureCopa) {
+    return {
+      ...state,
+      championshipHistory: state.championshipHistory.filter(r => !(r.competitionType === 'copa' && r.seasonYear === state.seasonYear)),
+      pendingTournamentConclusion: state.pendingTournamentConclusion?.competitionType === 'copa' ? undefined : state.pendingTournamentConclusion,
+    };
+  }
+
+  return state;
+}
+
+/**
  * Checks which competitions have concluded dynamically by analyzing match fixtures and standings,
  * completely independent of hardcoded calendar week or round numbers.
  */
-export function detectNewlyCompletedCompetitions(state: GameState): ChampionshipRecord[] {
+export function detectNewlyCompletedCompetitions(rawState: GameState): ChampionshipRecord[] {
+  const state = sanitizePrematureChampionships(rawState);
   const records: ChampionshipRecord[] = [];
   const existingHistory = state.championshipHistory || [];
   const calendar = state.calendar || [];
@@ -129,13 +160,17 @@ export function detectNewlyCompletedCompetitions(state: GameState): Championship
     }
   }
 
-  // 2. COPA NACIONAL (Round 4 or Stage Final played)
+  // 2. COPA NACIONAL (Two-legged or Single-match Final played)
   const cupMatches = calendar.filter(f => f.competitionType === 'copa');
   if (cupMatches.length > 0) {
     const cupName = cupMatches[0].competitionName || 'Copa do Brasil';
     if (!isAlreadyRecorded('copa', cupName)) {
-      const finalMatch = cupMatches.find(f => f.stage === 'Final' || f.competitionRound === 'Final' || f.round === 4);
-      if (finalMatch && finalMatch.played && finalMatch.homeClubId > 0 && finalMatch.awayClubId > 0) {
+      const isTwoLegged = cupMatches.some(f => f.leg === 1);
+      const finals = cupMatches.filter(f => f.stage === 'Final' || (!isTwoLegged && f.round === 4));
+
+      if (finals.length === 1 && finals[0].played && finals[0].homeClubId > 0 && finals[0].awayClubId > 0) {
+        // Single-match final
+        const finalMatch = finals[0];
         const champId = winner(finalMatch);
         const runnerId = champId === finalMatch.homeClubId ? finalMatch.awayClubId : finalMatch.homeClubId;
         const champ = getClub(champId);
@@ -158,6 +193,39 @@ export function detectNewlyCompletedCompetitions(state: GameState): Championship
           championClubName: champ?.name || 'Campeão',
           championClubCrest: champ?.crestMiniUrl || champ?.crestUrl,
           runnerUpClubId: runnerId,
+          runnerUpClubName: runner?.name || 'Vice-campeão',
+          runnerUpClubCrest: runner?.crestMiniUrl || runner?.crestUrl,
+          topScorerName: topScorer?.name,
+          topScorerClubName: topScorer?.clubName,
+          topScorerGoals: topScorer?.goals,
+          finalScoreText: scoreText,
+          userPositionText: userPosition,
+          userPrizeMoney: isUserChamp || isUserRunner ? prize : undefined,
+          managerName: isUserChamp ? state.managerName : undefined,
+        });
+      } else if (finals.length >= 2 && finals[0].played && finals[1].played && finals[0].homeClubId > 0 && finals[1].homeClubId > 0) {
+        // Two-legged final (Ida e Volta)
+        const leg1 = finals.find(f => f.leg === 1) || finals[0];
+        const leg2 = finals.find(f => f.leg === 2) || finals[1];
+        const { winnerId, runnerUpId, scoreText } = aggregateWinner(leg1, leg2);
+        const champ = getClub(winnerId);
+        const runner = getClub(runnerUpId);
+
+        const isUserChamp = winnerId === state.userClubId;
+        const isUserRunner = runnerUpId === state.userClubId;
+        const userPosition = isUserChamp ? 'Campeão 🏆' : isUserRunner ? 'Vice-campeão 🥈' : 'Eliminado';
+        const prize = getCompetitionPrizeMoney('copa', isUserChamp, isUserRunner);
+        const topScorer = getTopScorer(cupMatches.flatMap(m => [m.homeClubId, m.awayClubId]));
+
+        records.push({
+          id: `${seasonYear}-copa`,
+          seasonYear,
+          competitionType: 'copa',
+          competitionName: cupName,
+          championClubId: winnerId,
+          championClubName: champ?.name || 'Campeão',
+          championClubCrest: champ?.crestMiniUrl || champ?.crestUrl,
+          runnerUpClubId: runnerUpId,
           runnerUpClubName: runner?.name || 'Vice-campeão',
           runnerUpClubCrest: runner?.crestMiniUrl || runner?.crestUrl,
           topScorerName: topScorer?.name,
