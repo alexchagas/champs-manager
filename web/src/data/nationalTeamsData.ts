@@ -119,12 +119,14 @@ export function buildNationalTeamSquad(
   const mids = matchingPlayers.filter(p => p.position === 'VOL' || p.position === 'MEI');
   const atts = matchingPlayers.filter(p => p.position === 'ATA');
 
-  const targetBaseStrength = 65 + reputation * 6; // e.g. rep 5 -> ~95, rep 3 -> ~83, rep 2 -> ~77
+  // Realistic strength scaling matching teamsDatabase.json (max 71, median 26)
+  // Rep 5 (Elite): ~54-62; Rep 4: ~46-53; Rep 3: ~38-45; Rep 2: ~30-37; Rep 1: ~24-30
+  const targetBaseStrength = 22 + reputation * 7;
   let nextId = 900000 + countryId * 100;
 
   const generatePlayer = (pos: 'GOL' | 'LAT' | 'ZAG' | 'VOL' | 'MEI' | 'ATA', i: number): Player => {
     const strengthVar = Math.floor(Math.random() * 7) - 3;
-    const str = Math.min(99, Math.max(68, targetBaseStrength + strengthVar));
+    const str = Math.min(72, Math.max(22, targetBaseStrength + strengthVar));
     return {
       id: nextId++,
       name: `${pos} ${i + 1}`,
@@ -136,8 +138,8 @@ export function buildNationalTeamSquad(
       salary: str * 12000,
       marketValue: str * 350000,
       isStarter: i < 11,
-      isStar: str >= 88,
-      isWorldTop: str >= 93,
+      isStar: str >= 54,
+      isWorldTop: str >= 64,
       skill1: 'Armação',
       skill2: 'Finalização',
       goals: 0,
@@ -305,13 +307,27 @@ export function evaluateUserSquadCallups(
   const teamByCountry = new Map(nationalTeams.map(t => [t.countryId, t]));
 
   for (const player of userClub.squad) {
-    const isDeserving = player.isWorldTop || player.isStar || player.strength >= 80;
-    if (!isDeserving) continue;
-
-    // Use club's country or player country fallback
+    // Determine player's nationality (from club countryId or default 29 Brazil)
     const playerCountryId = userClub.countryId || 29;
     const nt = teamByCountry.get(playerCountryId);
     if (!nt) continue;
+
+    // Minimum strength threshold tailored to national team reputation:
+    // Rep 5 (Elite): >= 48 (or isStar/isWorldTop)
+    // Rep 4: >= 40
+    // Rep 3: >= 32
+    // Rep 1-2 (Minor nations): >= 22 (accessible for lower divisions and modest clubs)
+    const minStrengthRequired =
+      nt.reputation >= 5 ? 48 :
+      nt.reputation >= 4 ? 40 :
+      nt.reputation >= 3 ? 32 : 22;
+
+    const isDeserving =
+      player.isWorldTop ||
+      player.isStar ||
+      player.strength >= minStrengthRequired;
+
+    if (!isDeserving) continue;
 
     const boostPct = player.isWorldTop ? 35 : player.isStar ? 25 : 20;
     const currentVal = player.marketValue || (player.strength * 200000);

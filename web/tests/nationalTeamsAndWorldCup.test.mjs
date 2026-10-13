@@ -303,3 +303,101 @@ test('Career initialization sets up World Cup, callups, and national team offers
   const callupNews = state.newsFeed?.find(n => n.badgeText === 'COPA DO MUNDO');
   assert.ok(callupNews, 'Callup headline is present in initial newsFeed');
 });
+
+test('National team squads match realistic strength distribution and modest nations call up lower division players', () => {
+  const allClubs = getAllClubs();
+  const nationalTeams = initializeNationalTeams(allClubs);
+
+  // Check generated squad strengths: max strength across all national teams must adhere to realistic scale
+  for (const nt of nationalTeams) {
+    for (const p of nt.squad) {
+      assert.ok(p.strength <= 72, `Player ${p.name} strength ${p.strength} should not exceed top player ceiling (72)`);
+      assert.ok(p.strength >= 20, `Player ${p.name} strength ${p.strength} should be at least 20`);
+    }
+
+    const avgStr = nt.squad.reduce((acc, p) => acc + p.strength, 0) / nt.squad.length;
+    if (nt.reputation === 5) {
+      assert.ok(avgStr >= 50, `Elite national team ${nt.name} average ${avgStr} is at least 50`);
+    }
+  }
+
+  // Modest nation callup test: Costa Rica (countryId 51, rep 2) with modest players
+  const costaRica = nationalTeams.find(t => t.countryId === 51) || nationalTeams[0];
+  const modestClub = {
+    id: 8888,
+    name: 'Clube Modesto FC',
+    countryId: costaRica.countryId,
+    reputation: 1,
+    stadium: 'Estádio Local',
+    capacity: 5000,
+    coach: 'Treinador',
+    primaryColor: '#000000',
+    secondaryColor: '#ffffff',
+    balance: 100000,
+    ticketPrice: 15,
+    crestUrl: '',
+    crestMiniUrl: '',
+    squad: [
+      {
+        id: 101,
+        name: 'Jogador Destaque Modesto',
+        position: 'ATA',
+        strength: 28, // Below 80, but >= 22 (eligible for modest nation)
+        age: 23,
+        foot: 'D',
+        energy: 100,
+        salary: 10000,
+        marketValue: 150000,
+        isStarter: true,
+        isStar: false,
+        isWorldTop: false,
+        skill1: 'Finalização',
+        skill2: 'Velocidade',
+        goals: 5,
+        assists: 2,
+        yellowCards: 0,
+        redCards: 0,
+        injured: false,
+        suspended: false,
+        contractYears: 2,
+      },
+      {
+        id: 102,
+        name: 'Jogador Fraco',
+        position: 'VOL',
+        strength: 15, // Below 22, should NOT be called up
+        age: 19,
+        foot: 'D',
+        energy: 100,
+        salary: 5000,
+        marketValue: 50000,
+        isStarter: true,
+        isStar: false,
+        isWorldTop: false,
+        skill1: 'Desarme',
+        skill2: 'Passe',
+        goals: 0,
+        assists: 0,
+        yellowCards: 0,
+        redCards: 0,
+        injured: false,
+        suspended: false,
+        contractYears: 1,
+      },
+    ],
+    tactics: {
+      formation: '4-4-2',
+      mentality: 'Equilibrada',
+      penaltyTakerId: 101,
+      freeKickTakerId: 101,
+      cornerTakerId: 101,
+      captainId: 101,
+    },
+  };
+
+  const { callups, newsArticles } = evaluateUserSquadCallups(modestClub, 2026, nationalTeams);
+  assert.equal(callups.length, 1, 'Exactly 1 player called up from modest club');
+  assert.equal(callups[0].playerId, 101, 'Player with strength 28 was called up by Costa Rica');
+  assert.equal(callups[0].nationalTeamName, costaRica.name);
+  assert.equal(newsArticles.length, 1);
+});

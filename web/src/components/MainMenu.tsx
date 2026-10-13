@@ -1050,41 +1050,25 @@ export const MainMenu: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Quick Stats Grid */}
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div 
-                        className="p-2 rounded border"
-                        style={{
-                          backgroundColor: selectedClubAtmosphere.surface2,
-                          borderColor: selectedClubAtmosphere.borderSubtle,
-                        }}
-                      >
+                    {/* Stadium Info */}
+                    <div 
+                      className="p-2.5 rounded border flex items-center justify-between text-xs"
+                      style={{
+                        backgroundColor: selectedClubAtmosphere.surface2,
+                        borderColor: selectedClubAtmosphere.borderSubtle,
+                      }}
+                    >
+                      <div className="min-w-0 pr-2">
                         <span className="text-[10px] text-slate-400 block">Estádio</span>
                         <span className="text-white font-bold truncate block">{selectedClub.stadium}</span>
-                        <span 
-                          className="text-[10px] font-mono font-semibold"
-                          style={{ color: selectedClubAtmosphere.textAccent }}
-                        >
-                          {selectedClub.capacity.toLocaleString('pt-BR')} pessoas
-                        </span>
                       </div>
-
-                      <div 
-                        className="p-2 rounded border"
-                        style={{
-                          backgroundColor: selectedClubAtmosphere.surface2,
-                          borderColor: selectedClubAtmosphere.borderSubtle,
-                        }}
-                      >
-                        <span className="text-[10px] text-slate-400 block">Orçamento em Caixa</span>
+                      <div className="text-right shrink-0">
+                        <span className="text-[10px] text-slate-400 block">Capacidade</span>
                         <span 
-                          className="font-bold block font-mono"
+                          className="text-[11px] font-mono font-semibold"
                           style={{ color: selectedClubAtmosphere.textAccent }}
                         >
-                          R$ {(selectedClub.balance / 1000000).toFixed(1)}M
-                        </span>
-                        <span className="text-[10px] text-slate-400">
-                          Ingresso: R$ {selectedClub.ticketPrice},00
+                          {(selectedClub.capacity || 0).toLocaleString('pt-BR')} pessoas
                         </span>
                       </div>
                     </div>
