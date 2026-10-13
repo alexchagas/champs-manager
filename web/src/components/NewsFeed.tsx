@@ -107,7 +107,7 @@ export const NewsFeed: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-[var(--app-bg-deep)] p-3 sm:p-4 md:h-[calc(100vh-3.5rem)] select-none md:overflow-hidden min-h-0 font-sans pb-6 md:pb-0">
+    <div className="flex-1 flex flex-col bg-[var(--app-bg-deep)] p-3 sm:p-4 md:h-[calc(100vh-3.5rem)] select-none md:overflow-hidden md:min-h-0 font-sans pb-6 md:pb-0">
       {/* TRADITIONAL NEWSPAPER MASTHEAD */}
       <div className="bg-[var(--app-surface-1)] border-2 border-[var(--app-border-highlight)] rounded-lg p-3.5 shadow-xl mb-3 shrink-0 relative overflow-hidden">
         {/* Kit Stripe Top Accent Line */}

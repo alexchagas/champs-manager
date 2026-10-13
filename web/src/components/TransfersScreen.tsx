@@ -234,7 +234,7 @@ export const TransfersScreen: React.FC = () => {
   const expiringContractsCount = userClub.squad.filter((p) => (p.contractYears ?? 3) <= 1).length;
 
   return (
-    <div className="flex-1 flex flex-col md:h-[calc(100vh-3.5rem)] md:overflow-hidden min-h-0 bg-[var(--app-bg-deep)] select-none pb-6 md:pb-0">
+    <div className="flex-1 flex flex-col md:h-[calc(100vh-3.5rem)] md:overflow-hidden md:min-h-0 bg-[var(--app-bg-deep)] select-none pb-6 md:pb-0">
       {/* Top Banner / Market Overview Bar */}
       <div className="bg-[var(--app-surface-1)] border-b border-[var(--app-border-subtle)] px-3 sm:px-4 py-2 sm:py-2.5 flex flex-col sm:flex-row gap-2 sm:items-center justify-between shrink-0 shadow-sm relative overflow-hidden">
         {/* Kit Stripe Top Accent Line */}

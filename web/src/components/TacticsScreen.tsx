@@ -259,7 +259,7 @@ export const TacticsScreen: React.FC = () => {
   ];
 
   return (
-    <div className="flex-1 flex flex-col lg:overflow-hidden bg-[var(--app-bg-deep)] p-2.5 sm:p-3 gap-2 sm:gap-2.5 min-h-0 select-none pb-4 lg:pb-0">
+    <div className="flex-1 flex flex-col lg:overflow-hidden bg-[var(--app-bg-deep)] p-2.5 sm:p-3 gap-2 sm:gap-2.5 lg:min-h-0 select-none pb-4 lg:pb-0">
       {/* MATCH PREPARATION ACTION BAR (RESPONSIVE WRAP & COMPACT SIZING) */}
       {userFixture && nextOpponent && (
         <div className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg py-2 px-3 sm:px-3.5 flex flex-wrap items-center justify-between gap-2 shadow-md shrink-0 relative overflow-hidden">

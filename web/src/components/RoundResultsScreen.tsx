@@ -65,7 +65,7 @@ export const RoundResultsScreen: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-[var(--app-bg-deep)] p-3 sm:p-4 lg:h-full lg:overflow-hidden min-h-0 w-full select-none pb-6 lg:pb-0">
+    <div className="flex-1 flex flex-col bg-[var(--app-bg-deep)] p-3 sm:p-4 lg:h-full lg:overflow-hidden lg:min-h-0 w-full select-none pb-6 lg:pb-0">
       {/* Súmula / Detalhes da Partida Modal */}
       {selectedFixture && (() => {
         const home = gameState.clubs.find((c) => c.id === selectedFixture.homeClubId);

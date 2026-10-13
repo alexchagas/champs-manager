@@ -48,7 +48,7 @@ export const SeasonReviewScreen: React.FC<Props> = ({ gameState, onStartNextSeas
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-[var(--app-bg-deep)] p-2 sm:p-4 md:h-screen select-none md:overflow-hidden min-h-0 pb-8 md:pb-0">
+    <div className="flex-1 flex flex-col bg-[var(--app-bg-deep)] p-2 sm:p-4 md:h-screen select-none md:overflow-hidden md:min-h-0 pb-8 md:pb-0">
       {/* TOP HERO BANNER */}
       <div className="relative overflow-hidden bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg p-3 sm:p-4 flex flex-wrap items-center justify-between gap-3 shadow-md mb-2 shrink-0">
         <div className="absolute top-0 left-0 right-0 h-1" style={{ background: clubTheme.stripeGradient }} />
