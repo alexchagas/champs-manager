@@ -40,6 +40,7 @@ import {
   registerLeagues
 } from '../data/teamsDatabase';
 import { getLeaguesMeta, loadClubsForActiveCountries, LeaguesMeta } from '../data/leagueBundleLoader';
+import { getCountryFlag, POPULAR_COUNTRIES } from '../data/countryFlags';
 import { AutoSaveMode, Club } from '../types';
 import { getClubTheme, deriveClubAtmosphere } from '../theme/clubTheme';
 
@@ -334,56 +335,8 @@ export const MainMenu: React.FC = () => {
     setSelectedDivision(div);
   };
 
-  const getCountryFlag = (cid: number): string => {
-    const flags: Record<number, string> = {
-      29: '🇧🇷',
-      154: '🇵🇹',
-      65: '🇪🇸',
-      97: '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
-      11: '🇦🇷',
-      104: '🇮🇹',
-      3: '🇩🇪',
-      72: '🇫🇷',
-      85: '🇳🇱',
-      131: '🇲🇽',
-      68: '🇺🇸',
-      195: '🇺🇾',
-      42: '🇨🇱',
-      46: '🇨🇴',
-      150: '🇵🇾',
-      151: '🇵🇪',
-      60: '🇪🇨',
-      26: '🇧🇴',
-      198: '🇻🇪',
-      9: '🇸🇦',
-      107: '🇯🇵',
-      188: '🇹🇷',
-      162: '🇷🇺',
-      21: '🇧🇪',
-      186: '🇨🇭',
-      148: '🇳🇴',
-      174: '🇸🇪',
-      54: '🇩🇰',
-      62: '🏴󠁧󠁢󠁳󠁣󠁴󠁿',
-    };
-    return flags[cid] || '🌐';
-  };
-
   // Popular quick countries list with authentic emoji flags
-  const popularCountries = useMemo(() => [
-    { id: 29, name: 'Brasil', flag: '🇧🇷' },
-    { id: 154, name: 'Portugal', flag: '🇵🇹' },
-    { id: 65, name: 'Espanha', flag: '🇪🇸' },
-    { id: 97, name: 'Inglaterra', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
-    { id: 11, name: 'Argentina', flag: '🇦🇷' },
-    { id: 104, name: 'Itália', flag: '🇮🇹' },
-    { id: 3, name: 'Alemanha', flag: '🇩🇪' },
-    { id: 72, name: 'França', flag: '🇫🇷' },
-    { id: 85, name: 'Holanda', flag: '🇳🇱' },
-    { id: 131, name: 'México', flag: '🇲🇽' },
-    { id: 68, name: 'Estados Unidos', flag: '🇺🇸' },
-    { id: 195, name: 'Uruguai', flag: '🇺🇾' },
-  ], []);
+  const popularCountries = useMemo(() => POPULAR_COUNTRIES, []);
 
   // Primary countries list: includes popular list plus currently selected country if not in popular
   const visiblePrimaryCountries = useMemo(() => {
@@ -591,7 +544,7 @@ export const MainMenu: React.FC = () => {
                       1. Selecione o País de Largada
                     </span>
                     <span className="text-[10px] text-slate-500 font-normal">
-                      134 Países Disponíveis
+                      {allCountries.length} Países Disponíveis
                     </span>
                   </div>
 

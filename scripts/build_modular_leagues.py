@@ -73,39 +73,37 @@ COUNTRY_LEVELS = {
     195: 18,# Uruguai
     42: 18, # Chile
     46: 18, # Colômbia
-    131: 17,# EUA
-    68: 17, # México
+    68: 17, # EUA
+    131: 17,# México
     162: 17,# Rússia
     188: 17,# Turquia
     186: 17,# Suíça
 }
 
-COUNTRY_NAMES = {
-    1: "África do Sul", 2: "Albânia", 3: "Alemanha", 4: "Andorra", 5: "Angola",
-    6: "Anguilla", 7: "Antígua e Barbuda", 8: "Curaçao", 9: "Arábia Saudita", 10: "Argélia",
-    11: "Argentina", 12: "Armênia", 13: "Aruba", 14: "Austrália", 15: "Áustria",
-    16: "Azerbaijão", 17: "Bahamas", 18: "Bahrein", 19: "Bangladesh", 20: "Barbados",
-    21: "Bélgica", 22: "Belize", 23: "Benin", 24: "Bermudas", 25: "Belarus",
-    26: "Bolívia", 27: "Bósnia e Herzegovina", 28: "Botsuana", 29: "Brasil", 30: "Brunei",
-    31: "Bulgária", 32: "Burkina Faso", 33: "Burundi", 34: "Butão", 35: "Cabo Verde",
-    36: "Camarões", 37: "Camboja", 38: "Canadá", 39: "Catar", 40: "Cazaquistão",
-    41: "Chade", 42: "Chile", 43: "China", 44: "Chipre", 45: "Timor-Leste",
-    46: "Colômbia", 47: "Congo", 48: "Coreia do Norte", 49: "Coreia do Sul", 50: "Costa do Marfim",
-    51: "Costa Rica", 52: "Croácia", 53: "Cuba", 54: "Dinamarca", 55: "Djibuti",
-    56: "Dominica", 57: "Egito", 58: "El Salvador", 59: "Emirados Árabes", 60: "Equador",
-    61: "Eritreia", 62: "Escócia", 63: "Eslováquia", 64: "Eslovênia", 65: "Espanha",
-    66: "Essuatíni", 67: "Estônia", 68: "México", 69: "Etiópia", 70: "Fiji",
-    71: "Filipinas", 72: "França", 73: "Gabão", 74: "Gâmbia", 75: "Gana",
-    76: "Geórgia", 77: "Gibraltar", 78: "Granada", 79: "Grécia", 80: "Guam",
-    81: "Guatemala", 82: "Guiana", 83: "Guiana Francesa", 84: "Guiné", 85: "Holanda",
-    86: "Honduras", 87: "Hong Kong", 88: "Hungria", 89: "Iêmen", 90: "Índia",
-    91: "Indonésia", 92: "Inglaterra", 93: "Irã", 94: "Iraque", 95: "Irlanda",
-    96: "Irlanda do Norte", 97: "Inglaterra", 98: "Islândia", 99: "Israel", 100: "Itália",
-    104: "Itália", 107: "Japão", 131: "Estados Unidos", 141: "Marrocos", 143: "Nova Zelândia",
-    148: "Noruega", 150: "Paraguai", 151: "Peru", 154: "Portugal", 162: "Rússia",
-    174: "Suécia", 175: "Suíça", 186: "Suíça", 188: "Turquia", 190: "Ucrânia", 195: "Uruguai",
-    198: "Venezuela"
-}
+def _load_all_country_names() -> dict:
+    names = {
+        68: "Estados Unidos",
+        131: "México",
+    }
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    lang_xml = os.path.join(root, "Brasfoot 2026/arquivos/default_lang.xml")
+    if os.path.exists(lang_xml):
+        try:
+            import xml.etree.ElementTree as ET
+            tree = ET.parse(lang_xml)
+            for entry in tree.getroot():
+                k = entry.attrib.get("key")
+                if k and k.startswith("P") and k[1:].isdigit():
+                    cid = int(k[1:])
+                    val = entry.text.strip()
+                    if cid == 68 and val == "EUA":
+                        val = "Estados Unidos"
+                    names[cid] = val
+        except Exception:
+            pass
+    return names
+
+COUNTRY_NAMES = _load_all_country_names()
 
 COUNTRY_BUNDLE_MAP = {
     29: "brazil",
@@ -117,7 +115,8 @@ COUNTRY_BUNDLE_MAP = {
     72: "france",
     11: "argentina",
     85: "netherlands",
-    131: "usa",
+    68: "usa",
+    131: "mexico",
     151: "south_america",
     195: "south_america",
     46: "south_america",

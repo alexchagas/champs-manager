@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Plus, Save, Search, Trash2, ArrowRightLeft, Pencil } from 'lucide-react';
 import type { Club, Player, Position } from '../types';
 import { getAllClubs, getAllCountries } from '../data/teamsDatabase';
+import { getCountryFlag } from '../data/countryFlags';
 import { saveClubEdits } from '../data/editorPersistence';
 
 type PlayerDraft = Pick<Player, 'id' | 'name' | 'age' | 'position' | 'foot' | 'strength' | 'skill1' | 'skill2'>;
@@ -126,9 +127,9 @@ export const TeamEditorScreen: React.FC<{ onBack: () => void; onDirtyChange: (di
           onChange={(e) => setCountryFilter(e.target.value === 'all' ? 'all' : Number(e.target.value))}
           className={`${inputClass} mt-2 text-xs`}
         >
-          <option value="all">Todos os Países ({countries.length})</option>
+          <option value="all">🌐 Todos os Países ({countries.length})</option>
           {countries.map((c) => (
-            <option key={c.id} value={c.id}>{c.name} ({c.clubCount})</option>
+            <option key={c.id} value={c.id}>{getCountryFlag(c.id)} {c.name} ({c.clubCount})</option>
           ))}
         </select>
         <button onClick={createClub} className="mt-2 w-full rounded bg-emerald-600 px-3 py-2 text-xs font-bold text-black"><Plus className="mr-1 inline h-4 w-4"/>Criar Novo Clube</button>
@@ -144,7 +145,7 @@ export const TeamEditorScreen: React.FC<{ onBack: () => void; onDirtyChange: (di
             <label className={labelClass}>País<select className={inputClass} value={selected.countryId ?? 29} onChange={(e) => {
               const countryId = Number(e.target.value);
               updateSelected({ countryId, stateId: undefined, stateCode: '', stateName: '', leagueName: countryId === 29 ? 'Brasileirão' : `Liga ${countries.find((c) => c.id === countryId)?.name ?? ''}` });
-            }}>{countries.map((country) => <option key={country.id} value={country.id}>{country.name}</option>)}</select></label>
+            }}>{countries.map((country) => <option key={country.id} value={country.id}>{getCountryFlag(country.id)} {country.name}</option>)}</select></label>
             <label className={labelClass}>Divisão<input type="number" min="1" max="20" className={inputClass} value={selected.division ?? 1} onChange={(e) => { const division = Number(e.target.value); updateSelected({ division, divisionName: selected.countryId === 29 ? `Série ${String.fromCharCode(64 + Math.min(division, 26))}` : `${division}ª Divisão` }); }}/></label>
             <label className={labelClass}>Reputação<select className={inputClass} value={selected.reputation} onChange={(e) => updateSelected({ reputation: Number(e.target.value) })}>{[1,2,3,4,5].map((n) => <option key={n} value={n}>{'★'.repeat(n)} {n}</option>)}</select></label>
             <label className={labelClass}>Cor primária<input type="color" className="h-10 w-full cursor-pointer rounded bg-transparent" value={selected.primaryColor} onChange={(e) => updateSelected({ primaryColor: e.target.value })}/></label>

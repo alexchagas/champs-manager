@@ -66,8 +66,8 @@ COUNTRY_LEVELS = {
     195: 18,# Uruguai
     42: 18, # Chile
     46: 18, # Colômbia
-    131: 17,# EUA
-    68: 17, # México
+    68: 17, # Estados Unidos (EUA)
+    131: 17,# México
     162: 17,# Rússia
     188: 17,# Turquia
     186: 17,# Suíça
@@ -88,7 +88,7 @@ def _load_all_country_names() -> dict:
         51: "Costa Rica", 52: "Croácia", 53: "Cuba", 54: "Dinamarca", 55: "Djibuti",
         56: "Dominica", 57: "Egito", 58: "El Salvador", 59: "Emirados Árabes", 60: "Equador",
         61: "Eritreia", 62: "Escócia", 63: "Eslováquia", 64: "Eslovênia", 65: "Espanha",
-        66: "Essuatíni", 67: "Estônia", 68: "EUA", 69: "Etiópia", 70: "Fiji",
+        66: "Essuatíni", 67: "Estônia", 68: "Estados Unidos", 69: "Etiópia", 70: "Fiji",
         71: "Filipinas", 72: "França", 73: "Gabão", 74: "Gâmbia", 75: "Gana",
         76: "Geórgia", 77: "Gibraltar", 78: "Granada", 79: "Grécia", 80: "Guam",
         81: "Guatemala", 82: "Guiana", 83: "Guiana Francesa", 84: "Guiné", 85: "Holanda",
@@ -110,7 +110,11 @@ def _load_all_country_names() -> dict:
             for entry in tree.getroot():
                 k = entry.attrib.get("key")
                 if k and k.startswith("P") and k[1:].isdigit():
-                    names[int(k[1:])] = entry.text.strip()
+                    cid = int(k[1:])
+                    val = entry.text.strip()
+                    if cid == 68 and val == "EUA":
+                        val = "Estados Unidos"
+                    names[cid] = val
         except Exception:
             pass
     return names
