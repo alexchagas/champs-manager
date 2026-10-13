@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Shield } from 'lucide-react';
 import { Club } from '../types';
+import { getMiniSprite, getNormalSprite, subscribeSpriteMaps } from '../utils/spriteManager';
 
 interface ClubCrestProps {
-  club?: Partial<Pick<Club, 'name' | 'primaryColor' | 'secondaryColor' | 'crestUrl' | 'crestMiniUrl'>> | null;
+  club?: Partial<Pick<Club, 'name' | 'fileRef' | 'primaryColor' | 'secondaryColor' | 'crestUrl' | 'crestMiniUrl'>> | null;
   preferMini?: boolean;
   className?: string;
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
@@ -17,6 +18,15 @@ export const ClubCrest: React.FC<ClubCrestProps> = ({
   size = 'md',
   showInitialsOnFallback = true,
 }) => {
+  const [, setMapsVersion] = useState(0);
+
+  // Subscribe to sprite map downloads
+  useEffect(() => {
+    return subscribeSpriteMaps(() => {
+      setMapsVersion((v) => v + 1);
+    });
+  }, []);
+
   const primaryUrl = preferMini
     ? club?.crestMiniUrl || club?.crestUrl
     : club?.crestUrl || club?.crestMiniUrl;
@@ -25,8 +35,24 @@ export const ClubCrest: React.FC<ClubCrestProps> = ({
   const [currentSrc, setCurrentSrc] = useState<string | undefined>(primaryUrl || undefined);
   const [hasError, setHasError] = useState(false);
 
+  // Extract slug
+  const extractSlug = (url?: string): string => {
+    if (!url) return '';
+    const m = url.match(/\/([^/]+)\.png(?:[?#].*)?$/);
+    return m ? m[1] : '';
+  };
+
+  const slug = club?.fileRef || extractSlug(primaryUrl);
+
+  // Check spritesheet first
+  const miniSprite = preferMini && slug ? getMiniSprite(slug) : null;
+  const normalSprite = !preferMini && slug ? getNormalSprite(slug) : null;
+  // Fallback to mini sprite if normal sprite is not yet in atlas
+  const activeSprite = miniSprite || normalSprite || (slug ? getMiniSprite(slug) : null);
+  const isMiniAtlas = Boolean(activeSprite && (activeSprite === miniSprite || activeSprite === getMiniSprite(slug)));
+
   // If club changes, reset image state
-  React.useEffect(() => {
+  useEffect(() => {
     setCurrentSrc(primaryUrl || undefined);
     setHasError(false);
   }, [primaryUrl]);
@@ -46,12 +72,13 @@ export const ClubCrest: React.FC<ClubCrestProps> = ({
       ? club?.secondaryColor
       : '#ffffff';
 
-  const initials = clubName
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join('')
-    .toUpperCase() || clubName.substring(0, 3).toUpperCase();
+  const initials =
+    clubName
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((w) => w[0])
+      .join('')
+      .toUpperCase() || clubName.substring(0, 3).toUpperCase();
 
   const sizeClasses = {
     xs: 'w-3 h-3 text-[7px]',
@@ -61,6 +88,27 @@ export const ClubCrest: React.FC<ClubCrestProps> = ({
     xl: 'w-12 h-12 text-sm',
   }[size];
 
+  // 1. If sprite is available in atlas, render crisp SVG viewBox
+  if (activeSprite && !hasError) {
+    const iconDim = isMiniAtlas ? 18 : 60;
+    return (
+      <svg
+        viewBox={`${activeSprite.x} ${activeSprite.y} ${iconDim} ${iconDim}`}
+        className={`object-contain shrink-0 drop-shadow select-none ${sizeClasses} ${className}`}
+        aria-label={clubName}
+        role="img"
+      >
+        <image
+          href={activeSprite.atlasUrl}
+          width={activeSprite.sheetWidth}
+          height={activeSprite.sheetHeight}
+          preserveAspectRatio="none"
+        />
+      </svg>
+    );
+  }
+
+  // 2. If fallback / image failed
   if (!currentSrc || hasError) {
     return (
       <div
@@ -80,6 +128,7 @@ export const ClubCrest: React.FC<ClubCrestProps> = ({
     );
   }
 
+  // 3. Fallback direct image (while maps load or for custom editor clubs)
   return (
     <img
       src={currentSrc}

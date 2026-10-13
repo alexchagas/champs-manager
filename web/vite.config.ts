@@ -50,6 +50,17 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,svg,wasm}', 'pwa-*.png', 'apple-touch-icon.png'],
         runtimeCaching: [
           {
+            urlPattern: /\/sprites\/.*\.(webp|json)$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'sprites-cache',
+              expiration: {
+                maxEntries: 10,
+                maxAgeSeconds: 60 * 24 * 60 * 60
+              }
+            }
+          },
+          {
             urlPattern: /\/(escudos|escudosMini)\/.*\.png$/,
             handler: 'CacheFirst',
             options: {
@@ -99,6 +110,15 @@ export default defineConfig({
             res.writeHead(400, { 'Content-Type': 'text/plain' }).end(String(error));
           }
         });
+      },
+    },
+    {
+      name: 'exclude-raw-crests-from-dist',
+      async closeBundle() {
+        const fs = await import('node:fs/promises');
+        const outDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'dist');
+        await fs.rm(path.join(outDir, 'escudos'), { recursive: true, force: true }).catch(() => {});
+        await fs.rm(path.join(outDir, 'escudosMini'), { recursive: true, force: true }).catch(() => {});
       },
     },
   ],

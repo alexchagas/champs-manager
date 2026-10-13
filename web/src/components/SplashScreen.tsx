@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Trophy, Zap, Star, Shield, Play } from 'lucide-react';
 import { sound } from '../audio/soundEngine';
+import { preloadPriorityAtlases } from '../utils/spriteManager';
 
 export interface SplashScreenProps {
   onFinish: () => void;
@@ -13,6 +14,11 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
   rustVersion = 'Rust 1.85+ · WASM Ativo',
   isWasmReady = true,
 }) => {
+  // Preload priority spritesheets during splash screen
+  useEffect(() => {
+    preloadPriorityAtlases();
+  }, []);
+
   // Phase 1: 'studio' (lekD Games) -> Phase 2: 'game' (Champs Manager 2026)
   const [phase, setPhase] = useState<'studio' | 'game'>('studio');
   const [fadeState, setFadeState] = useState<'in' | 'out'>('in');

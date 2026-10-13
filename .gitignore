@@ -37,6 +37,11 @@ Thumbs.db
 /teams
 /conf_estadual
 /conf_ligas_nacionais
-Brasfoot_launcher.sh
 Brasfoot 2026/
 "Brasfoot 2026"
+Brasfoot_launcher.sh
+.venv/
+web/public/escudos/
+web/public/escudosMini/
+
+
