@@ -18,7 +18,7 @@ import {
   MoreHorizontal,
   Globe
 } from 'lucide-react';
-import { isWorldCupYear, getWorldCupHostInfo } from '../data/nationalTeamsData';
+import { isWorldCupYear, getWorldCupHostInfo, WORLD_CUP_FEATURE_ENABLED } from '../data/nationalTeamsData';
 
 export const Header: React.FC = () => {
   const { 
@@ -76,7 +76,7 @@ export const Header: React.FC = () => {
 
   const isWcYear = isWorldCupYear(gameState.seasonYear);
   const isWcWindow = gameState.currentRound >= 18 || !!gameState.nationalJob || gameState.isWorldCupMode || activeScreen === 'world_cup';
-  const showWorldCupNav = isWcYear && isWcWindow;
+  const showWorldCupNav = WORLD_CUP_FEATURE_ENABLED && isWcYear && isWcWindow;
 
   const secondaryNavItems: HeaderNavItem[] = [
     { 
@@ -128,7 +128,7 @@ export const Header: React.FC = () => {
     lastSavedText === 'Erro ao salvar' ? 'text-rose-300' : 'text-emerald-400';
 
   // Dedicated Immersive Header during World Cup Mode
-  if (activeScreen === 'world_cup' || gameState.isWorldCupMode) {
+  if (WORLD_CUP_FEATURE_ENABLED && (activeScreen === 'world_cup' || gameState.isWorldCupMode)) {
     const hostInfo = getWorldCupHostInfo(gameState.seasonYear);
     return (
       <header className="h-14 bg-gradient-to-r from-slate-950 via-emerald-950/80 to-slate-950 border-b border-emerald-500/30 flex items-center justify-between px-3 sm:px-4 select-none shrink-0 z-20 shadow-lg pt-safe">

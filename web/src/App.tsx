@@ -15,6 +15,7 @@ import { ManagersScreen } from './components/ManagersScreen';
 import { ClubViewer } from './components/ClubViewer';
 import { SplashScreen } from './components/SplashScreen';
 import { WorldCupScreen } from './components/WorldCupScreen';
+import { WORLD_CUP_FEATURE_ENABLED } from './data/nationalTeamsData';
 import { BottomNavBar } from './components/BottomNavBar';
 import { sound } from './audio/soundEngine';
 import { deriveClubAtmosphere } from './theme/clubTheme';
@@ -178,7 +179,7 @@ const MainAppContent: React.FC = () => {
         {activeScreen === 'managers' && <ManagersScreen />}
         {activeScreen === 'live_match' && <LiveMatchScreen />}
         {activeScreen === 'round_results' && <RoundResultsScreen />}
-        {activeScreen === 'world_cup' && <WorldCupScreen />}
+        {WORLD_CUP_FEATURE_ENABLED && activeScreen === 'world_cup' && <WorldCupScreen />}
 
         {/* Club Viewer (Inspecionar Clube Externo / Adversário) */}
         {viewedClubId !== null && (

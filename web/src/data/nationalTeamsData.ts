@@ -4,6 +4,12 @@ import { getOfficialDates } from './officialCalendars.ts';
 import { generateLeagueCalendar, initializeStandings, sortStandings } from './calendarGenerator.ts';
 import { simulateFullMatch } from '../engine/simulationEngine.ts';
 
+/**
+ * Feature flag to temporarily disable World Cup UI navigation and impacts
+ * while the spec and new recruitment architecture are refined.
+ */
+export const WORLD_CUP_FEATURE_ENABLED = false;
+
 // Catalog of 32 official World Cup participating nations aligned with Brasfoot assets
 export interface NationalTeamSeed {
   countryId: number;
