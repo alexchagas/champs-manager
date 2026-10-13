@@ -381,6 +381,25 @@ fn fast_forward_stops_for_decisions_and_shootout_is_a_separate_score() {
     assert!(s.events.iter().any(|e| e.event_type == "shootout_kick"));
 }
 #[test]
+fn shootout_auto_advances_without_pending_decision_and_orders_takers() {
+    let mut s = game(true, false);
+    s.phase = "shootout".into();
+    s.rules.shootout = true;
+    s.paused = false;
+
+    // First kick for side 0 (human)
+    s.command(MatchCommand::Advance).unwrap();
+    assert!(s.pending_decision.is_none());
+    assert!(!s.paused);
+    assert_eq!(s.penalty_attempts, [1, 0]);
+
+    // First kicker should be an offensive/line player, never the goalkeeper
+    let first_kick = s.events.iter().find(|e| e.event_type == "shootout_kick").unwrap();
+    let taker_id = first_kick.scorer_id.unwrap();
+    let role = s.teams[0].on_field_role_by_player_id.get(&taker_id).unwrap();
+    assert_ne!(role.as_str(), "GOL");
+}
+#[test]
 fn parallel_sessions_never_expose_future_events_and_finish_same_result() {
     let mut s = game(true, false);
     let mut cpu = game(false, false);

@@ -159,3 +159,31 @@ test('Copa Nacional (Mata-mata)', () => {
 
   assert.equal(zones.length, 0, 'Copa eliminatória não possui zonas de tabela');
 });
+
+test('Copa Libertadores standings partitions into balanced groups A to D with top 2 qualification', async () => {
+  const { createNewGame } = await import('../src/data/initialData.ts');
+  const state = createNewGame(255);
+  const continentalStandings = state.standingsContinental;
+  assert.ok(continentalStandings);
+  assert.equal(continentalStandings.length, 16);
+
+  const groups = 'ABCD'.split('');
+  for (const grp of groups) {
+    const clubsInGroup = continentalStandings.filter(s => s.group === grp);
+    assert.equal(clubsInGroup.length, 4, `Grupo ${grp} deve ter exatamente 4 equipes`);
+  }
+
+  // Verify group qualification zones: top 2 qualify in each group of 4
+  const groupZones = getCompetitionZones({
+    competitionType: 'libertadores',
+    totalTeams: 4,
+  });
+  assert.equal(groupZones.length, 1);
+  assert.equal(groupZones[0].minPos, 1);
+  assert.equal(groupZones[0].maxPos, 2);
+  assert.equal(getZoneForPosition(groupZones, 1)?.label, 'Classificação');
+  assert.equal(getZoneForPosition(groupZones, 2)?.label, 'Classificação');
+  assert.equal(getZoneForPosition(groupZones, 3), undefined);
+  assert.equal(getZoneForPosition(groupZones, 4), undefined);
+});
+

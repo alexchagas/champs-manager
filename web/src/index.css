@@ -44,22 +44,27 @@
 
 
 /* Custom scrollbars for dense views */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb, #1f382b) var(--scrollbar-track, #0d1712);
+}
+
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #0d1712;
+  background: var(--scrollbar-track, #0d1712);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #1f382b;
+  background: var(--scrollbar-thumb, #1f382b);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #2e5441;
+  background: var(--scrollbar-thumb-hover, #2e5441);
 }
 
 /* Hide scrollbar for clean horizontal tab rows on tablet/mobile */

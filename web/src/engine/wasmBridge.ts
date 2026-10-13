@@ -32,7 +32,14 @@ function mergeCareerState(current: GameState, parsed: GameState): GameState {
     newsFeed: current.newsFeed,
     standingsEstadual: parsed.standingsEstadual?.length ? parsed.standingsEstadual : current.standingsEstadual,
     standingsNacional: parsed.standingsNacional?.length ? parsed.standingsNacional : current.standingsNacional,
-    standingsContinental: parsed.standingsContinental?.length ? parsed.standingsContinental : current.standingsContinental,
+    standingsContinental: (parsed.standingsContinental?.length ? parsed.standingsContinental : current.standingsContinental)?.map(row => {
+      if (row.group) return row;
+      const existingGroup = current.standingsContinental?.find(c => c.clubId === row.clubId)?.group;
+      if (existingGroup) return { ...row, group: existingGroup };
+      const fix = current.calendar?.find(f => (f.homeClubId === row.clubId || f.awayClubId === row.clubId) && f.competitionRound?.startsWith('Grupo '));
+      const g = fix?.competitionRound?.match(/Grupo ([A-Z])/)?.[1];
+      return g ? { ...row, group: g } : row;
+    }),
     stateChampionshipName: current.stateChampionshipName,
     nationalLeagueName: current.nationalLeagueName,
     continentalCupName: current.continentalCupName,

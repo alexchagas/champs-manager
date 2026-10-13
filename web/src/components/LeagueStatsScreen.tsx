@@ -232,6 +232,13 @@ export const LeagueStatsScreen: React.FC = () => {
             <span className="text-slate-400 text-[10px] block uppercase font-bold">Atletas Ativos</span>
             <span className="text-amber-400 font-mono-numbers font-black text-sm">{allDivisionPlayers.length}</span>
           </div>
+          <button
+            onClick={() => { sound.playClick(); setScreen('champions_history'); }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-400/10 hover:bg-amber-400/20 text-amber-300 border border-amber-400/30 transition-all cursor-pointer shadow-sm"
+          >
+            <Trophy className="w-3.5 h-3.5" />
+            <span>Galeria de Campeões</span>
+          </button>
         </div>
       </div>
 

@@ -86,6 +86,7 @@ export const Header: React.FC = () => {
       badgeText: unreadNewsCount > 0 ? `${unreadNewsCount}` : undefined 
     },
     { id: 'stats', label: 'Estatísticas', icon: BarChart3 },
+    { id: 'champions_history', label: 'Campeões', icon: Trophy },
     { id: 'managers', label: 'Técnicos', icon: Shield },
     { 
       id: 'youth', 

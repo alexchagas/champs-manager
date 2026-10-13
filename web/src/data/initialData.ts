@@ -3,6 +3,7 @@ import { generateLeagueCalendar, generateTwoSemesterCalendar, initializeStanding
 import { getContinentalTournamentField } from './continentalRepresentatives.ts';
 import { getAllClubs, getCompetitionClubs } from './teamsDatabase.ts';
 import { generateKickoffNews } from '../engine/newsEngine.ts';
+import { buildInitialActiveOtherLeagues } from '../engine/crossSeasonSimulation.ts';
 import {
   initializeNationalTeams,
   isWorldCupYear,
@@ -200,8 +201,9 @@ export function createNewGame(
 
   // Deep clone clubs so state is completely isolated and ensure contractYears are initialized
   const sourceClub = competitionClubs.find(c => c.id === userClubId) || basePool.find(c => c.id === userClubId) || competitionClubs[0];
-  const activeCountries = activeCountryIds && activeCountryIds.length > 0
-    ? Array.from(new Set([sourceClub.countryId || 29, ...activeCountryIds]))
+  const candidateCountryIds = activeCountryIds || (customOptions as any)?.activeCountryIds;
+  const activeCountries = candidateCountryIds && candidateCountryIds.length > 0
+    ? Array.from(new Set([sourceClub.countryId || 29, ...candidateCountryIds]))
     : [sourceClub.countryId || 29];
 
   const activeCountryClubs = basePool.filter(c => activeCountries.includes(c.countryId || 29));
@@ -235,8 +237,19 @@ export function createNewGame(
   const calendar = twoSemesterData.calendar;
   const standingsEstadual = sortStandings(initializeStandings(twoSemesterData.semester1Clubs));
   const standingsNacional = sortStandings(initializeStandings(twoSemesterData.semester2Clubs));
-  const standingsContinental = sortStandings(initializeStandings(twoSemesterData.continentalClubs));
+  const standingsContinental = sortStandings(
+    initializeStandings(twoSemesterData.continentalClubs, (_c, idx) => 'ABCD'[Math.floor(idx / 4)] || 'A')
+  );
   const standings = twoSemesterData.semester1Clubs.length ? standingsEstadual : standingsNacional;
+
+  const seasonYear = 2026;
+
+  const otherLeagues = buildInitialActiveOtherLeagues(
+    userClub,
+    activeCountries,
+    clonedClubs,
+    seasonYear
+  );
 
   const freeAgents = generateInitialFreeAgents();
 
@@ -271,7 +284,6 @@ export function createNewGame(
 
   const careerId = `career-${userClubId}-${Date.now()}`;
 
-  const seasonYear = 2026;
   const nationalTeams = initializeNationalTeams(clonedClubs);
 
   const initialHumanManager: Manager = {
@@ -317,6 +329,7 @@ export function createNewGame(
     standingsEstadual,
     standingsNacional,
     standingsContinental,
+    otherLeagues,
     clubs: clonedClubs,
     calendar,
     standings,

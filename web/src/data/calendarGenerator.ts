@@ -171,17 +171,70 @@ export function generateTwoSemesterCalendar(
         `${stage} (${leg === 1 ? 'Ida' : 'Volta'})`, stage, 'quarta', leg as 1 | 2);
     }
   }
-  // Cup participants advance through a real bracket; future ties stay unassigned.
-  if (semester2Clubs.length >= 16) {
+  // Cup participants advance through a two-legged knockout bracket (Ida e Volta).
+  if (semester2Clubs.length >= 16 || pool.length >= 16) {
     const cupName = isBrazil ? 'Copa do Brasil' : 'Copa Nacional';
-    const cupField = [userClub, ...semester2Clubs.filter(c => c.id !== userClub.id)].slice(0, 16);
-    for (let i = 0; i < 8; i++) allFixtures.push({ id: nextId++, round: 1,
-      date: dateAt(nationalStart + 1, 4), homeClubId: cupField[i * 2].id,
-      awayClubId: cupField[i * 2 + 1].id, played: false, competitionType: 'copa',
-      competitionName: cupName, competitionRound: 'Oitavas de Final', stage: 'Oitavas de Final', dayOfWeek: 'quinta' });
-    for (const [round, stage, ties] of [[2, 'Quartas de Final', 4], [3, 'Semifinal', 2], [4, 'Final', 1]] as const) {
-      for (let tie = 0; tie < ties; tie++) reserve('copa', cupName, round, nationalStart + (round - 1) * 4 + 1,
-        stage, stage, 'quinta');
+    const sameCountryPool = pool.filter(c => c.countryId === (userClub.countryId ?? 29) && c.id !== userClub.id);
+    const sortedNationalField = [...new Map([...semester2Clubs.filter(c => c.id !== userClub.id), ...sameCountryPool].map(c => [c.id, c])).values()]
+      .sort((a, b) => ((a.division ?? 1) - (b.division ?? 1)) || ((b.reputation ?? 1) - (a.reputation ?? 1)));
+    const cupField = [userClub, ...sortedNationalField].slice(0, 16);
+
+    // Oitavas de Final (Ida e Volta)
+    for (let i = 0; i < 8; i++) {
+      allFixtures.push({
+        id: nextId++,
+        round: 1,
+        date: dateAt(nationalStart + 1, 4),
+        homeClubId: cupField[i * 2].id,
+        awayClubId: cupField[i * 2 + 1].id,
+        played: false,
+        competitionType: 'copa',
+        competitionName: cupName,
+        competitionRound: 'Oitavas de Final (Ida)',
+        stage: 'Oitavas de Final',
+        dayOfWeek: 'quinta',
+        leg: 1,
+      });
+    }
+    for (let i = 0; i < 8; i++) {
+      allFixtures.push({
+        id: nextId++,
+        round: 2,
+        date: dateAt(nationalStart + 3, 4),
+        homeClubId: cupField[i * 2 + 1].id,
+        awayClubId: cupField[i * 2].id,
+        played: false,
+        competitionType: 'copa',
+        competitionName: cupName,
+        competitionRound: 'Oitavas de Final (Volta)',
+        stage: 'Oitavas de Final',
+        dayOfWeek: 'quinta',
+        leg: 2,
+      });
+    }
+
+    // Subsequent rounds: Quartas (rounds 3, 4), Semifinal (rounds 5, 6), Final (rounds 7, 8)
+    const stages = [
+      { stage: 'Quartas de Final', firstRound: 3, ties: 4, startWeek: nationalStart + 7 },
+      { stage: 'Semifinal', firstRound: 5, ties: 2, startWeek: nationalStart + 13 },
+      { stage: 'Final', firstRound: 7, ties: 1, startWeek: nationalStart + 19 },
+    ] as const;
+
+    for (const { stage, firstRound, ties, startWeek } of stages) {
+      for (let leg = 1; leg <= 2; leg++) {
+        for (let tie = 0; tie < ties; tie++) {
+          reserve(
+            'copa',
+            cupName,
+            firstRound + leg - 1,
+            startWeek + (leg === 1 ? 0 : 2),
+            `${stage} (${leg === 1 ? 'Ida' : 'Volta'})`,
+            stage,
+            'quinta',
+            leg as 1 | 2
+          );
+        }
+      }
     }
   }
   allFixtures.sort((a, b) => a.date!.localeCompare(b.date!) || a.id - b.id);
@@ -203,11 +256,15 @@ export function generateTwoSemesterCalendar(
   };
 }
 
-export function initializeStandings(clubs: Club[]): StandingRow[] {
-  return clubs.map((club) => ({
+export function initializeStandings(
+  clubs: Club[],
+  groupAssigner?: (club: Club, index: number) => string | undefined
+): StandingRow[] {
+  return clubs.map((club, index) => ({
     clubId: club.id,
     clubName: club.name,
     primaryColor: club.primaryColor || '#10b981',
+    group: groupAssigner ? groupAssigner(club, index) : undefined,
     points: 0,
     played: 0,
     won: 0,
@@ -222,6 +279,9 @@ export function initializeStandings(clubs: Club[]): StandingRow[] {
 
 export function sortStandings(standings: StandingRow[]): StandingRow[] {
   return [...standings].sort((a, b) => {
+    if (a.group && b.group && a.group !== b.group) {
+      return a.group.localeCompare(b.group);
+    }
     if (b.points !== a.points) return b.points - a.points;
     if (b.won !== a.won) return b.won - a.won;
     if (b.goalDiff !== a.goalDiff) return b.goalDiff - a.goalDiff;

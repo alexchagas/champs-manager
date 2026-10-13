@@ -24,7 +24,7 @@ test('Flamengo has a complete chronological national season and Brazilian state 
   assert.equal(new Set(national.map(f => f.fixtureDateIndex)).size, 38);
   assert.ok(state.calendar.every(f => Boolean(f.date && f.competitionRound && f.dayOfWeek)));
   assert.ok(state.calendar.filter(f => f.stage === 'Semifinal').every(f => f.pendingQualification && f.homeClubId === 0));
-  assert.ok(state.calendar.filter(f => f.competitionType === 'copa' && f.round > 1).every(f => f.pendingQualification));
+  assert.ok(state.calendar.filter(f => f.competitionType === 'copa' && f.round > 2).every(f => f.pendingQualification));
 });
 
 test('Spanish career skips the estadual and schedules national, cup and continental dates', () => {
@@ -53,8 +53,9 @@ test('WASM advances every date and keeps competition tables independent', () => 
   const lastSlot = Math.max(...initial.calendar.map(f => f.fixtureDateIndex));
   for (let slot = 2; slot <= lastSlot; slot++) {
     const current = state.calendar.filter(f => f.fixtureDateIndex === slot);
-    const cupFirst = current.some(f => f.competitionType === 'copa' && f.round === 1);
-    state = play(state, slot, cupFirst ? [0, 9] : null);
+    const cupMatch = current.find(f => f.competitionType === 'copa' && (f.round === 1 || f.round === 2) && (f.homeClubId === 255 || f.awayClubId === 255));
+    const score = cupMatch ? (cupMatch.homeClubId === 255 ? [0, 9] : [9, 0]) : null;
+    state = play(state, slot, score);
     if (slot === 11) {
       const topFour = state.standingsEstadual.slice(0, 4).map(row => row.clubId);
       const semifinals = state.calendar.filter(f => f.competitionType === 'estadual' && f.stage === 'Semifinal' && f.leg === 1);
@@ -68,7 +69,39 @@ test('WASM advances every date and keeps competition tables independent', () => 
   assert.equal(state.standingsNacional.reduce((sum, row) => sum + row.played, 0), 760);
   assert.equal(state.standingsEstadual.reduce((sum, row) => sum + row.played, 0), 142);
   assert.equal(state.calendar.filter(f => f.pendingQualification).length, 0);
-  assert.equal(state.calendar.filter(f => f.competitionType === 'copa' && f.round > 1 && (f.homeClubId === 255 || f.awayClubId === 255)).length, 0);
-  assert.ok(state.calendar.filter(f => f.competitionType === 'copa' && f.homeScore === f.awayScore)
-    .every(f => f.penaltyScore?.length === 2));
+  assert.equal(state.calendar.filter(f => f.competitionType === 'copa' && f.round > 2 && (f.homeClubId === 255 || f.awayClubId === 255)).length, 0);
+  // Verify that Leg 1 NEVER has penalty scores
+  assert.ok(state.calendar.filter(f => f.competitionType === 'copa' && f.leg === 1).every(f => !f.penaltyScore));
 });
+
+test('Copa do Brasil two-legged ties never shoot out in Leg 1 and resolve aggregate in Leg 2', () => {
+  const initial = createNewGame(255);
+  const cupLeg1 = initial.calendar.find(f => f.competitionType === 'copa' && f.stage === 'Oitavas de Final' && f.leg === 1);
+  const cupLeg2 = initial.calendar.find(f => f.competitionType === 'copa' && f.stage === 'Oitavas de Final' && f.leg === 2 && f.homeClubId === cupLeg1.awayClubId);
+  assert.ok(cupLeg1);
+  assert.ok(cupLeg2);
+  assert.equal(cupLeg1.leg, 1);
+  assert.equal(cupLeg2.leg, 2);
+
+  // Leg 1 played with a draw: 1x1
+  let updatedCalendar = initial.calendar.map(f => {
+    if (f.id === cupLeg1.id) return { ...f, played: true, homeScore: 1, awayScore: 1 };
+    return f;
+  });
+  let state = resolvePendingFixtures({ ...initial, calendar: updatedCalendar });
+  let resolvedLeg1 = state.calendar.find(f => f.id === cupLeg1.id);
+  // Assert Leg 1 DRAW NEVER HAS PENALTIES
+  assert.equal(resolvedLeg1.penaltyScore, undefined);
+
+  // Leg 2 played with 2x2 (aggregate 3x3 tie)
+  updatedCalendar = state.calendar.map(f => {
+    if (f.id === cupLeg2.id) return { ...f, played: true, homeScore: 2, awayScore: 2 };
+    return f;
+  });
+  state = resolvePendingFixtures({ ...state, calendar: updatedCalendar });
+  let resolvedLeg2 = state.calendar.find(f => f.id === cupLeg2.id);
+  // Assert Leg 2 has penalties recorded when aggregate is tied
+  assert.ok(resolvedLeg2.penaltyScore);
+  assert.equal(resolvedLeg2.penaltyScore.length, 2);
+});
+

@@ -1,5 +1,5 @@
 import type { Club, CountryInfo, LeagueInfo, StateInfo } from '../types/index.ts';
-import { getAllClubs } from './teamsDatabase.ts';
+import { getAllClubs, registerClubs } from './teamsDatabase.ts';
 
 export interface ClubIndexItem {
   id: number;
@@ -102,6 +102,7 @@ export async function loadLeagueBundle(bundleKey: string): Promise<Club[]> {
       if (res.ok) {
         const clubs = (await res.json()) as Club[];
         loadedBundles.set(bundleKey, clubs);
+        registerClubs(clubs);
         return clubs;
       }
     }

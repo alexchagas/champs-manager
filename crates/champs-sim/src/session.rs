@@ -291,6 +291,7 @@ pub enum MatchCommand {
     },
     ContinueWithoutReplacement,
     Finish,
+    FastForward,
 }
 impl ActiveMatchSession {
     pub fn new(
@@ -468,6 +469,32 @@ impl ActiveMatchSession {
                     self.advance_minute();
                     self.advance_parallel();
                 }
+                self.paused = true;
+            }
+            MatchCommand::FastForward => {
+                for _ in 0..1200 {
+                    if self.is_finished() {
+                        break;
+                    }
+                    if self.phase == "halftime" {
+                        self.phase = "second_half".into();
+                        self.clock.period = 2;
+                        self.clock.minute = 45;
+                        self.clock.added = 0;
+                    }
+                    if let Some(d) = &self.pending_decision {
+                        if d.kind == "penalty" {
+                            let taker = d.default_taker_id.unwrap_or(0);
+                            let _ = self.resolve_penalty(taker);
+                        } else {
+                            self.pending_decision = None;
+                        }
+                    }
+                    self.paused = false;
+                    self.advance_minute();
+                    self.advance_parallel();
+                }
+                self.finish_parallel();
                 self.paused = true;
             }
         }
@@ -740,22 +767,71 @@ impl ActiveMatchSession {
         }
         Ok(())
     }
+fn shootout_role_rank(role: &str) -> u8 {
+    match role {
+        "ATA" => 5,
+        "MEI" => 4,
+        "VOL" => 3,
+        "LAT" | "ZAG" => 2,
+        _ => 1, // "GOL"
+    }
+}
     pub fn award_penalty(&mut self, side: usize) -> Result<(), String> {
         if side > 1 || self.pending_decision.is_some() || self.is_finished() {
             return Err("Pênalti inválido.".into());
         }
+        let preferred = self.teams[side].penalty_taker_id;
         let mut eligible: Vec<_> = self.teams[side]
             .on_field_role_by_player_id
             .keys()
             .copied()
             .collect();
         if self.phase == "shootout" {
-            // Reduce to equal numbers and require a full cycle before repeating a taker.
+            // Brasfoot sorting:
+            // 1. Preferred penalty taker first if eligible
+            // 2. Position rank: ATA (5) > MEI (4) > VOL (3) > LAT/ZAG (2) > GOL (1)
+            // 3. Player strength (higher first)
+            // 4. Player energy (higher first)
+            // 5. Player ID (tie-breaker)
+            eligible.sort_by(|&a, &b| {
+                if a == preferred {
+                    return std::cmp::Ordering::Less;
+                }
+                if b == preferred {
+                    return std::cmp::Ordering::Greater;
+                }
+                let role_a = self.teams[side]
+                    .on_field_role_by_player_id
+                    .get(&a)
+                    .map(|s| s.as_str())
+                    .unwrap_or("");
+                let role_b = self.teams[side]
+                    .on_field_role_by_player_id
+                    .get(&b)
+                    .map(|s| s.as_str())
+                    .unwrap_or("");
+                let rank_a = Self::shootout_role_rank(role_a);
+                let rank_b = Self::shootout_role_rank(role_b);
+                rank_b
+                    .cmp(&rank_a)
+                    .then_with(|| {
+                        let p_a = self.teams[side].player(a);
+                        let p_b = self.teams[side].player(b);
+                        p_b.strength
+                            .total_cmp(&p_a.strength)
+                            .then_with(|| p_b.energy.total_cmp(&p_a.energy))
+                    })
+                    .then_with(|| a.cmp(&b))
+            });
+
+            // Reduce to equal numbers per IFAB rules
             let count = self.teams[0]
                 .on_field_role_by_player_id
                 .len()
                 .min(self.teams[1].on_field_role_by_player_id.len());
             eligible.truncate(count);
+
+            // Require full cycle before repeating a taker
             if eligible
                 .iter()
                 .all(|id| self.shootout_used_ids[side].contains(id))
@@ -763,8 +839,34 @@ impl ActiveMatchSession {
                 self.shootout_used_ids[side].clear();
             }
             eligible.retain(|id| !self.shootout_used_ids[side].contains(id));
+
+            let taker_id = match eligible.first().copied() {
+                Some(id) => id,
+                None => {
+                    self.end();
+                    return Ok(());
+                }
+            };
+
+            self.event(
+                side,
+                "penalty",
+                Some(taker_id),
+                format!("{}: vai para a cobrança.", self.teams[side].player(taker_id).name),
+            );
+
+            self.pending_decision = Some(PendingDecision {
+                kind: "penalty".into(),
+                side,
+                player_id: Some(taker_id),
+                eligible_ids: eligible,
+                default_taker_id: Some(taker_id),
+                severity: None,
+            });
+
+            self.resolve_penalty(taker_id)?;
+            return Ok(());
         }
-        let preferred = self.teams[side].penalty_taker_id;
         let default = if eligible.contains(&preferred) {
             Some(preferred)
         } else {
@@ -779,12 +881,7 @@ impl ActiveMatchSession {
             side,
             "penalty",
             None,
-            if self.phase == "shootout" {
-                "Disputa por pênaltis: escolha o cobrador."
-            } else {
-                "Pênalti marcado! Escolha o cobrador."
-            }
-            .into(),
+            "Pênalti marcado! Escolha o cobrador.".into(),
         );
         self.pending_decision = Some(PendingDecision {
             kind: "penalty".into(),

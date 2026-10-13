@@ -386,3 +386,48 @@ export function checkAndApplyCoachDismissals(
 
   return { updatedClubs, dismissals };
 }
+
+export function createChampionshipNews(
+  record: import('../types/index.ts').ChampionshipRecord,
+  round: number
+): import('../types/index.ts').NewsArticle[] {
+  const articles: import('../types/index.ts').NewsArticle[] = [];
+
+  articles.push({
+    id: `news-champ-${record.id}`,
+    round,
+    category: 'geral',
+    title: `FESTA DO TÍTULO! ${record.championClubName.toUpperCase()} É CAMPEÃO DA ${record.competitionName.toUpperCase()}!`,
+    subtitle: `Em decisão histórica contra o ${record.runnerUpClubName}, equipe levanta a taça e consagra temporada`,
+    content: `O ${record.championClubName} é oficialmente o campeão da edição ${record.seasonYear} do torneio ${record.competitionName}. A final contra o ${record.runnerUpClubName} terminou com o placar de ${record.finalScoreText || 'vitória'}. A torcida faz a festa pelo título histórico!`,
+    clubId: record.championClubId,
+    clubName: record.championClubName,
+    clubCrest: record.championClubCrest,
+    secondaryClubName: record.runnerUpClubName,
+    secondaryClubCrest: record.runnerUpClubCrest,
+    date: `Edição ${record.seasonYear}`,
+    isHeadline: true,
+    badgeText: '🏆 CAMPEÃO',
+    statsHighlight: record.finalScoreText || 'Título',
+  });
+
+  if (record.topScorerName && record.topScorerGoals) {
+    articles.push({
+      id: `news-scorer-${record.id}`,
+      round,
+      category: 'geral',
+      title: `CHUTEIRA DE OURO: ${record.topScorerName.toUpperCase()} É O ARTILHEIRO`,
+      subtitle: `Com ${record.topScorerGoals} gols, atacante do ${record.topScorerClubName || 'torneio'} leva a artilharia da ${record.competitionName}`,
+      content: `${record.topScorerName} (${record.topScorerClubName}) brilhou ao longo da competição e terminou na liderança isolada dos goleadores com ${record.topScorerGoals} gols anotados.`,
+      clubId: record.championClubId,
+      clubName: record.topScorerClubName || record.championClubName,
+      relatedPlayerName: record.topScorerName,
+      date: `Artilharia`,
+      isHeadline: false,
+      badgeText: '⚽ CHUTEIRA DE OURO',
+      statsHighlight: `${record.topScorerGoals} gols`,
+    });
+  }
+
+  return articles;
+}

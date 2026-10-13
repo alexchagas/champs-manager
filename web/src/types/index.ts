@@ -376,7 +376,29 @@ export type ActiveScreen =
   | 'managers'
   | 'club_viewer'
   | 'world_cup'
-  | 'national_team_offer';
+  | 'national_team_offer'
+  | 'season_review'
+  | 'champions_history';
+
+export interface ChampionshipRecord {
+  id: string;
+  seasonYear: number;
+  competitionType: 'estadual' | 'nacional' | 'copa' | 'libertadores' | 'sulamericana' | 'champions' | 'supercopa' | 'recopa' | 'mundial' | string;
+  competitionName: string;
+  championClubId: number;
+  championClubName: string;
+  championClubCrest?: string;
+  runnerUpClubId: number;
+  runnerUpClubName: string;
+  runnerUpClubCrest?: string;
+  topScorerName?: string;
+  topScorerClubName?: string;
+  topScorerGoals?: number;
+  managerName?: string;
+  finalScoreText?: string;
+  userPositionText?: string;
+  userPrizeMoney?: number;
+}
 
 export interface TransferOffer {
   id: number;
@@ -496,6 +518,8 @@ export interface GameState {
   intercontinentalCup?: IntercontinentalCup;
   nationalTeamOffers?: NationalTeamOffer[];
   nationalCallups?: NationalCallup[];
+  championshipHistory?: ChampionshipRecord[];
+  pendingTournamentConclusion?: ChampionshipRecord;
 }
 
 export interface MatchClock { period: number; minute: number; added: number; elapsed: number }
@@ -526,6 +550,6 @@ export interface ActiveMatchSession {
   committedAt: string | null;
 }
 export type MatchCommand = { type: 'start'; fixture_id: number } | { type: 'set_bench'; ids: number[] }
-  | { type: 'advance' | 'pause' | 'resume' | 'finish' | 'commit' | 'continue_without_replacement' | 'complete_cpu_date' }
+  | { type: 'advance' | 'pause' | 'resume' | 'finish' | 'fast_forward' | 'commit' | 'continue_without_replacement' | 'complete_cpu_date' }
   | { type: 'speed'; speed: number } | { type: 'substitute'; side: number; outgoing: number; incoming: number }
   | { type: 'choose_penalty_taker' | 'select_penalty_taker'; player_id: number };

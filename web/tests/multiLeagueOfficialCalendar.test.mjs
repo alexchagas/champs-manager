@@ -50,7 +50,7 @@ test('getOfficialDates compiles all Brasfoot competition dates from disk', () =>
 
 test('multi-league new game supports 3 to 5 active leagues (e.g. Portugal, Brasil, Espanha)', () => {
   // Load Portugal modular bundle from disk
-  const portugalPath = path.resolve('web/public/data/leagues/portugal.json');
+  const portugalPath = new URL('../public/data/leagues/portugal.json', import.meta.url);
   const portugalClubs = JSON.parse(readFileSync(portugalPath, 'utf-8'));
   assert.equal(portugalClubs.length, 124, 'Portugal has all 124 clubs');
 

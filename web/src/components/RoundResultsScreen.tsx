@@ -6,6 +6,7 @@ import { ClubCrest } from './ClubCrest';
 import { getStateByCode, getStateById, findLeagueForClub } from '../data/teamsDatabase';
 import { getCompetitionZones, getZoneForPosition } from '../engine/competitionZones';
 import { MatchFixture, MatchEvent } from '../types';
+import { formatMatchDate } from '../utils/dateFormatter';
 
 export const RoundResultsScreen: React.FC = () => {
   const { gameState, userClub, advanceRound, viewClub } = useGame();
@@ -14,6 +15,10 @@ export const RoundResultsScreen: React.FC = () => {
   const currentRoundMatches = gameState.calendar.filter(
     (f) => (f.fixtureDateIndex ?? f.round) === gameState.currentRound
   );
+
+  const nextDateStr = gameState.calendar.find(
+    (f) => (f.fixtureDateIndex ?? f.round) === gameState.currentRound + 1
+  )?.date;
 
   const totalRounds = gameState.calendar.length > 0 
     ? Math.max(...gameState.calendar.map((f) => f.fixtureDateIndex ?? f.round)) 
@@ -210,10 +215,10 @@ export const RoundResultsScreen: React.FC = () => {
       <div className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg p-3 flex flex-wrap items-center justify-between gap-3 shadow-md mb-3 shrink-0">
         <div>
           <h2 className="text-sm font-extrabold text-[var(--app-text-accent)] uppercase tracking-wider">
-            Resultados Finais • Rodada {gameState.currentRound} de {totalRounds}
+            Resultados Finais • {currentRoundMatches[0]?.competitionName || 'Rodada'} • {formatMatchDate(currentRoundMatches[0]?.date, 'weekday')}
           </h2>
           <p className="text-xs text-slate-400">
-            Todos os {currentRoundMatches.length} jogos da rodada foram concluídos. Toque no placar para ver a súmula.
+            Todos os {currentRoundMatches.length} jogos desta data foram concluídos. Toque no placar para ver a súmula.
           </p>
         </div>
 
@@ -221,9 +226,9 @@ export const RoundResultsScreen: React.FC = () => {
         <button
           onClick={handleAdvance}
           className="flex items-center space-x-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 text-black font-extrabold text-xs sm:text-sm uppercase tracking-wider rounded-lg shadow-lg cursor-pointer transition-transform active:scale-95"
-          title="Avançar para a próxima rodada (Espaço)"
+          title="Avançar calendário para a próxima data (Espaço)"
         >
-          <span>Avançar para Rodada {Math.min(totalRounds, gameState.currentRound + 1)}</span>
+          <span>Avançar Calendário {nextDateStr ? `(${formatMatchDate(nextDateStr, 'short')})` : ''}</span>
           <kbd className="hidden sm:inline-block bg-black/20 text-black/90 px-1.5 py-0.5 rounded text-[10px] font-mono lowercase tracking-normal font-black">
             espaço
           </kbd>
@@ -262,7 +267,9 @@ export const RoundResultsScreen: React.FC = () => {
                 >
                   <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1 border-b border-[var(--app-border-subtle)]/50 pb-0.5">
                     <span className="text-[var(--app-text-accent)] font-semibold truncate max-w-[70%]">
-                      {fix.competitionName || 'Campeonato'} {fix.stage ? `• ${fix.stage}` : ''}
+                      {fix.competitionRound?.includes('Grupo') 
+                        ? `${fix.competitionName || 'Continental'} • ${fix.competitionRound}` 
+                        : `${fix.competitionName || 'Campeonato'} ${fix.stage ? `• ${fix.stage}` : ''}`}
                     </span>
                     <span className="text-[9px] text-slate-400">
                       Toque no placar para súmula
@@ -333,12 +340,25 @@ export const RoundResultsScreen: React.FC = () => {
             ? gameState.standingsContinental || gameState.standings
             : gameState.standingsNacional || gameState.standings;
 
+          const enrichedStandingsList = isContinental
+            ? standingsList.map(row => {
+                if (row.group) return row;
+                const fix = gameState.calendar.find(f => (f.homeClubId === row.clubId || f.awayClubId === row.clubId) && f.competitionRound?.startsWith('Grupo '));
+                const g = fix?.competitionRound?.match(/Grupo ([A-Z])/)?.[1];
+                return g ? { ...row, group: g } : row;
+              })
+            : standingsList;
+
+          const continentalGroups = isContinental
+            ? Array.from(new Set(enrichedStandingsList.map(r => r.group).filter(Boolean))).sort() as string[]
+            : [];
+
           const userStateInfo = getStateByCode(userClub.stateCode) || getStateById(userClub.stateId);
           const userLeagueInfo = findLeagueForClub(userClub.id);
 
           const competitionZones = getCompetitionZones({
             competitionType: currentCompetition || (isEstadual ? 'estadual' : isContinental ? 'libertadores' : 'nacional'),
-            totalTeams: standingsList.length,
+            totalTeams: isContinental ? 4 : standingsList.length,
             division: userClub.division ?? 1,
             countryId: userClub.countryId ?? 29,
             stateCode: userClub.stateCode,
@@ -355,7 +375,7 @@ export const RoundResultsScreen: React.FC = () => {
                   <span>Classificação Atualizada</span>
                 </span>
                 <span className="text-[11px] text-slate-400 font-mono-numbers">
-                  Após Rodada {gameState.currentRound}
+                  Atualizada em {formatMatchDate(currentRoundMatches[0]?.date, 'short')}
                 </span>
               </div>
 
@@ -374,54 +394,117 @@ export const RoundResultsScreen: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--app-border-subtle)] font-mono-numbers">
-                    {standingsList.map((row, idx) => {
-                      const pos = idx + 1;
-                      const isUser = row.clubId === userClub.id;
-                      const zone = getZoneForPosition(competitionZones, pos);
-                      const posColor = zone ? zone.colorClass : 'text-slate-400 font-bold';
-                      const rowBg = zone ? zone.bgHoverClass : '';
+                    {isContinental && continentalGroups.length > 0 ? (
+                      continentalGroups.map(grp => {
+                        const groupRows = enrichedStandingsList.filter(r => r.group === grp);
+                        return (
+                          <React.Fragment key={grp}>
+                            <tr className="bg-[var(--app-surface-2)] border-y border-[var(--app-border-subtle)]">
+                              <td colSpan={8} className="py-1 px-3 text-[11px] font-bold text-[var(--app-text-accent)] uppercase tracking-wider">
+                                Grupo {grp}
+                              </td>
+                            </tr>
+                            {groupRows.map((row, idxInGroup) => {
+                              const pos = idxInGroup + 1;
+                              const isUser = row.clubId === userClub.id;
+                              const isQualified = pos <= 2;
+                              const posColor = isQualified ? 'text-emerald-400 font-bold' : 'text-slate-400';
+                              const rowBg = isQualified ? 'hover:bg-emerald-950/20' : '';
 
-                      return (
-                        <tr
-                          key={row.clubId}
-                          onClick={() => viewClub(row.clubId)}
-                          className={`transition-colors ${rowBg} cursor-pointer ${
-                            isUser
-                              ? 'bg-[var(--app-surface-2)] text-[var(--app-text-accent)] font-bold border-l-4 border-l-[var(--app-text-accent)]'
-                              : 'text-slate-300 hover:bg-[var(--app-surface-2)]/60'
-                          }`}
-                          title={isUser ? 'Seu clube' : `Ver detalhes de ${row.clubName}`}
-                        >
-                          <td className={`text-center py-1 text-[11px] ${posColor}`}>
-                            {pos}
-                          </td>
-                          <td className="py-1 font-sans text-xs">
-                            <div className="flex items-center space-x-1.5">
-                              <span
-                                className="w-2 h-2 rounded-full shrink-0"
-                                style={{ backgroundColor: row.primaryColor }}
-                              />
-                              <span className="truncate max-w-[130px]">{row.clubName}</span>
-                              {isUser && (
-                                <span className="text-[8px] bg-emerald-500 text-black px-1 rounded font-bold uppercase">
-                                  VOCÊ
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="text-center font-bold text-white text-xs bg-[#11231a]">
-                            {row.points}
-                          </td>
-                          <td className="text-center text-slate-400 text-[11px]">{row.played}</td>
-                          <td className="text-center text-emerald-300 text-[11px]">{row.won}</td>
-                          <td className="text-center text-slate-400 text-[11px]">{row.drawn}</td>
-                          <td className="text-center text-rose-300 text-[11px]">{row.lost}</td>
-                          <td className="text-center text-[11px]">
-                            {row.goalDiff > 0 ? `+${row.goalDiff}` : row.goalDiff}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                              return (
+                                <tr
+                                  key={row.clubId}
+                                  onClick={() => viewClub(row.clubId)}
+                                  className={`transition-colors ${rowBg} cursor-pointer ${
+                                    isUser
+                                      ? 'bg-[var(--app-surface-2)] text-[var(--app-text-accent)] font-bold border-l-4 border-l-[var(--app-text-accent)]'
+                                      : 'text-slate-300 hover:bg-[var(--app-surface-2)]/60'
+                                  }`}
+                                  title={isUser ? 'Seu clube' : `Ver detalhes de ${row.clubName}`}
+                                >
+                                  <td className={`text-center py-1 text-[11px] ${posColor}`}>
+                                    {pos}
+                                  </td>
+                                  <td className="py-1 font-sans text-xs">
+                                    <div className="flex items-center space-x-1.5">
+                                      <span
+                                        className="w-2 h-2 rounded-full shrink-0"
+                                        style={{ backgroundColor: row.primaryColor }}
+                                      />
+                                      <span className="truncate max-w-[130px]">{row.clubName}</span>
+                                      {isUser && (
+                                        <span className="text-[8px] bg-emerald-500 text-black px-1 rounded font-bold uppercase">
+                                          VOCÊ
+                                        </span>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="text-center font-bold text-white text-xs bg-[#11231a]">
+                                    {row.points}
+                                  </td>
+                                  <td className="text-center text-slate-400 text-[11px]">{row.played}</td>
+                                  <td className="text-center text-emerald-300 text-[11px]">{row.won}</td>
+                                  <td className="text-center text-slate-400 text-[11px]">{row.drawn}</td>
+                                  <td className="text-center text-rose-300 text-[11px]">{row.lost}</td>
+                                  <td className="text-center text-[11px]">
+                                    {row.goalDiff > 0 ? `+${row.goalDiff}` : row.goalDiff}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </React.Fragment>
+                        );
+                      })
+                    ) : (
+                      standingsList.map((row, idx) => {
+                        const pos = idx + 1;
+                        const isUser = row.clubId === userClub.id;
+                        const zone = getZoneForPosition(competitionZones, pos);
+                        const posColor = zone ? zone.colorClass : 'text-slate-400 font-bold';
+                        const rowBg = zone ? zone.bgHoverClass : '';
+
+                        return (
+                          <tr
+                            key={row.clubId}
+                            onClick={() => viewClub(row.clubId)}
+                            className={`transition-colors ${rowBg} cursor-pointer ${
+                              isUser
+                                ? 'bg-[var(--app-surface-2)] text-[var(--app-text-accent)] font-bold border-l-4 border-l-[var(--app-text-accent)]'
+                                : 'text-slate-300 hover:bg-[var(--app-surface-2)]/60'
+                            }`}
+                            title={isUser ? 'Seu clube' : `Ver detalhes de ${row.clubName}`}
+                          >
+                            <td className={`text-center py-1 text-[11px] ${posColor}`}>
+                              {pos}
+                            </td>
+                            <td className="py-1 font-sans text-xs">
+                              <div className="flex items-center space-x-1.5">
+                                <span
+                                  className="w-2 h-2 rounded-full shrink-0"
+                                  style={{ backgroundColor: row.primaryColor }}
+                                />
+                                <span className="truncate max-w-[130px]">{row.clubName}</span>
+                                {isUser && (
+                                  <span className="text-[8px] bg-emerald-500 text-black px-1 rounded font-bold uppercase">
+                                    VOCÊ
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="text-center font-bold text-white text-xs bg-[#11231a]">
+                              {row.points}
+                            </td>
+                            <td className="text-center text-slate-400 text-[11px]">{row.played}</td>
+                            <td className="text-center text-emerald-300 text-[11px]">{row.won}</td>
+                            <td className="text-center text-slate-400 text-[11px]">{row.drawn}</td>
+                            <td className="text-center text-rose-300 text-[11px]">{row.lost}</td>
+                            <td className="text-center text-[11px]">
+                              {row.goalDiff > 0 ? `+${row.goalDiff}` : row.goalDiff}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>

@@ -524,12 +524,24 @@ export const TacticsScreen: React.FC = () => {
                   {player.name}
                 </div>
 
-                {/* Energy Mini-bar */}
-                <div className="mt-1 w-full bg-black/40 h-1.5 rounded-full overflow-hidden p-0.2">
-                  <div
-                    className={`h-full rounded-full ${energyColor}`}
-                    style={{ width: `${player.energy}%` }}
-                  />
+                {/* Energy Indicator & Mini-bar */}
+                <div className="mt-1 space-y-0.5">
+                  <div className="flex items-center justify-between text-[8px] font-mono leading-none px-0.5">
+                    <span className={isSelected ? 'text-black font-black' : player.energy >= 80 ? 'text-emerald-400 font-bold' : player.energy >= 60 ? 'text-amber-300 font-bold' : 'text-rose-400 font-bold'}>
+                      ⚡ {player.energy}%
+                    </span>
+                    {player.energy < 75 && (
+                      <span className={isSelected ? 'text-black font-black' : 'text-amber-400 font-black tracking-tighter'}>
+                        CANSADO
+                      </span>
+                    )}
+                  </div>
+                  <div className="w-full bg-black/40 h-1 rounded-full overflow-hidden p-0.2">
+                    <div
+                      className={`h-full rounded-full ${energyColor}`}
+                      style={{ width: `${player.energy}%` }}
+                    />
+                  </div>
                 </div>
               </div>
             );
@@ -634,9 +646,11 @@ export const TacticsScreen: React.FC = () => {
         </div>
 
         {/* Squad bench status bar */}
-        <div className="px-3 py-1.5 text-xs flex items-center justify-between border-b border-[var(--app-border-subtle)] bg-[var(--app-surface-2)]/30 shrink-0">
-          <div className="flex items-center space-x-2 text-slate-300">
-            <span>Banco convocado: <strong className="text-white font-mono-numbers">{bench.length}/11</strong> (Demais atletas fora da súmula)</span>
+        <div className="px-3 py-1.5 text-xs flex flex-wrap items-center justify-between gap-1.5 border-b border-[var(--app-border-subtle)] bg-[var(--app-surface-2)]/30 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 text-slate-300">
+            <span>
+              Banco convocado: <strong className="text-white font-mono-numbers">{bench.length}/11</strong> (Demais atletas fora da súmula)
+            </span>
             {bench.length < 11 && (
               <button
                 onClick={() => {
@@ -650,6 +664,18 @@ export const TacticsScreen: React.FC = () => {
                 Completar banco
               </button>
             )}
+            <span className="text-slate-600 hidden sm:inline">|</span>
+            <span className="text-[11px] text-slate-400">
+              Físico do banco:{' '}
+              <strong className="text-emerald-400 font-mono">
+                {bench.filter(p => p.energy >= 80).length} inteiros
+              </strong>
+              {bench.filter(p => p.energy < 75).length > 0 && (
+                <span className="text-amber-400 font-mono ml-1">
+                  ({bench.filter(p => p.energy < 75).length} fatigados)
+                </span>
+              )}
+            </span>
           </div>
           {matchError && <p role="alert" className="text-amber-300 font-semibold text-[11px]">{matchError}</p>}
         </div>
@@ -783,9 +809,16 @@ export const TacticsScreen: React.FC = () => {
                             style={{ width: `${player.energy}%` }}
                           />
                         </div>
-                        <span className="text-[10px] w-6 text-right font-medium text-slate-300">
+                        <span className={`text-[10px] w-7 text-right font-bold font-mono ${
+                          player.energy >= 80 ? 'text-emerald-400' : player.energy >= 60 ? 'text-amber-400' : 'text-rose-400'
+                        }`}>
                           {player.energy}%
                         </span>
+                        {player.energy < 75 && (
+                          <span title="Fadiga física (<75%)" className="text-[8px] bg-amber-950/80 text-amber-300 border border-amber-800/80 px-1 py-0.2 rounded font-black uppercase">
+                            ⚠️
+                          </span>
+                        )}
                       </div>
                     </td>
 

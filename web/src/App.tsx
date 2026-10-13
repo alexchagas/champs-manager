@@ -21,6 +21,10 @@ import { sound } from './audio/soundEngine';
 import { deriveClubAtmosphere } from './theme/clubTheme';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { BugReportModal } from './components/BugReportModal';
+import { SeasonReviewScreen } from './components/SeasonReviewScreen';
+import { TournamentConclusionModal } from './components/TournamentConclusionModal';
+import { ChampionsHistoryScreen } from './components/ChampionsHistoryScreen';
+import { DevToolsLauncher } from './dev/index.ts';
 
 export interface AppShellProps {
   children?: React.ReactNode;
@@ -61,6 +65,8 @@ const MainAppContent: React.FC = () => {
     isWasmEngine,
     hasActiveCareer,
     userClub,
+    startNextSeason,
+    dismissTournamentConclusion,
   } = useGame();
 
   const [isBugReportOpen, setIsBugReportOpen] = useState(false);
@@ -145,11 +151,11 @@ const MainAppContent: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeScreen, advanceRound, completeRound, setScreen, userFixture, viewedClubId, closeClubViewer, hasActiveCareer]);
 
-  const showChrome = activeScreen !== 'menu' && activeScreen !== 'splash' && activeScreen !== 'live_match' && activeScreen !== 'round_results';
+  const showChrome = activeScreen !== 'menu' && activeScreen !== 'splash' && activeScreen !== 'live_match' && activeScreen !== 'round_results' && activeScreen !== 'season_review';
 
   return (
     <AppShell>
-      {/* Header is visible in all gameplay screens except menu, splash, live match and round results */}
+      {/* Header is visible in all gameplay screens except menu, splash, live match, round results and season review */}
       {showChrome && <Header />}
 
       {gameState.activeMatch && gameState.activeMatch.phase !== 'committed' && activeScreen !== 'live_match' && activeScreen !== 'splash' && activeScreen !== 'round_results' && (
@@ -180,6 +186,18 @@ const MainAppContent: React.FC = () => {
         {activeScreen === 'live_match' && <LiveMatchScreen />}
         {activeScreen === 'round_results' && <RoundResultsScreen />}
         {WORLD_CUP_FEATURE_ENABLED && activeScreen === 'world_cup' && <WorldCupScreen />}
+        {activeScreen === 'season_review' && (
+          <SeasonReviewScreen
+            gameState={gameState}
+            onStartNextSeason={startNextSeason}
+          />
+        )}
+        {activeScreen === 'champions_history' && (
+          <ChampionsHistoryScreen
+            gameState={gameState}
+            onBack={() => setScreen('overview')}
+          />
+        )}
 
         {/* Club Viewer (Inspecionar Clube Externo / Adversário) */}
         {viewedClubId !== null && (
@@ -189,6 +207,15 @@ const MainAppContent: React.FC = () => {
           />
         )}
       </main>
+
+      {/* Floating Tournament Conclusion Celebration / Overview Modal */}
+      {gameState.pendingTournamentConclusion && (
+        <TournamentConclusionModal
+          record={gameState.pendingTournamentConclusion}
+          userClubId={gameState.userClubId}
+          onClose={dismissTournamentConclusion}
+        />
+      )}
 
       {/* Bottom Navigation Bar on Mobile (< 768px) */}
       {showChrome && <BottomNavBar />}
@@ -207,6 +234,9 @@ const MainAppContent: React.FC = () => {
         }}
         initialErrorMessage={bugInitialError}
       />
+
+      {/* Developer Mode & Simulation Sandbox Launcher */}
+      <DevToolsLauncher />
     </AppShell>
   );
 };

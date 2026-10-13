@@ -52,7 +52,9 @@ import {
 import { 
   generateWeeklyNews, 
   generateKickoffNews, 
+  createChampionshipNews,
 } from '../engine/newsEngine';
+import { detectNewlyCompletedCompetitions, isSeasonComplete } from '../engine/tournamentCompletion';
 import {
   initializeNationalTeams,
   isWorldCupYear,
@@ -134,6 +136,9 @@ interface GameContextType {
   enterWorldCupMode: () => void;
   markNewsAsRead: (articleId: string) => void;
   markAllNewsAsRead: () => void;
+  startNextSeason: () => void;
+  dismissTournamentConclusion: () => void;
+  applyDevState?: (updater: GameState | ((prev: GameState) => GameState)) => void;
 }
 
 
@@ -718,10 +723,41 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const final = resolvePendingFixtures({ ...managed, newsFeed: [...articles, ...(latest.newsFeed || [])].slice(0,40),
         autoSaveMatchCounter: latest.options.autoSaveMode === 'every_3_matches' && count >= 3 ? 0 : count,
         activeScreen: 'round_results' });
-      setGameState(final);
+      
+      const newlyCompleted = detectNewlyCompletedCompetitions(final);
+      let stateWithTitles = final;
+      if (newlyCompleted.length > 0) {
+        const history = [...(final.championshipHistory || [])];
+        let news = [...(final.newsFeed || [])];
+        let clubs = [...final.clubs];
+        let userBonus = 0;
+
+        for (const record of newlyCompleted) {
+          history.push(record);
+          const champNews = createChampionshipNews(record, final.currentRound);
+          news = [...champNews, ...news];
+          if ((record.championClubId === final.userClubId || record.runnerUpClubId === final.userClubId) && record.userPrizeMoney) {
+            userBonus += record.userPrizeMoney;
+          }
+        }
+
+        if (userBonus > 0) {
+          clubs = clubs.map(c => c.id === final.userClubId ? { ...c, balance: c.balance + userBonus } : c);
+        }
+
+        stateWithTitles = {
+          ...final,
+          clubs,
+          championshipHistory: history,
+          newsFeed: news.slice(0, 50),
+          pendingTournamentConclusion: newlyCompleted[0],
+        };
+      }
+
+      setGameState(stateWithTitles);
       setMatchError('');
       const mode = latest.options.autoSaveMode;
-      if (mode === 'every_match' || mode === 'legacy_continuous' || (mode === 'every_3_matches' && count >= 3)) void performAutoSave(final);
+      if (mode === 'every_match' || mode === 'legacy_continuous' || (mode === 'every_3_matches' && count >= 3)) void performAutoSave(stateWithTitles);
     } catch (error) { setMatchError(String(error instanceof Error ? error.message : error)); }
   };
 
@@ -855,80 +891,94 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }));
   };
 
+  const dismissTournamentConclusion = () => {
+    setGameState(prev => ({
+      ...prev,
+      pendingTournamentConclusion: undefined,
+    }));
+  };
+
+  const startNextSeason = () => {
+    const club = gameState.clubs.find(c => c.id === gameState.userClubId) || gameState.clubs[0];
+    const nationalIds = new Set(gameState.standingsNacional?.map(row => row.clubId));
+    const nationalClubs = gameState.clubs.filter(c => nationalIds.has(c.id));
+    const nextYear = gameState.seasonYear + 1;
+    const next = generateTwoSemesterCalendar(club, nationalClubs, gameState.clubs, nextYear);
+    const rolled = rolloverManagers(gameState);
+
+    // Apply post-World Cup market value boosts to called-up players
+    let updatedClubs = rolled.clubs;
+    if (gameState.nationalCallups && gameState.nationalCallups.length > 0) {
+      const callupMap = new Map(gameState.nationalCallups.map(c => [c.playerId, c.boostedMarketValue]));
+      updatedClubs = rolled.clubs.map(c => ({
+        ...c,
+        squad: c.squad.map(p => {
+          const boosted = callupMap.get(p.id);
+          return boosted ? { ...p, marketValue: boosted } : p;
+        }),
+      }));
+    }
+
+    // Initialize Quadrennial Cycle Tournaments for next season
+    const nationalTeams = initializeNationalTeams(updatedClubs);
+    const worldCup = isWorldCupYear(nextYear) ? createWorldCupTournament(nextYear, nationalTeams) : undefined;
+    const superClubWorldCup = isSuperClubWorldCupYear(nextYear) ? createSuperClubWorldCup(nextYear, updatedClubs) : undefined;
+    const intercontinentalCup = isIntercontinentalYear(nextYear) ? createIntercontinentalCup(nextYear, updatedClubs) : undefined;
+    const human = rolled.managers?.find(m => m.id === rolled.humanManagerId) || { id: 'human-1', name: gameState.managerName, reputation: 1, titles: [] } as any;
+    const nationalTeamOffers = isWorldCupYear(nextYear) ? getAvailableNationalTeamOffers(human, nextYear, nationalTeams) : undefined;
+    const { callups, newsArticles: callupNews } = isWorldCupYear(nextYear) ? evaluateUserSquadCallups(club, nextYear, nationalTeams) : { callups: [], newsArticles: [] };
+
+    const nextOtherLeagues = buildInitialActiveOtherLeagues(
+      club,
+      gameState.activeCountryIds || [],
+      updatedClubs,
+      nextYear
+    );
+
+    const nextSeasonState: GameState = {
+      ...rolled,
+      clubs: updatedClubs,
+      activeMatch: undefined, activeMatchFixtureId: undefined,
+      seasonYear: nextYear,
+      currentRound: 1,
+      currentSemester: 1,
+      calendar: next.calendar,
+      standings: sortStandings(initializeStandings(next.semester1Clubs)),
+      standingsEstadual: sortStandings(initializeStandings(next.semester1Clubs)),
+      standingsNacional: sortStandings(initializeStandings(next.semester2Clubs)),
+      standingsContinental: sortStandings(
+        initializeStandings(next.continentalClubs, (_c, idx) => 'ABCD'[Math.floor(idx / 4)] || 'A')
+      ),
+      otherLeagues: nextOtherLeagues,
+      stateChampionshipName: next.estadualName,
+      nationalLeagueName: next.nacionalName,
+      continentalCupName: next.continentalName,
+      activeScreen: 'overview',
+      transferOffers: [],
+      worldCup,
+      superClubWorldCup,
+      intercontinentalCup,
+      nationalTeamOffers,
+      nationalCallups: callups,
+      newsFeed: [...callupNews, ...(rolled.newsFeed || [])],
+    };
+    setGameState(nextSeasonState);
+    if (
+      gameState.options.autoSaveMode === 'start_of_year' ||
+      gameState.options.autoSaveMode === 'legacy_continuous'
+    ) {
+      performAutoSave(nextSeasonState);
+    }
+  };
+
   const advanceRound = () => {
     if (matchInProgress()) { setMatchError('Comando bloqueado durante a partida. Volte à escalação da sessão.'); return; }
     const lastSlot = Math.max(...gameState.calendar.map(f => f.fixtureDateIndex ?? f.round));
-    if (gameState.currentRound >= lastSlot) {
-      const club = gameState.clubs.find(c => c.id === gameState.userClubId) || gameState.clubs[0];
-      const nationalIds = new Set(gameState.standingsNacional?.map(row => row.clubId));
-      const nationalClubs = gameState.clubs.filter(c => nationalIds.has(c.id));
-      const nextYear = gameState.seasonYear + 1;
-      const next = generateTwoSemesterCalendar(club, nationalClubs, gameState.clubs, nextYear);
-      const rolled = rolloverManagers(gameState);
-
-      // Apply post-World Cup market value boosts to called-up players
-      let updatedClubs = rolled.clubs;
-      if (gameState.nationalCallups && gameState.nationalCallups.length > 0) {
-        const callupMap = new Map(gameState.nationalCallups.map(c => [c.playerId, c.boostedMarketValue]));
-        updatedClubs = rolled.clubs.map(c => ({
-          ...c,
-          squad: c.squad.map(p => {
-            const boosted = callupMap.get(p.id);
-            return boosted ? { ...p, marketValue: boosted } : p;
-          }),
-        }));
-      }
-
-      // Initialize Quadrennial Cycle Tournaments for next season
-      const nationalTeams = initializeNationalTeams(updatedClubs);
-      const worldCup = isWorldCupYear(nextYear) ? createWorldCupTournament(nextYear, nationalTeams) : undefined;
-      const superClubWorldCup = isSuperClubWorldCupYear(nextYear) ? createSuperClubWorldCup(nextYear, updatedClubs) : undefined;
-      const intercontinentalCup = isIntercontinentalYear(nextYear) ? createIntercontinentalCup(nextYear, updatedClubs) : undefined;
-      const human = rolled.managers?.find(m => m.id === rolled.humanManagerId) || { id: 'human-1', name: gameState.managerName, reputation: 1, titles: [] } as any;
-      const nationalTeamOffers = isWorldCupYear(nextYear) ? getAvailableNationalTeamOffers(human, nextYear, nationalTeams) : undefined;
-      const { callups, newsArticles: callupNews } = isWorldCupYear(nextYear) ? evaluateUserSquadCallups(club, nextYear, nationalTeams) : { callups: [], newsArticles: [] };
-
-      const nextOtherLeagues = buildInitialActiveOtherLeagues(
-        club,
-        gameState.activeCountryIds || [],
-        updatedClubs,
-        nextYear
-      );
-
-      const nextSeasonState: GameState = {
-        ...rolled,
-        clubs: updatedClubs,
-        activeMatch: undefined, activeMatchFixtureId: undefined,
-        seasonYear: nextYear,
-        currentRound: 1,
-        currentSemester: 1,
-        calendar: next.calendar,
-        standings: sortStandings(initializeStandings(next.semester1Clubs)),
-        standingsEstadual: sortStandings(initializeStandings(next.semester1Clubs)),
-        standingsNacional: sortStandings(initializeStandings(next.semester2Clubs)),
-        standingsContinental: sortStandings(
-          initializeStandings(next.continentalClubs, (_c, idx) => 'ABCD'[Math.floor(idx / 4)] || 'A')
-        ),
-        otherLeagues: nextOtherLeagues,
-        stateChampionshipName: next.estadualName,
-        nationalLeagueName: next.nacionalName,
-        continentalCupName: next.continentalName,
-        activeScreen: 'overview',
-        transferOffers: [],
-        worldCup,
-        superClubWorldCup,
-        intercontinentalCup,
-        nationalTeamOffers,
-        nationalCallups: callups,
-        newsFeed: [...callupNews, ...(rolled.newsFeed || [])],
-      };
-      setGameState(nextSeasonState);
-      if (
-        gameState.options.autoSaveMode === 'start_of_year' ||
-        gameState.options.autoSaveMode === 'legacy_continuous'
-      ) {
-        performAutoSave(nextSeasonState);
-      }
+    if (gameState.currentRound >= lastSlot || isSeasonComplete(gameState)) {
+      setGameState(prev => ({
+        ...prev,
+        activeScreen: 'season_review',
+      }));
       return;
     }
 
@@ -1440,6 +1490,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         enterWorldCupMode,
         markNewsAsRead,
         markAllNewsAsRead,
+        startNextSeason,
+        dismissTournamentConclusion,
+        applyDevState: setGameState,
       }}
     >
       {children}

@@ -43,7 +43,7 @@ import {
   registerCountries,
   registerLeagues
 } from '../data/teamsDatabase';
-import { getLeaguesMeta, loadClubsForActiveCountries, LeaguesMeta } from '../data/leagueBundleLoader';
+import { getLeaguesMeta, loadClubsForActiveCountries, loadLeagueBundle, LeaguesMeta } from '../data/leagueBundleLoader';
 import { getCountryFlag, POPULAR_COUNTRIES } from '../data/countryFlags';
 import { AutoSaveMode, Club } from '../types';
 import { getClubTheme, deriveClubAtmosphere } from '../theme/clubTheme';
@@ -87,6 +87,7 @@ export const MainMenu: React.FC = () => {
   const [activeCountryIds, setActiveCountryIds] = useState<number[]>([29]); // Brasil padrão (1 a 5 países suportados)
   const [isStartingGame, setIsStartingGame] = useState<boolean>(false);
   const [leaguesMeta, setLeaguesMeta] = useState<LeaguesMeta | null>(null);
+  const [loadedBundleVersion, setLoadedBundleVersion] = useState<number>(0);
 
   // In-game simulation options
   const [simSpeed, setSimSpeed] = useState<1 | 2 | 5>(gameState.options.simSpeed || 2);
@@ -218,13 +219,35 @@ export const MainMenu: React.FC = () => {
 
   // Selected Club details (prioritize currently filtered list of the selected country)
   const selectedClub = useMemo(() => {
-    return (
+    const base = (
       filteredClubs.find((c) => c.id === selectedClubId) ||
       filteredClubs[0] ||
       allClubs.find((c) => c.id === selectedClubId) ||
       allClubs[0]
     );
-  }, [selectedClubId, filteredClubs, allClubs, activeTab]);
+    if (!base) return base;
+    const full = getClubById(base.id);
+    if (full && full.squad && full.squad.length > 0) {
+      return { ...base, ...full, squad: full.squad };
+    }
+    return base;
+  }, [selectedClubId, filteredClubs, allClubs, activeTab, loadedBundleVersion]);
+
+  // Ensure full squad is loaded into memory for the selected club
+  React.useEffect(() => {
+    if (!selectedClub?.id) return;
+    const full = getClubById(selectedClub.id);
+    if (!full || !full.squad || full.squad.length === 0) {
+      const item = leaguesMeta?.clubsIndex?.find((c) => c.id === selectedClub.id);
+      const bundleKey = item?.bundleKey || (selectedClub.countryId === 29 ? 'brazil' : undefined);
+      if (bundleKey) {
+        loadLeagueBundle(bundleKey).then((clubs) => {
+          registerClubs(clubs);
+          setLoadedBundleVersion((v) => v + 1);
+        });
+      }
+    }
+  }, [selectedClub?.id, leaguesMeta]);
 
   const selectedClubTheme = useMemo(() => getClubTheme(selectedClub), [selectedClub]);
   const selectedClubAtmosphere = useMemo(() => deriveClubAtmosphere(selectedClub), [selectedClub]);
@@ -989,6 +1012,10 @@ export const MainMenu: React.FC = () => {
                   style={{
                     backgroundColor: selectedClubAtmosphere.surface1,
                     borderColor: selectedClubAtmosphere.borderSubtle,
+                    ['--scrollbar-track' as any]: 'transparent',
+                    ['--scrollbar-thumb' as any]: selectedClubAtmosphere.borderHighlight,
+                    ['--scrollbar-thumb-hover' as any]: selectedClubTheme.primaryAccent,
+                    scrollbarColor: `${selectedClubAtmosphere.borderHighlight} transparent`,
                   }}
                 >
                   {/* Kit color top stripe */}
@@ -997,7 +1024,15 @@ export const MainMenu: React.FC = () => {
                     style={{ background: selectedClubTheme.stripeGradient }}
                   />
 
-                  <div className="space-y-3.5 overflow-y-auto pr-1">
+                  <div 
+                    className="space-y-3.5 overflow-y-auto pr-1 flex-1 min-h-0"
+                    style={{
+                      ['--scrollbar-track' as any]: 'transparent',
+                      ['--scrollbar-thumb' as any]: selectedClubAtmosphere.borderHighlight,
+                      ['--scrollbar-thumb-hover' as any]: selectedClubTheme.primaryAccent,
+                      scrollbarColor: `${selectedClubAtmosphere.borderHighlight} transparent`,
+                    }}
+                  >
                     {/* Club Header */}
                     <div 
                       className="flex items-center space-x-3.5 border-b pb-3"
@@ -1029,23 +1064,13 @@ export const MainMenu: React.FC = () => {
                             ))}
                           </div>
                         </div>
-                        <div className="flex items-center space-x-2 mt-0.5">
+                        <div className="mt-0.5">
                           <p 
                             className="text-xs font-semibold truncate"
                             style={{ color: selectedClubAtmosphere.textAccent }}
                           >
                             {selectedClub.leagueName || selectedClub.divisionName} • {selectedClub.coach}
                           </p>
-                          <span 
-                            className="text-[9px] px-1.5 py-0.2 rounded font-mono font-bold shrink-0"
-                            style={{ 
-                              backgroundColor: selectedClubTheme.subtleBg,
-                              color: selectedClubTheme.primaryAccent,
-                              border: `1px solid ${selectedClubTheme.subtleBorder}`
-                            }}
-                          >
-                            Cores
-                          </span>
                         </div>
                       </div>
                     </div>
@@ -1073,10 +1098,10 @@ export const MainMenu: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Squad Highlights */}
+                    {/* Squad List */}
                     <div>
                       <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                        <span>Destaques do Elenco</span>
+                        <span>Elenco ({selectedClub.squad?.length || 0})</span>
                         <span 
                           className="text-[10px] font-mono font-semibold"
                           style={{ color: selectedClubAtmosphere.textAccent }}
@@ -1084,107 +1109,55 @@ export const MainMenu: React.FC = () => {
                           Força Média: {selectedClubAvgStrength}
                         </span>
                       </div>
-                      <div className="flex flex-wrap gap-1">
-                        {(selectedClub.squad || []).slice(0, 4).map((p) => (
-                          <span
-                            key={p.id}
-                            className="border px-2 py-0.5 rounded text-[11px] font-semibold flex items-center space-x-1"
-                            style={{
-                              backgroundColor: selectedClubAtmosphere.surface2,
-                              borderColor: selectedClubAtmosphere.borderSubtle,
-                              color: '#e2e8f0',
-                            }}
-                          >
-                            <span className="text-[9px] text-slate-400">{p.position}</span>
-                            <span>{p.name}</span>
-                            <span 
-                              className="font-bold font-mono"
-                              style={{ color: selectedClubAtmosphere.textAccent }}
+                      <div 
+                        className="space-y-1 rounded border p-1"
+                        style={{
+                          backgroundColor: selectedClubAtmosphere.surface2,
+                          borderColor: selectedClubAtmosphere.borderSubtle,
+                        }}
+                      >
+                        {(selectedClub.squad && selectedClub.squad.length > 0) ? (
+                          selectedClub.squad.map((p) => (
+                            <div
+                              key={p.id}
+                              className="flex items-center justify-between px-2 py-1 rounded text-xs hover:bg-white/5 transition-colors"
                             >
-                              ({p.strength})
-                            </span>
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Inline Game Options Settings */}
-                    <div 
-                      className="pt-2 border-t space-y-2"
-                      style={{ borderColor: selectedClubAtmosphere.borderSubtle }}
-                    >
-                      <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                        <Sliders 
-                          className="w-3.5 h-3.5" 
-                          style={{ color: selectedClubAtmosphere.textAccent }} 
-                        />
-                        <span>Configurações da Partida</span>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        {/* Sim Speed */}
-                        <div 
-                          className="p-1.5 rounded border flex items-center justify-between"
-                          style={{
-                            backgroundColor: selectedClubAtmosphere.surface2,
-                            borderColor: selectedClubAtmosphere.borderSubtle,
-                          }}
-                        >
-                          <span className="text-[10px] text-slate-400">Velocidade:</span>
-                          <div className="flex space-x-1">
-                            {([1, 2, 5] as const).map((spd) => (
-                              <button
-                                key={spd}
-                                onClick={() => setSimSpeed(spd)}
-                                className="px-1.5 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-colors"
-                                style={
-                                  simSpeed === spd
-                                    ? {
-                                        backgroundColor: selectedClubTheme.primaryAccent,
-                                        color: selectedClubTheme.onPrimaryAccent,
-                                      }
-                                    : {
-                                        backgroundColor: selectedClubAtmosphere.surface1,
-                                        color: '#cbd5e1',
-                                      }
-                                }
-                              >
-                                {spd}x
-                              </button>
-                            ))}
+                              <div className="flex items-center space-x-2 min-w-0">
+                                <span 
+                                  className="text-[9px] font-bold px-1.5 py-0.5 rounded font-mono shrink-0"
+                                  style={{
+                                    backgroundColor: selectedClubTheme.subtleBg,
+                                    color: selectedClubAtmosphere.textAccent,
+                                    border: `1px solid ${selectedClubAtmosphere.borderSubtle}`
+                                  }}
+                                >
+                                  {p.position}
+                                </span>
+                                <span className="text-slate-200 truncate font-semibold text-[11px]">
+                                  {p.name}
+                                </span>
+                                {p.age ? (
+                                  <span className="text-[10px] text-slate-500 shrink-0">
+                                    {p.age}a
+                                  </span>
+                                ) : null}
+                              </div>
+                              <div className="flex items-center space-x-1 shrink-0 ml-2">
+                                <span className="text-[9px] text-slate-400 font-medium">FOR</span>
+                                <span 
+                                  className="font-bold font-mono text-[11px]"
+                                  style={{ color: selectedClubAtmosphere.textAccent }}
+                                >
+                                  {p.strength}
+                                </span>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-center py-3 text-xs text-slate-400">
+                            Carregando elenco...
                           </div>
-                        </div>
-
-                        {/* Sound Toggle */}
-                        <div 
-                          className="p-1.5 rounded border flex items-center justify-between"
-                          style={{
-                            backgroundColor: selectedClubAtmosphere.surface2,
-                            borderColor: selectedClubAtmosphere.borderSubtle,
-                          }}
-                        >
-                          <span className="text-[10px] text-slate-400">Efeitos Áudio:</span>
-                          <button
-                            onClick={() => setSoundEnabled(!soundEnabled)}
-                            className="px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer flex items-center space-x-1 transition-colors"
-                            style={
-                              soundEnabled
-                                ? {
-                                    backgroundColor: selectedClubTheme.primaryAccent,
-                                    color: selectedClubTheme.onPrimaryAccent,
-                                  }
-                                : {
-                                    backgroundColor: '#221c1c',
-                                    color: '#fda4af',
-                                    borderColor: '#881337',
-                                    borderWidth: 1,
-                                  }
-                            }
-                          >
-                            {soundEnabled ? <Volume2 className="w-3 h-3" /> : <VolumeX className="w-3 h-3" />}
-                            <span>{soundEnabled ? 'Ligado' : 'Mudo'}</span>
-                          </button>
-                        </div>
+                        )}
                       </div>
                     </div>
                   </div>

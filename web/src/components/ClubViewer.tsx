@@ -476,6 +476,30 @@ export const ClubViewer: React.FC<ClubViewerProps> = ({ clubId: propClubId, onCl
                     </span>
                   </div>
                 </div>
+
+                {/* Club Trophies & Career Titles */}
+                {(() => {
+                  const clubTitles = (gameState.championshipHistory || []).filter(h => h.championClubId === club.id);
+                  if (clubTitles.length === 0) return null;
+                  return (
+                    <div className="bg-[var(--app-surface-2)] border border-amber-500/30 p-2.5 rounded font-sans space-y-1.5 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-amber-400 uppercase font-bold flex items-center gap-1">
+                          <Trophy className="w-3 h-3" />
+                          <span>Títulos na Carreira ({clubTitles.length})</span>
+                        </span>
+                      </div>
+                      <div className="space-y-1 max-h-36 overflow-y-auto pr-1">
+                        {clubTitles.map(t => (
+                          <div key={t.id} className="flex items-center justify-between text-xs bg-black/40 p-1.5 rounded border border-white/5">
+                            <span className="font-bold text-white truncate max-w-[170px]">{t.competitionName}</span>
+                            <span className="text-[11px] font-mono text-amber-300 font-bold">{t.seasonYear}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
               </>
             )}
           </div>
