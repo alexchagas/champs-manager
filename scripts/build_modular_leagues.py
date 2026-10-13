@@ -298,9 +298,9 @@ def main():
         if div_info:
             division, division_name, league_name, _ = div_info
         else:
-            division = 1
-            division_name = "1ª Divisão"
-            league_name = f"Campeonato de {c_name}"
+            division = 5
+            division_name = "Divisão de Acesso"
+            league_name = f"{c_name} • Divisão de Acesso"
 
         state_id = c.get("state_id", 0) if c_id == 29 else None
         state_code = STATE_NAMES.get(state_id, ("", ""))[0] if (c_id == 29 and state_id in STATE_NAMES) else None

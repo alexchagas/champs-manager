@@ -175,6 +175,22 @@ test('COUNTRY_LEAGUE_PRESETS provides authentic division structures for major co
   assert.equal(germanyConfig.divisions[0].teamCount, 18, 'Bundesliga has 18 clubs');
   assert.equal(germanyConfig.divisions[0].relegationPlayoff, 1, 'Bundesliga has 1 relegation playoff spot');
 
+  // Portugal, Argentina, France
+  const portugalConfig = getCountryLeagueConfig(154, 'Portugal');
+  assert.equal(portugalConfig.divisions.length, 4, 'Portugal has 4 divisions');
+  assert.equal(portugalConfig.divisions[0].teamCount, 20, 'Liga Portugal has 20 clubs');
+  assert.equal(portugalConfig.divisions[0].tiebreakPriority, 'head_to_head');
+
+  const argentinaConfig = getCountryLeagueConfig(11, 'Argentina');
+  assert.equal(argentinaConfig.divisions.length, 4, 'Argentina has 4 divisions');
+  assert.equal(argentinaConfig.divisions[0].teamCount, 30, 'Liga Profesional has 30 clubs');
+  assert.equal(argentinaConfig.divisions[0].rounds, 1, 'Liga Profesional has 1 round (single turn)');
+
+  const franceConfig = getCountryLeagueConfig(72, 'França');
+  assert.equal(franceConfig.divisions.length, 4, 'France has 4 divisions');
+  assert.equal(franceConfig.divisions[0].teamCount, 18, 'Ligue 1 has 18 clubs');
+  assert.equal(franceConfig.divisions[0].relegationPlayoff, 1, 'Ligue 1 has 1 relegation playoff');
+
   // Generic fallback rule
   const generic20 = getCountryLeagueConfig(999, 'País Teste', 22);
   assert.equal(generic20.divisions[0].teamCount, 20);

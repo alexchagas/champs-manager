@@ -114,7 +114,9 @@ export const COUNTRY_LEAGUE_PRESETS: Record<number, CountryLeagueConfig> = {
     hasNationalCup: true,
     divisions: [
       { division: 1, name: 'Ligue 1', teamCount: 18, rounds: 2, format: 'round_robin', relegationDirect: 2, relegationPlayoff: 1, tiebreakPriority: 'goal_diff' },
-      { division: 2, name: 'Ligue 2', teamCount: 18, rounds: 2, format: 'round_robin', relegationDirect: 2, promotionPlayoff: 1, tiebreakPriority: 'goal_diff' },
+      { division: 2, name: 'Ligue 2', teamCount: 20, rounds: 2, format: 'round_robin', relegationDirect: 2, promotionPlayoff: 1, tiebreakPriority: 'goal_diff' },
+      { division: 3, name: 'National 1', teamCount: 20, rounds: 2, format: 'round_robin', relegationDirect: 4, promotionPlayoff: 1, tiebreakPriority: 'goal_diff' },
+      { division: 4, name: 'National 2', teamCount: 20, rounds: 2, format: 'round_robin', relegationDirect: 4, tiebreakPriority: 'goal_diff' },
     ],
   },
 
@@ -126,8 +128,10 @@ export const COUNTRY_LEAGUE_PRESETS: Record<number, CountryLeagueConfig> = {
     hasStateChampionships: false,
     hasNationalCup: true,
     divisions: [
-      { division: 1, name: 'Liga Portugal', teamCount: 18, rounds: 2, format: 'round_robin', relegationDirect: 2, relegationPlayoff: 1, tiebreakPriority: 'head_to_head' },
-      { division: 2, name: 'Liga Portugal 2', teamCount: 18, rounds: 2, format: 'round_robin', relegationDirect: 2, promotionPlayoff: 1, tiebreakPriority: 'head_to_head' },
+      { division: 1, name: 'Liga Portugal', teamCount: 20, rounds: 2, format: 'round_robin', relegationDirect: 2, relegationPlayoff: 1, tiebreakPriority: 'head_to_head' },
+      { division: 2, name: 'Liga Portugal 2', teamCount: 20, rounds: 2, format: 'round_robin', relegationDirect: 2, promotionPlayoff: 1, tiebreakPriority: 'head_to_head' },
+      { division: 3, name: 'Liga 3', teamCount: 20, rounds: 2, format: 'round_robin', relegationDirect: 4, tiebreakPriority: 'head_to_head' },
+      { division: 4, name: 'Campeonato de Portugal', teamCount: 20, rounds: 2, format: 'round_robin', relegationDirect: 4, tiebreakPriority: 'head_to_head' },
     ],
   },
 
@@ -139,8 +143,10 @@ export const COUNTRY_LEAGUE_PRESETS: Record<number, CountryLeagueConfig> = {
     hasStateChampionships: false,
     hasNationalCup: true,
     divisions: [
-      { division: 1, name: 'Liga Profesional', teamCount: 28, rounds: 1, format: 'round_robin', relegationDirect: 2, tiebreakPriority: 'goal_diff' },
-      { division: 2, name: 'Primera Nacional', teamCount: 38, rounds: 2, format: 'groups_and_playoffs', groupCount: 2, playoffTeams: 16, relegationDirect: 3, tiebreakPriority: 'goal_diff' },
+      { division: 1, name: 'Liga Profesional', teamCount: 30, rounds: 1, format: 'round_robin', relegationDirect: 2, tiebreakPriority: 'goal_diff' },
+      { division: 2, name: 'Primera Nacional', teamCount: 20, rounds: 2, format: 'round_robin', relegationDirect: 2, promotionPlayoff: 1, tiebreakPriority: 'goal_diff' },
+      { division: 3, name: 'Primera B Metropolitana', teamCount: 20, rounds: 2, format: 'round_robin', relegationDirect: 2, promotionPlayoff: 1, tiebreakPriority: 'goal_diff' },
+      { division: 4, name: 'Primera C', teamCount: 20, rounds: 2, format: 'round_robin', relegationDirect: 2, tiebreakPriority: 'goal_diff' },
     ],
   },
 
