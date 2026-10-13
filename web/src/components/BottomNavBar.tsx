@@ -16,10 +16,16 @@ import {
   Bug,
   Globe
 } from 'lucide-react';
+import { isWorldCupYear } from '../data/nationalTeamsData';
 
 export const BottomNavBar: React.FC = () => {
   const { gameState, activeScreen, setScreen, userClub } = useGame();
   const [isMoreOpen, setIsMoreOpen] = useState(false);
+
+  // During World Cup Mode, hide the club bottom navigation bar for complete immersion
+  if (activeScreen === 'world_cup' || gameState.isWorldCupMode) {
+    return null;
+  }
 
   const pendingOffersCount = (gameState.transferOffers || []).length;
   const youthCount = (userClub.youth || []).length;
@@ -71,13 +77,13 @@ export const BottomNavBar: React.FC = () => {
       icon: GraduationCap, 
       badge: youthCount > 0 ? `${youthCount}` : undefined 
     },
-    {
+    ...(isWorldCupYear(gameState.seasonYear) && (gameState.currentRound >= 18 || !!gameState.nationalJob) ? [{
       id: 'world_cup',
       label: 'Copa do Mundo',
       desc: 'Torneio de Seleções Nacionais e grupos',
       icon: Globe,
       badge: (gameState.nationalTeamOffers || []).filter(o => o.status === 'pending').length > 0 ? 'Convite' : undefined
-    },
+    }] : []),
     { 
       id: 'menu', 
       label: 'Menu Principal', 

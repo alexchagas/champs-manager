@@ -28,6 +28,7 @@ export interface Player {
 
 export type FormationType = '4-4-2' | '4-3-3' | '3-5-2' | '4-5-1' | '5-3-2';
 export type Mentality = 'Muito Defensiva' | 'Defensiva' | 'Equilibrada' | 'Ofensiva' | 'Muito Ofensiva';
+export type TacticalMentality = Mentality;
 
 export interface ClubTactics {
   formation: FormationType;
@@ -151,6 +152,7 @@ export interface StandingRow {
   clubId: number;
   clubName: string;
   primaryColor: string;
+  group?: string;
   points: number;
   played: number;
   won: number;
@@ -160,6 +162,19 @@ export interface StandingRow {
   goalsAgainst: number;
   goalDiff: number;
   form: ('V' | 'E' | 'D')[];
+}
+
+export interface OtherLeagueStandings {
+  id: string;
+  countryId: number;
+  countryName: string;
+  countryFlag?: string;
+  leagueName: string;
+  division: number;
+  seasonLabel: string;
+  currentRound: number;
+  totalRounds: number;
+  standings: StandingRow[];
 }
 
 export type MatchEventType = 
@@ -192,12 +207,27 @@ export interface MatchEvent {
 export type CompetitionType = 'estadual' | 'nacional' | 'copa' | 'libertadores' | 'sulamericana' | 'champions' | 'copa_do_mundo' | 'supermundial' | 'intercontinental';
 export type MatchDay = 'domingo' | 'segunda' | 'terça' | 'quarta' | 'quinta' | 'sexta' | 'sábado';
 
+export interface WorldCupHostInfo {
+  seasonYear: number;
+  hosts: { countryId: number; name: string; flag: string; code: string }[];
+  hostTitle: string;
+  hostSlogan: string;
+  logoTheme: {
+    primaryColor: string;
+    secondaryColor: string;
+    accentColor: string;
+    badgeStyle: string;
+  };
+  famousStadiums: string[];
+}
+
 export interface NationalTeam {
   id: number;
   name: string;
   countryId: number;
   code: string;
   reputation: number; // 1-5
+  confederation?: 'UEFA' | 'CONMEBOL' | 'CONCACAF' | 'CAF' | 'AFC';
   flag: string;
   shirtUrl: string;
   shirt2Url?: string;
@@ -218,6 +248,8 @@ export interface WorldCupGroup {
 export interface WorldCupTournament {
   seasonYear: number;
   status: 'upcoming' | 'groups' | 'round_of_16' | 'quarter_finals' | 'semi_finals' | 'final' | 'finished';
+  drawCompleted?: boolean;
+  hostInfo?: WorldCupHostInfo;
   groups: WorldCupGroup[];
   fixtures: MatchFixture[];
   champion?: { id: number; name: string; flag: string };
@@ -449,6 +481,7 @@ export interface GameState {
   standingsEstadual?: StandingRow[];
   standingsNacional?: StandingRow[];
   standingsContinental?: StandingRow[];
+  otherLeagues?: OtherLeagueStandings[];
   options: GameOptions;
   activeScreen: ActiveScreen;
   activeMatchFixtureId?: number;
@@ -457,6 +490,7 @@ export interface GameState {
   transferOffers?: TransferOffer[];
   newsFeed?: NewsArticle[];
   nationalJob?: { nationalTeamId: number; nationalTeamName: string; countryId: number; code: string };
+  isWorldCupMode?: boolean;
   worldCup?: WorldCupTournament;
   superClubWorldCup?: SuperClubWorldCup;
   intercontinentalCup?: IntercontinentalCup;

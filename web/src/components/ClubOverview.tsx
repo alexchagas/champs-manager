@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useGame } from '../state/GameContext';
 import { 
   Trophy, 
@@ -34,6 +34,8 @@ import { getAllClubs, getStateByCode, getStateById, findLeagueForClub } from '..
 import { getCompetitionZones, getZoneForPosition } from '../engine/competitionZones';
 import { ClubCrest } from './ClubCrest';
 import { getClubTheme } from '../theme/clubTheme';
+import { formatMatchDate } from '../utils/dateFormatter';
+import { COUNTRY_FLAGS } from '../data/countryFlags';
 
 export const ClubOverview: React.FC = () => {
   const { 
@@ -53,6 +55,9 @@ export const ClubOverview: React.FC = () => {
 
   const [selectedRound, setSelectedRound] = useState(gameState.currentRound);
   const [mobileTab, setMobileTab] = useState<'standings' | 'calendar'>('standings');
+  const [selectedGroupTab, setSelectedGroupTab] = useState<string>('all');
+  const [calendarGroupFilter, setCalendarGroupFilter] = useState<string>('all');
+  const [selectedCompetitionTab, setSelectedCompetitionTab] = useState<string | null>(null);
 
   const formatMoney = (val: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -66,25 +71,164 @@ export const ClubOverview: React.FC = () => {
 
   const totalRounds = gameState.calendar.length > 0 ? Math.max(...gameState.calendar.map((f) => f.fixtureDateIndex ?? f.round)) : 38;
   const currentCompetition = gameState.calendar.find(f => (f.fixtureDateIndex ?? f.round) === gameState.currentRound)?.competitionType;
-  const tableIsEstadual = currentCompetition === 'estadual';
-  const tableIsContinental = currentCompetition === 'libertadores' || currentCompetition === 'sulamericana' || currentCompetition === 'champions';
-  const tableTitle = tableIsEstadual ? gameState.stateChampionshipName : tableIsContinental ? gameState.continentalCupName : gameState.nationalLeagueName;
-  const displayedStandings = tableIsEstadual ? gameState.standingsEstadual : tableIsContinental ? gameState.standingsContinental : gameState.standingsNacional;
+
+  const currentDateStr = currentRoundFixtures[0]?.date || gameState.calendar.find(f => (f.fixtureDateIndex ?? f.round) === gameState.currentRound)?.date;
+
+  // Competição ativa exibida na tabela
+  const defaultCompetitionTab = currentCompetition === 'estadual' ? 'estadual' :
+    (currentCompetition === 'libertadores' || currentCompetition === 'sulamericana' || currentCompetition === 'champions') ? 'continental' :
+    currentCompetition === 'copa' ? 'copa' : 'nacional';
+
+  const activeCompetitionTab = selectedCompetitionTab || defaultCompetitionTab;
+
+  const selectedOtherLeague = (gameState.otherLeagues || []).find((l) => l.id === activeCompetitionTab);
+  const tableIsOtherLeague = !!selectedOtherLeague;
+
+  const tableIsEstadual = !tableIsOtherLeague && activeCompetitionTab === 'estadual';
+  const tableIsContinental = !tableIsOtherLeague && activeCompetitionTab === 'continental';
+  const tableIsCopa = !tableIsOtherLeague && activeCompetitionTab === 'copa';
+  const tableIsNacional = !tableIsOtherLeague && activeCompetitionTab === 'nacional';
+
+  const tableTitle = tableIsOtherLeague
+    ? `${COUNTRY_FLAGS[selectedOtherLeague.countryId] || selectedOtherLeague.countryFlag || '🌐'} ${selectedOtherLeague.leagueName} (${selectedOtherLeague.seasonLabel})`
+    : tableIsEstadual 
+    ? (gameState.stateChampionshipName || 'Campeonato Estadual') 
+    : tableIsContinental 
+    ? (gameState.continentalCupName || 'Copa Continental') 
+    : tableIsCopa 
+    ? (userClub.countryId === 29 ? 'Copa do Brasil' : 'Copa Nacional')
+    : (gameState.nationalLeagueName || gameState.leagueName || 'Campeonato Nacional');
+
+  const displayedStandings = tableIsOtherLeague
+    ? selectedOtherLeague.standings
+    : tableIsEstadual 
+    ? (gameState.standingsEstadual || gameState.standings) 
+    : tableIsContinental 
+    ? (gameState.standingsContinental || gameState.standings) 
+    : (gameState.standingsNacional || gameState.standings);
 
   const standingsList = displayedStandings || gameState.standings;
+
+  const availableCompetitionTabs = useMemo(() => {
+    const list: { id: string; label: string; isCurrent: boolean }[] = [];
+    if (gameState.standingsEstadual && gameState.standingsEstadual.length > 0) {
+      list.push({
+        id: 'estadual',
+        label: gameState.stateChampionshipName ? gameState.stateChampionshipName.split('(')[0].trim() : 'Estadual',
+        isCurrent: currentCompetition === 'estadual',
+      });
+    }
+    if (gameState.standingsNacional && gameState.standingsNacional.length > 0) {
+      list.push({
+        id: 'nacional',
+        label: gameState.nationalLeagueName || gameState.leagueName || 'Brasileirão',
+        isCurrent: currentCompetition === 'nacional',
+      });
+    }
+    if (gameState.standingsContinental && gameState.standingsContinental.length > 0) {
+      list.push({
+        id: 'continental',
+        label: gameState.continentalCupName || 'Libertadores',
+        isCurrent: currentCompetition === 'libertadores' || currentCompetition === 'sulamericana' || currentCompetition === 'champions',
+      });
+    }
+    const hasCopaMatches = gameState.calendar.some(f => f.competitionType === 'copa');
+    if (hasCopaMatches) {
+      list.push({
+        id: 'copa',
+        label: userClub.countryId === 29 ? 'Copa do Brasil' : 'Copa Nacional',
+        isCurrent: currentCompetition === 'copa',
+      });
+    }
+    if (gameState.otherLeagues && gameState.otherLeagues.length > 0) {
+      gameState.otherLeagues.forEach(other => {
+        list.push({
+          id: other.id,
+          label: `${COUNTRY_FLAGS[other.countryId] || other.countryFlag || '🌐'} ${other.leagueName}`,
+          isCurrent: false,
+        });
+      });
+    }
+    return list;
+  }, [gameState, currentCompetition, userClub.countryId]);
+
+  const continentalGroups = useMemo(() => {
+    if (!tableIsContinental) return [];
+    const set = new Set<string>();
+    for (const row of standingsList) {
+      if (row.group) set.add(row.group);
+      else {
+        const fix = gameState.calendar.find(f => (f.homeClubId === row.clubId || f.awayClubId === row.clubId) && f.competitionRound?.startsWith('Grupo '));
+        const g = fix?.competitionRound?.match(/Grupo ([A-Z])/)?.[1];
+        if (g) set.add(g);
+      }
+    }
+    return Array.from(set).sort();
+  }, [tableIsContinental, standingsList, gameState.calendar]);
+
+  const enrichedStandingsList = useMemo(() => {
+    if (!tableIsContinental) return standingsList;
+    return standingsList.map(row => {
+      if (row.group) return row;
+      const fix = gameState.calendar.find(f => (f.homeClubId === row.clubId || f.awayClubId === row.clubId) && f.competitionRound?.startsWith('Grupo '));
+      const g = fix?.competitionRound?.match(/Grupo ([A-Z])/)?.[1];
+      return g ? { ...row, group: g } : row;
+    });
+  }, [tableIsContinental, standingsList, gameState.calendar]);
+
+  // Grupos presentes na rodada selecionada no calendário
+  const roundCalendarGroups = useMemo(() => {
+    const set = new Set<string>();
+    for (const fix of roundFixtures) {
+      const match = fix.competitionRound?.match(/Grupo ([A-Z])/i);
+      if (match?.[1]) set.add(match[1].toUpperCase());
+    }
+    return Array.from(set).sort();
+  }, [roundFixtures]);
+
+  const displayedRoundFixtures = useMemo(() => {
+    if (calendarGroupFilter === 'all' || !roundCalendarGroups.includes(calendarGroupFilter)) {
+      return roundFixtures;
+    }
+    return roundFixtures.filter((f) => f.competitionRound?.includes(`Grupo ${calendarGroupFilter}`));
+  }, [roundFixtures, calendarGroupFilter, roundCalendarGroups]);
+
   const userStateInfo = getStateByCode(userClub.stateCode) || getStateById(userClub.stateId);
   const userLeagueInfo = findLeagueForClub(userClub.id);
 
-  const competitionZones = getCompetitionZones({
-    competitionType: currentCompetition || (tableIsEstadual ? 'estadual' : tableIsContinental ? 'libertadores' : 'nacional'),
-    totalTeams: standingsList.length,
-    division: userClub.division ?? 1,
-    countryId: userClub.countryId ?? 29,
-    stateCode: userClub.stateCode,
-    stateDivisions: userStateInfo?.divisions,
-    totalClubsInState: userStateInfo?.clubCount,
-    customRelegated: userLeagueInfo?.relegated,
-  });
+  const copaStages = useMemo(() => {
+    if (!tableIsCopa) return [];
+    const allCopa = gameState.calendar.filter(f => f.competitionType === 'copa');
+    const stagesOrder = ['Oitavas de Final', 'Quartas de Final', 'Semifinal', 'Final'];
+    const map = new Map<string, typeof allCopa>();
+    for (const fix of allCopa) {
+      const s = fix.stage || fix.competitionRound?.split('(')[0]?.trim() || 'Mata-mata';
+      if (!map.has(s)) map.set(s, []);
+      map.get(s)!.push(fix);
+    }
+    return stagesOrder.filter(s => map.has(s)).map(s => ({ stage: s, fixtures: map.get(s)! }));
+  }, [tableIsCopa, gameState.calendar]);
+
+  const competitionZones = useMemo(() => {
+    if (selectedOtherLeague) {
+      return getCompetitionZones({
+        competitionType: 'nacional',
+        totalTeams: selectedOtherLeague.standings.length,
+        division: 1,
+        countryId: selectedOtherLeague.countryId,
+      });
+    }
+    return getCompetitionZones({
+      competitionType: activeCompetitionTab || (tableIsEstadual ? 'estadual' : tableIsContinental ? 'libertadores' : 'nacional'),
+      totalTeams: tableIsContinental ? 4 : standingsList.length,
+      division: userClub.division ?? 1,
+      countryId: userClub.countryId ?? 29,
+      stateCode: userClub.stateCode,
+      stateDivisions: userStateInfo?.divisions,
+      totalClubsInState: userStateInfo?.clubCount,
+      customRelegated: userLeagueInfo?.relegated,
+    });
+  }, [selectedOtherLeague, activeCompetitionTab, tableIsEstadual, tableIsContinental, standingsList.length, userClub, userStateInfo, userLeagueInfo]);
 
   // Sector strengths and availability for user and opponent
   const userStarters = getSquadStarters(userClub);
@@ -306,20 +450,170 @@ export const ClubOverview: React.FC = () => {
         <div className="px-3 py-2 bg-[var(--app-surface-2)] border-b border-[var(--app-border-highlight)] flex items-center justify-between shrink-0">
           <div className="flex items-center space-x-2 min-w-0">
             <Trophy className="w-4 h-4 text-[var(--app-text-accent)] shrink-0" />
-            <h2 className="text-xs font-bold text-white uppercase tracking-wider truncate max-w-[280px] sm:max-w-[340px]">
+            <h2 className="text-xs font-bold text-white uppercase tracking-wider truncate max-w-[240px] sm:max-w-[320px]">
               {tableTitle || gameState.leagueName || 'Campeonato Nacional'}
             </h2>
           </div>
-          <span className="text-[11px] font-mono-numbers text-[var(--app-text-accent)] font-semibold shrink-0">
-            Data {gameState.currentRound} / {totalRounds}
-          </span>
+          <div className="flex items-center space-x-1.5 shrink-0">
+            {selectedOtherLeague ? (
+              <span className="text-[10px] text-emerald-400 bg-emerald-950/60 border border-emerald-600/40 px-2 py-0.5 rounded font-mono-numbers font-bold">
+                {selectedOtherLeague.currentRound}ª de {selectedOtherLeague.totalRounds} Rodadas
+              </span>
+            ) : (
+              <>
+                <span className="text-[11px] font-mono-numbers text-[var(--app-text-accent)] font-bold">
+                  {formatMatchDate(currentDateStr, 'short')}
+                </span>
+                <span className="text-[9px] text-slate-300 bg-[var(--app-bg-deep)] px-1.5 py-0.5 rounded border border-[var(--app-border-subtle)] font-semibold">
+                  Hoje
+                </span>
+              </>
+            )}
+          </div>
         </div>
 
-        {/* Dense Standings Table with responsive columns */}
-        <div className="flex-1 overflow-x-auto overflow-y-auto no-scrollbar">
-          <table className="w-full text-left text-xs brasfoot-table border-collapse min-w-[280px] sm:min-w-0">
-            <thead>
-              <tr className="sticky top-0 z-10">
+        {/* Competition Switcher Tabs (Permite navegar livremente entre os torneios) */}
+        {availableCompetitionTabs.length > 1 && (
+          <div className="flex items-center space-x-1 px-2.5 py-1.5 bg-[var(--app-surface-2)]/90 border-b border-[var(--app-border-subtle)] overflow-x-auto no-scrollbar shrink-0 text-xs">
+            {availableCompetitionTabs.map(comp => {
+              const isSelected = activeCompetitionTab === comp.id;
+              return (
+                <button
+                  key={comp.id}
+                  type="button"
+                  onClick={() => {
+                    sound.playClick();
+                    setSelectedCompetitionTab(comp.id);
+                  }}
+                  className={`px-2.5 py-1 rounded font-bold text-[10px] sm:text-[11px] transition-all flex items-center space-x-1.5 shrink-0 cursor-pointer ${
+                    isSelected
+                      ? 'bg-[var(--app-surface-3)] text-white border border-[var(--app-text-accent)] shadow-xs'
+                      : 'text-slate-400 hover:text-white hover:bg-[var(--app-surface-3)]/40 border border-transparent'
+                  }`}
+                >
+                  <span>{comp.label}</span>
+                  {comp.isCurrent && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" title="Competição em andamento na data de hoje" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Continental Groups Filter Bar */}
+        {tableIsContinental && continentalGroups.length > 0 && (
+          <div className="flex items-center space-x-1 px-3 py-1 bg-[var(--app-surface-2)]/80 border-b border-[var(--app-border-subtle)] overflow-x-auto no-scrollbar shrink-0 text-xs">
+            <button
+              type="button"
+              onClick={() => setSelectedGroupTab('all')}
+              className={`px-2 py-0.5 rounded font-bold text-[10px] sm:text-[11px] transition-colors cursor-pointer ${
+                selectedGroupTab === 'all'
+                  ? 'bg-[var(--app-surface-3)] text-white border border-[var(--app-text-accent)]/60'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Todos os Grupos
+            </button>
+            {continentalGroups.map(grp => (
+              <button
+                key={grp}
+                type="button"
+                onClick={() => setSelectedGroupTab(grp)}
+                className={`px-2 py-0.5 rounded font-bold text-[10px] sm:text-[11px] transition-colors cursor-pointer ${
+                  selectedGroupTab === grp
+                    ? 'bg-[var(--app-surface-3)] text-[var(--app-text-accent)] border border-[var(--app-text-accent)]'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Grupo {grp}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Standings Table or Copa Knockout Stages */}
+        {tableIsCopa ? (
+          <div className="flex-1 overflow-y-auto p-2 sm:p-2.5 space-y-3 no-scrollbar">
+            {copaStages.length === 0 ? (
+              <div className="text-center py-8 text-xs text-slate-400">
+                Nenhum jogo da Copa programado ainda.
+              </div>
+            ) : (
+              copaStages.map(({ stage, fixtures }) => (
+                <div key={stage} className="bg-[var(--app-surface-2)]/60 border border-[var(--app-border-subtle)] rounded-lg p-2 space-y-1.5">
+                  <div className="text-[11px] font-bold text-[var(--app-text-accent)] uppercase tracking-wider px-1 pb-1 border-b border-[var(--app-border-subtle)] flex items-center justify-between">
+                    <span>{stage}</span>
+                    <span className="text-[10px] text-slate-400 font-normal">{fixtures.length} confrontos</span>
+                  </div>
+                  <div className="space-y-1 pt-1">
+                    {fixtures.map(fix => {
+                      if (fix.pendingQualification) {
+                        return (
+                          <div key={fix.id} className="flex items-center justify-between px-2 py-1 rounded bg-[var(--app-surface-1)] text-[11px] text-slate-400">
+                            <span>A definir</span>
+                            <span className="text-[10px] text-slate-500">{fix.competitionRound}</span>
+                            <span>A definir</span>
+                          </div>
+                        );
+                      }
+                      const home = gameState.clubs.find(c => c.id === fix.homeClubId) || getAllClubs().find(c => c.id === fix.homeClubId);
+                      const away = gameState.clubs.find(c => c.id === fix.awayClubId) || getAllClubs().find(c => c.id === fix.awayClubId);
+                      if (!home || !away) return null;
+                      const isUserMatch = home.id === userClub.id || away.id === userClub.id;
+
+                      return (
+                        <div
+                          key={fix.id}
+                          className={`flex items-center justify-between px-2 py-1.5 rounded text-xs transition-colors ${
+                            isUserMatch ? 'bg-[var(--app-surface-3)] border border-[var(--app-border-highlight)]' : 'bg-[var(--app-surface-1)]'
+                          }`}
+                        >
+                          <div 
+                            onClick={() => viewClub(home.id)}
+                            className="flex items-center space-x-1.5 w-[42%] justify-end truncate cursor-pointer hover:opacity-80"
+                          >
+                            <span className={`truncate text-[11px] ${home.id === userClub.id ? 'text-[var(--app-text-accent)] font-bold' : 'text-slate-200'}`}>
+                              {home.name}
+                            </span>
+                            <ClubCrest club={home} size="sm" preferMini />
+                          </div>
+                          <div className="w-[16%] flex flex-col items-center justify-center shrink-0">
+                            {fix.played ? (
+                              <span className="font-mono-numbers font-black px-1.5 py-0.2 bg-[var(--app-bg-deep)] border border-[var(--app-border-subtle)] rounded text-[var(--app-text-accent)] text-[11px]">
+                                {fix.homeScore} x {fix.awayScore}
+                                {fix.penaltyScore && (
+                                  <span className="block text-[8px] text-amber-300">Pen {fix.penaltyScore[0]}x{fix.penaltyScore[1]}</span>
+                                )}
+                              </span>
+                            ) : (
+                              <span className="text-[9px] text-slate-400 bg-[var(--app-bg-deep)] px-1.5 py-0.5 rounded border border-[var(--app-border-subtle)]">
+                                {formatMatchDate(fix.date, 'short')}
+                              </span>
+                            )}
+                          </div>
+                          <div 
+                            onClick={() => viewClub(away.id)}
+                            className="flex items-center space-x-1.5 w-[42%] truncate cursor-pointer hover:opacity-80"
+                          >
+                            <ClubCrest club={away} size="sm" preferMini />
+                            <span className={`truncate text-[11px] ${away.id === userClub.id ? 'text-[var(--app-text-accent)] font-bold' : 'text-slate-200'}`}>
+                              {away.name}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        ) : (
+          <div className="flex-1 overflow-x-auto overflow-y-auto no-scrollbar">
+            <table className="w-full text-left text-xs brasfoot-table border-collapse min-w-[280px] sm:min-w-0">
+              <thead>
+                <tr className="sticky top-0 z-10">
                 <th className="w-7 sm:w-8 text-center">#</th>
                 <th>Clube</th>
                 <th className="w-8 text-center">PTS</th>
@@ -334,107 +628,219 @@ export const ClubOverview: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#14281f] font-mono-numbers">
-              {standingsList.map((row, index) => {
-                const pos = index + 1;
-                const isUser = row.clubId === userClub.id;
+              {tableIsContinental && continentalGroups.length > 0 ? (
+                continentalGroups
+                  .filter(grp => selectedGroupTab === 'all' || selectedGroupTab === grp)
+                  .map(grp => {
+                    const groupRows = enrichedStandingsList.filter(r => r.group === grp);
+                    return (
+                      <React.Fragment key={grp}>
+                        <tr className="bg-[var(--app-surface-2)] border-y border-[var(--app-border-subtle)]">
+                          <td colSpan={11} className="py-1 px-3 text-[11px] font-bold text-[var(--app-text-accent)] uppercase tracking-wider">
+                            Grupo {grp}
+                          </td>
+                        </tr>
+                        {groupRows.map((row, indexInGroup) => {
+                          const pos = indexInGroup + 1;
+                          const isUser = row.clubId === userClub.id;
+                          const isQualified = pos <= 2;
+                          const posColor = isQualified ? 'text-emerald-400 font-bold' : 'text-slate-400';
+                          const rowBg = isQualified ? 'hover:bg-emerald-950/20' : '';
 
-                const zone = getZoneForPosition(competitionZones, pos);
-                const posColor = zone ? zone.colorClass : 'text-slate-400';
-                const rowBg = zone ? zone.bgHoverClass : '';
-
-                return (
-                  <tr
-                    key={row.clubId}
-                    onClick={() => viewClub(row.clubId)}
-                    style={
-                      isUser
-                        ? {
-                            borderLeft: `4px solid ${userClubTheme.primaryAccent}`,
-                            backgroundColor: 'rgba(18, 38, 29, 0.75)',
-                          }
-                        : undefined
-                    }
-                    className={`transition-colors ${rowBg} cursor-pointer ${
-                      isUser
-                        ? 'text-white font-bold shadow-xs'
-                        : 'text-slate-300 hover:bg-[#152c21]'
-                    }`}
-                    title={isUser ? 'Seu clube' : `Ver detalhes de ${row.clubName}`}
-                  >
-                    <td className={`text-center py-1 text-[11px] ${posColor}`}>
-                      {pos}
-                    </td>
-                    <td className="py-1 font-sans text-xs">
-                      {(() => {
-                        const rowClub = gameState.clubs.find((c) => c.id === row.clubId);
-                        return (
-                          <div className="flex items-center space-x-1 sm:space-x-1.5">
-                            <ClubCrest
-                              club={rowClub || { name: row.clubName, primaryColor: row.primaryColor }}
-                              size="sm"
-                              preferMini={true}
-                            />
-                            <span className="truncate max-w-[105px] sm:max-w-[140px] font-semibold">{row.clubName}</span>
-                            {isUser && (
-                              <span 
-                                className="text-[8px] sm:text-[9px] px-1 rounded font-bold uppercase tracking-tighter shrink-0"
-                                style={{
-                                  backgroundColor: userClubTheme.primaryAccent,
-                                  color: userClubTheme.onPrimaryAccent,
-                                }}
-                              >
-                                VOCÊ
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })()}
-                    </td>
-                    <td className="text-center font-bold text-white text-[12px] bg-[#12231b]/60">
-                      {row.points}
-                    </td>
-                    <td className="text-center text-slate-300 text-[11px]">{row.played}</td>
-                    <td className="text-center text-emerald-300 text-[11px] hidden sm:table-cell">{row.won}</td>
-                    <td className="text-center text-slate-400 text-[11px] hidden sm:table-cell">{row.drawn}</td>
-                    <td className="text-center text-rose-300 text-[11px] hidden sm:table-cell">{row.lost}</td>
-                    <td className="text-center text-slate-300 text-[11px] hidden md:table-cell">{row.goalsFor}</td>
-                    <td className="text-center text-slate-300 text-[11px] hidden md:table-cell">{row.goalsAgainst}</td>
-                    <td className={`text-center text-[11px] font-semibold ${
-                      row.goalDiff > 0 ? 'text-emerald-400' : row.goalDiff < 0 ? 'text-rose-400' : 'text-slate-400'
-                    }`}>
-                      {row.goalDiff > 0 ? `+${row.goalDiff}` : row.goalDiff}
-                    </td>
-                    <td className="text-center py-1 hidden sm:table-cell">
-                      <div className="flex items-center justify-center space-x-0.5">
-                        {row.form.length === 0 ? (
-                          <span className="text-[10px] text-slate-600">-</span>
-                        ) : (
-                          row.form.slice(0, 4).map((res, i) => (
-                            <span
-                              key={i}
-                              className={`w-3 h-3 rounded-full flex items-center justify-center text-[8px] font-bold text-black ${
-                                res === 'V'
-                                  ? 'bg-emerald-400'
-                                  : res === 'E'
-                                  ? 'bg-slate-400'
-                                  : 'bg-rose-500'
+                          return (
+                            <tr
+                              key={row.clubId}
+                              onClick={() => viewClub(row.clubId)}
+                              style={
+                                isUser
+                                  ? {
+                                      borderLeft: `4px solid ${userClubTheme.primaryAccent}`,
+                                      backgroundColor: 'rgba(18, 38, 29, 0.75)',
+                                    }
+                                  : undefined
+                              }
+                              className={`transition-colors ${rowBg} cursor-pointer ${
+                                isUser
+                                  ? 'text-white font-bold shadow-xs'
+                                  : 'text-slate-300 hover:bg-[#152c21]'
                               }`}
+                              title={isUser ? 'Seu clube' : `Ver detalhes de ${row.clubName}`}
                             >
-                              {res}
-                            </span>
-                          ))
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+                              <td className={`text-center py-1 text-[11px] ${posColor}`}>
+                                {pos}
+                              </td>
+                              <td className="py-1 font-sans text-xs">
+                                {(() => {
+                                  const rowClub = gameState.clubs.find((c) => c.id === row.clubId) || getAllClubs().find((c) => c.id === row.clubId);
+                                  return (
+                                    <div className="flex items-center space-x-1 sm:space-x-1.5">
+                                      <ClubCrest
+                                        club={rowClub || { name: row.clubName, primaryColor: row.primaryColor }}
+                                        size="sm"
+                                        preferMini={true}
+                                      />
+                                      <span className="truncate max-w-[105px] sm:max-w-[140px] font-semibold">{row.clubName}</span>
+                                      {isUser && (
+                                        <span 
+                                          className="text-[8px] sm:text-[9px] px-1 rounded font-bold uppercase tracking-tighter shrink-0"
+                                          style={{
+                                            backgroundColor: userClubTheme.primaryAccent,
+                                            color: userClubTheme.onPrimaryAccent,
+                                          }}
+                                        >
+                                          VOCÊ
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
+                              </td>
+                              <td className="text-center font-bold text-white text-[12px] bg-[#12231b]/60">
+                                {row.points}
+                              </td>
+                              <td className="text-center text-slate-300 text-[11px]">{row.played}</td>
+                              <td className="text-center text-emerald-300 text-[11px] hidden sm:table-cell">{row.won}</td>
+                              <td className="text-center text-slate-400 text-[11px] hidden sm:table-cell">{row.drawn}</td>
+                              <td className="text-center text-rose-300 text-[11px] hidden sm:table-cell">{row.lost}</td>
+                              <td className="text-center text-slate-300 text-[11px] hidden md:table-cell">{row.goalsFor}</td>
+                              <td className="text-center text-slate-300 text-[11px] hidden md:table-cell">{row.goalsAgainst}</td>
+                              <td className={`text-center text-[11px] font-semibold ${
+                                row.goalDiff > 0 ? 'text-emerald-400' : row.goalDiff < 0 ? 'text-rose-400' : 'text-slate-400'
+                              }`}>
+                                {row.goalDiff > 0 ? `+${row.goalDiff}` : row.goalDiff}
+                              </td>
+                              <td className="text-center py-1 hidden sm:table-cell">
+                                <div className="flex items-center justify-center space-x-0.5">
+                                  {row.form.length === 0 ? (
+                                    <span className="text-[10px] text-slate-600">-</span>
+                                  ) : (
+                                    row.form.slice(0, 4).map((res, i) => (
+                                      <span
+                                        key={i}
+                                        className={`w-3 h-3 rounded-full flex items-center justify-center text-[8px] font-bold text-black ${
+                                          res === 'V'
+                                            ? 'bg-emerald-400'
+                                            : res === 'E'
+                                            ? 'bg-slate-400'
+                                            : 'bg-rose-500'
+                                        }`}
+                                      >
+                                        {res}
+                                      </span>
+                                    ))
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </React.Fragment>
+                    );
+                  })
+              ) : (
+                standingsList.map((row, index) => {
+                  const pos = index + 1;
+                  const isUser = row.clubId === userClub.id;
+
+                  const zone = getZoneForPosition(competitionZones, pos);
+                  const posColor = zone ? zone.colorClass : 'text-slate-400';
+                  const rowBg = zone ? zone.bgHoverClass : '';
+
+                  return (
+                    <tr
+                      key={row.clubId}
+                      onClick={() => viewClub(row.clubId)}
+                      style={
+                        isUser
+                          ? {
+                              borderLeft: `4px solid ${userClubTheme.primaryAccent}`,
+                              backgroundColor: 'rgba(18, 38, 29, 0.75)',
+                            }
+                          : undefined
+                      }
+                      className={`transition-colors ${rowBg} cursor-pointer ${
+                        isUser
+                          ? 'text-white font-bold shadow-xs'
+                          : 'text-slate-300 hover:bg-[#152c21]'
+                      }`}
+                      title={isUser ? 'Seu clube' : `Ver detalhes de ${row.clubName}`}
+                    >
+                      <td className={`text-center py-1 text-[11px] ${posColor}`}>
+                        {pos}
+                      </td>
+                      <td className="py-1 font-sans text-xs">
+                        {(() => {
+                          const rowClub = gameState.clubs.find((c) => c.id === row.clubId) || getAllClubs().find((c) => c.id === row.clubId);
+                          return (
+                            <div className="flex items-center space-x-1 sm:space-x-1.5">
+                              <ClubCrest
+                                club={rowClub || { name: row.clubName, primaryColor: row.primaryColor }}
+                                size="sm"
+                                preferMini={true}
+                              />
+                              <span className="truncate max-w-[105px] sm:max-w-[140px] font-semibold">{row.clubName}</span>
+                              {isUser && (
+                                <span 
+                                  className="text-[8px] sm:text-[9px] px-1 rounded font-bold uppercase tracking-tighter shrink-0"
+                                  style={{
+                                    backgroundColor: userClubTheme.primaryAccent,
+                                    color: userClubTheme.onPrimaryAccent,
+                                  }}
+                                >
+                                  VOCÊ
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </td>
+                      <td className="text-center font-bold text-white text-[12px] bg-[#12231b]/60">
+                        {row.points}
+                      </td>
+                      <td className="text-center text-slate-300 text-[11px]">{row.played}</td>
+                      <td className="text-center text-emerald-300 text-[11px] hidden sm:table-cell">{row.won}</td>
+                      <td className="text-center text-slate-400 text-[11px] hidden sm:table-cell">{row.drawn}</td>
+                      <td className="text-center text-rose-300 text-[11px] hidden sm:table-cell">{row.lost}</td>
+                      <td className="text-center text-slate-300 text-[11px] hidden md:table-cell">{row.goalsFor}</td>
+                      <td className="text-center text-slate-300 text-[11px] hidden md:table-cell">{row.goalsAgainst}</td>
+                      <td className={`text-center text-[11px] font-semibold ${
+                        row.goalDiff > 0 ? 'text-emerald-400' : row.goalDiff < 0 ? 'text-rose-400' : 'text-slate-400'
+                      }`}>
+                        {row.goalDiff > 0 ? `+${row.goalDiff}` : row.goalDiff}
+                      </td>
+                      <td className="text-center py-1 hidden sm:table-cell">
+                        <div className="flex items-center justify-center space-x-0.5">
+                          {row.form.length === 0 ? (
+                            <span className="text-[10px] text-slate-600">-</span>
+                          ) : (
+                            row.form.slice(0, 4).map((res, i) => (
+                              <span
+                                key={i}
+                                className={`w-3 h-3 rounded-full flex items-center justify-center text-[8px] font-bold text-black ${
+                                  res === 'V'
+                                    ? 'bg-emerald-400'
+                                    : res === 'E'
+                                    ? 'bg-slate-400'
+                                    : 'bg-rose-500'
+                                }`}
+                              >
+                                {res}
+                              </span>
+                            ))
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
+        )}
 
         {/* Dynamic Legend Footer */}
-        {competitionZones.length > 0 && (
+        {!tableIsCopa && competitionZones.length > 0 && (
           <div className="px-3 py-1.5 bg-[#0a1510] border-t border-[#183225] flex items-center justify-between text-[10px] text-slate-400 shrink-0">
             <div className="flex items-center space-x-3 flex-wrap gap-y-1">
               {competitionZones.map((zone, idx) => (
@@ -497,6 +903,11 @@ export const ClubOverview: React.FC = () => {
                   <span className="text-[9px] sm:text-[10px] uppercase font-bold tracking-wider text-[var(--app-text-accent)] bg-[var(--app-bg-deep)] px-1.5 sm:px-2 py-0.5 rounded border border-[var(--app-border-subtle)] truncate max-w-[100px] sm:max-w-none">
                     {userFixture.competitionName || (gameState.currentSemester === 2 ? gameState.nationalLeagueName : gameState.stateChampionshipName) || 'Campeonato'}
                   </span>
+                  {userFixture.date && (
+                    <span className="text-[8px] sm:text-[9px] font-bold text-slate-200 bg-[var(--app-bg-deep)] px-1 sm:px-1.5 py-0.5 rounded border border-[var(--app-border-subtle)]">
+                      {formatMatchDate(userFixture.date, 'short')}
+                    </span>
+                  )}
                   {userFixture.dayOfWeek && (
                     <span className={`text-[8px] sm:text-[9px] uppercase font-bold px-1 sm:px-1.5 py-0.5 rounded ${userFixture.dayOfWeek === 'quarta' ? 'bg-amber-950/80 text-amber-300 border border-amber-700/50' : 'bg-[var(--app-surface-2)] text-[var(--app-text-accent)]'}`}>
                       {userFixture.dayOfWeek === 'quarta' ? 'Qua' : userFixture.dayOfWeek === 'quinta' ? 'Qui' : 'Dom'}
@@ -584,7 +995,9 @@ export const ClubOverview: React.FC = () => {
 
         {!userFixture && currentRoundFixtures.some(f => !f.pendingQualification && !f.played) && (
           <div className="bg-[#12261d] border border-[#204232] rounded-lg p-3 flex items-center justify-between shrink-0">
-            <span className="text-sm text-slate-200">Seu clube não joga nesta data.</span>
+            <span className="text-sm text-slate-200">
+              Seu clube não joga nesta data ({formatMatchDate(currentRoundFixtures[0]?.date, 'weekday')}).
+            </span>
             <button onClick={() => completeRound()} className="px-4 py-2 bg-emerald-500 text-black font-bold rounded text-xs uppercase cursor-pointer">
               Simular data
             </button>
@@ -621,36 +1034,77 @@ export const ClubOverview: React.FC = () => {
         <div className={`bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col overflow-hidden shadow-md flex-1 min-h-0 ${mobileTab === 'calendar' ? 'flex' : 'hidden lg:flex'}`}>
           {/* Header with Round Switcher */}
           <div className="px-3 py-2 bg-[var(--app-surface-2)] border-b border-[var(--app-border-highlight)] flex items-center justify-between shrink-0">
-            <div className="flex items-center space-x-2">
-              <Calendar className="w-4 h-4 text-[var(--app-text-accent)]" />
-              <h3 className="text-xs font-bold text-white uppercase tracking-wider">
-                {roundFixtures[0]?.competitionName || 'Calendário'} • {roundFixtures[0]?.competitionRound || `Data ${selectedRound}`} • {roundFixtures[0]?.date || ''}
+            <div className="flex items-center space-x-2 min-w-0">
+              <Calendar className="w-4 h-4 text-[var(--app-text-accent)] shrink-0" />
+              <h3 className="text-xs font-bold text-white uppercase tracking-wider truncate max-w-[200px] sm:max-w-[280px]">
+                {roundFixtures[0]?.competitionName || 'Calendário'} • {roundFixtures[0]?.competitionRound || 'Rodada'}
               </h3>
             </div>
-            <div className="flex items-center space-x-1">
+            <div className="flex items-center space-x-1 shrink-0">
               <button
                 disabled={selectedRound <= 1}
                 onClick={() => { sound.playClick(); setSelectedRound((r) => Math.max(1, r - 1)); }}
                 className="p-1 rounded bg-[var(--app-bg-deep)] hover:bg-[var(--app-surface-2)] text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed border border-[var(--app-border-subtle)] cursor-pointer"
+                title="Data anterior"
               >
                 <ChevronLeft className="w-3.5 h-3.5" />
               </button>
-              <span className="text-xs font-mono-numbers px-2 text-white font-bold">
-                {selectedRound} / {totalRounds}
-              </span>
+              <div className="flex items-center space-x-1.5 px-2">
+                <span className="text-xs font-mono-numbers text-white font-bold">
+                  {formatMatchDate(roundFixtures[0]?.date, 'short')}
+                </span>
+                {selectedRound === gameState.currentRound && (
+                  <span className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 px-1 py-0.2 rounded font-bold uppercase">
+                    Hoje
+                  </span>
+                )}
+              </div>
               <button
                 disabled={selectedRound >= totalRounds}
                 onClick={() => { sound.playClick(); setSelectedRound((r) => Math.min(totalRounds, r + 1)); }}
                 className="p-1 rounded bg-[var(--app-bg-deep)] hover:bg-[var(--app-surface-2)] text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed border border-[var(--app-border-subtle)] cursor-pointer"
+                title="Próxima data"
               >
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
 
+          {/* Calendar Group Filter Bar (quando houver múltiplos grupos nesta rodada) */}
+          {roundCalendarGroups.length > 1 && (
+            <div className="flex items-center space-x-1 px-3 py-1 bg-[var(--app-surface-2)]/80 border-b border-[var(--app-border-subtle)] overflow-x-auto no-scrollbar shrink-0 text-xs">
+              <span className="text-[10px] text-slate-400 uppercase font-bold mr-1">Filtrar:</span>
+              <button
+                type="button"
+                onClick={() => setCalendarGroupFilter('all')}
+                className={`px-2 py-0.5 rounded font-bold text-[10px] sm:text-[11px] transition-colors cursor-pointer ${
+                  calendarGroupFilter === 'all'
+                    ? 'bg-[var(--app-surface-3)] text-white border border-[var(--app-text-accent)]/60'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Todos
+              </button>
+              {roundCalendarGroups.map((grp) => (
+                <button
+                  key={grp}
+                  type="button"
+                  onClick={() => setCalendarGroupFilter(grp)}
+                  className={`px-2 py-0.5 rounded font-bold text-[10px] sm:text-[11px] transition-colors cursor-pointer ${
+                    calendarGroupFilter === grp
+                      ? 'bg-[var(--app-surface-3)] text-[var(--app-text-accent)] border border-[var(--app-text-accent)]'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Grupo {grp}
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Matches list */}
           <div className="flex-1 overflow-y-auto p-2 sm:p-2.5 space-y-1.5 no-scrollbar">
-            {roundFixtures.map((fix) => {
+            {displayedRoundFixtures.map((fix) => {
               if (fix.pendingQualification) return (
                 <div key={fix.id} className="flex items-center justify-between px-2.5 py-1.5 sm:px-3 sm:py-2 rounded bg-[var(--app-surface-2)] text-xs text-slate-400">
                   <span>A definir</span>
@@ -662,6 +1116,7 @@ export const ClubOverview: React.FC = () => {
               const away = gameState.clubs.find((c) => c.id === fix.awayClubId) || getAllClubs().find(c => c.id === fix.awayClubId);
               if (!home || !away) return null;
               const isUserMatch = home.id === userClub.id || away.id === userClub.id;
+              const groupMatch = fix.competitionRound?.match(/Grupo ([A-Z])/i)?.[1];
 
               return (
                 <div
@@ -685,7 +1140,12 @@ export const ClubOverview: React.FC = () => {
                   </div>
 
                   {/* Score / Time Badge */}
-                  <div className="w-[16%] flex justify-center shrink-0">
+                  <div className="w-[16%] flex flex-col items-center justify-center shrink-0">
+                    {groupMatch && calendarGroupFilter === 'all' && (
+                      <span className="text-[8px] text-[var(--app-text-accent)] font-bold mb-0.5">
+                        Gr. {groupMatch}
+                      </span>
+                    )}
                     {fix.played ? (
                       <span className="font-mono-numbers font-black px-1.5 sm:px-2.5 py-0.5 bg-[var(--app-bg-deep)] border border-[var(--app-border-subtle)] rounded text-[var(--app-text-accent)] text-[11px] sm:text-xs">
                         {fix.homeScore} x {fix.awayScore}

@@ -1,4 +1,4 @@
-import type { Club, MatchFixture, Player, StandingRow, NationalTeam, WorldCupGroup, WorldCupTournament, SuperClubWorldCup, IntercontinentalCup, NationalTeamOffer, NationalCallup, Manager, NewsArticle } from '../types/index.ts';
+import type { Club, MatchFixture, Player, StandingRow, NationalTeam, WorldCupGroup, WorldCupTournament, SuperClubWorldCup, IntercontinentalCup, NationalTeamOffer, NationalCallup, Manager, NewsArticle, WorldCupHostInfo } from '../types/index.ts';
 import { getCountryFlag } from './countryFlags.ts';
 import { getOfficialDates } from './officialCalendars.ts';
 import { generateLeagueCalendar, initializeStandings, sortStandings } from './calendarGenerator.ts';
@@ -11,64 +11,127 @@ export interface NationalTeamSeed {
   name: string;
   reputation: number; // 1-5
   pot: 1 | 2 | 3 | 4;
+  confederation: 'UEFA' | 'CONMEBOL' | 'CONCACAF' | 'CAF' | 'AFC';
   isElite?: boolean;
+}
+
+export const WORLD_CUP_HOSTS: Record<number, WorldCupHostInfo> = {
+  2026: {
+    seasonYear: 2026,
+    hosts: [
+      { countryId: 68, name: 'Estados Unidos', flag: '🇺🇸', code: 'EUA' },
+      { countryId: 131, name: 'México', flag: '🇲🇽', code: 'MEX' },
+      { countryId: 38, name: 'Canadá', flag: '🇨🇦', code: 'CAN' },
+    ],
+    hostTitle: 'Estados Unidos, México & Canadá',
+    hostSlogan: 'América do Norte 2026 • Três Nações, Um Só Coração',
+    logoTheme: {
+      primaryColor: '#0f172a',
+      secondaryColor: '#dc2626',
+      accentColor: '#38bdf8',
+      badgeStyle: 'from-red-600 via-white to-blue-600',
+    },
+    famousStadiums: ['MetLife Stadium (Nova York)', 'Estadio Azteca (Cidade do México)', 'BC Place (Vancouver)'],
+  },
+  2030: {
+    seasonYear: 2030,
+    hosts: [
+      { countryId: 65, name: 'Espanha', flag: '🇪🇸', code: 'ESP' },
+      { countryId: 154, name: 'Portugal', flag: '🇵🇹', code: 'POR' },
+      { countryId: 129, name: 'Marrocos', flag: '🇲🇦', code: 'MAR' },
+    ],
+    hostTitle: 'Espanha, Portugal & Marrocos',
+    hostSlogan: 'Centenário da Copa do Mundo 1930–2030 • Dois Continentes Unidos',
+    logoTheme: {
+      primaryColor: '#831843',
+      secondaryColor: '#f59e0b',
+      accentColor: '#10b981',
+      badgeStyle: 'from-red-600 via-amber-500 to-emerald-600',
+    },
+    famousStadiums: ['Santiago Bernabéu (Madri)', 'Estádio da Luz (Lisboa)', 'Grand Stade de Casablanca'],
+  },
+  2034: {
+    seasonYear: 2034,
+    hosts: [
+      { countryId: 9, name: 'Arábia Saudita', flag: '🇸🇦', code: 'ARS' },
+    ],
+    hostTitle: 'Arábia Saudita',
+    hostSlogan: 'Growing. Together. • Ásia 2034',
+    logoTheme: {
+      primaryColor: '#064e3b',
+      secondaryColor: '#10b981',
+      accentColor: '#fbbf24',
+      badgeStyle: 'from-emerald-800 to-amber-400',
+    },
+    famousStadiums: ['King Fahd Stadium (Riad)', 'King Abdullah Sports City (Jidá)'],
+  },
+};
+
+export function getWorldCupHostInfo(seasonYear: number): WorldCupHostInfo {
+  if (WORLD_CUP_HOSTS[seasonYear]) {
+    return WORLD_CUP_HOSTS[seasonYear];
+  }
+  const remainder = (seasonYear - 2026) % 12;
+  if (remainder === 4) return { ...WORLD_CUP_HOSTS[2030], seasonYear };
+  if (remainder === 8) return { ...WORLD_CUP_HOSTS[2034], seasonYear };
+  return { ...WORLD_CUP_HOSTS[2026], seasonYear };
 }
 
 export const WORLD_CUP_QUALIFIED_TEAMS: NationalTeamSeed[] = [
   // Pot 1: Elite seeds & top world giants
-  { countryId: 29, code: 'BRA', name: 'Brasil', reputation: 5, pot: 1, isElite: true },
-  { countryId: 11, code: 'ARG', name: 'Argentina', reputation: 5, pot: 1, isElite: true },
-  { countryId: 72, code: 'FRA', name: 'França', reputation: 5, pot: 1, isElite: true },
-  { countryId: 3, code: 'ALE', name: 'Alemanha', reputation: 5, pot: 1, isElite: true },
-  { countryId: 65, code: 'ESP', name: 'Espanha', reputation: 5, pot: 1, isElite: true },
-  { countryId: 97, code: 'ING', name: 'Inglaterra', reputation: 5, pot: 1, isElite: true },
-  { countryId: 104, code: 'ITA', name: 'Itália', reputation: 5, pot: 1, isElite: true },
-  { countryId: 154, code: 'POR', name: 'Portugal', reputation: 5, pot: 1, isElite: true },
+  { countryId: 29, code: 'BRA', name: 'Brasil', reputation: 5, pot: 1, confederation: 'CONMEBOL', isElite: true },
+  { countryId: 11, code: 'ARG', name: 'Argentina', reputation: 5, pot: 1, confederation: 'CONMEBOL', isElite: true },
+  { countryId: 72, code: 'FRA', name: 'França', reputation: 5, pot: 1, confederation: 'UEFA', isElite: true },
+  { countryId: 3, code: 'ALE', name: 'Alemanha', reputation: 5, pot: 1, confederation: 'UEFA', isElite: true },
+  { countryId: 65, code: 'ESP', name: 'Espanha', reputation: 5, pot: 1, confederation: 'UEFA', isElite: true },
+  { countryId: 97, code: 'ING', name: 'Inglaterra', reputation: 5, pot: 1, confederation: 'UEFA', isElite: true },
+  { countryId: 104, code: 'ITA', name: 'Itália', reputation: 5, pot: 1, confederation: 'UEFA', isElite: true },
+  { countryId: 154, code: 'POR', name: 'Portugal', reputation: 5, pot: 1, confederation: 'UEFA', isElite: true },
 
   // Pot 2: Strong tier
-  { countryId: 85, code: 'HOL', name: 'Holanda', reputation: 4, pot: 2 },
-  { countryId: 195, code: 'URU', name: 'Uruguai', reputation: 4, pot: 2 },
-  { countryId: 52, code: 'CRO', name: 'Croácia', reputation: 4, pot: 2 },
-  { countryId: 21, code: 'BEL', name: 'Bélgica', reputation: 4, pot: 2 },
-  { countryId: 46, code: 'COL', name: 'Colômbia', reputation: 4, pot: 2 },
-  { countryId: 54, code: 'DIN', name: 'Dinamarca', reputation: 4, pot: 2 },
-  { countryId: 180, code: 'SUI', name: 'Suíça', reputation: 4, pot: 2 },
-  { countryId: 131, code: 'MEX', name: 'México', reputation: 4, pot: 2 },
+  { countryId: 85, code: 'HOL', name: 'Holanda', reputation: 4, pot: 2, confederation: 'UEFA' },
+  { countryId: 195, code: 'URU', name: 'Uruguai', reputation: 4, pot: 2, confederation: 'CONMEBOL' },
+  { countryId: 52, code: 'CRO', name: 'Croácia', reputation: 4, pot: 2, confederation: 'UEFA' },
+  { countryId: 21, code: 'BEL', name: 'Bélgica', reputation: 4, pot: 2, confederation: 'UEFA' },
+  { countryId: 46, code: 'COL', name: 'Colômbia', reputation: 4, pot: 2, confederation: 'CONMEBOL' },
+  { countryId: 54, code: 'DIN', name: 'Dinamarca', reputation: 4, pot: 2, confederation: 'UEFA' },
+  { countryId: 180, code: 'SUI', name: 'Suíça', reputation: 4, pot: 2, confederation: 'UEFA' },
+  { countryId: 131, code: 'MEX', name: 'México', reputation: 4, pot: 2, confederation: 'CONCACAF' },
 
   // Pot 3: Medium competitive contenders
-  { countryId: 68, code: 'EUA', name: 'Estados Unidos', reputation: 3, pot: 3 },
-  { countryId: 107, code: 'JAP', name: 'Japão', reputation: 3, pot: 3 },
-  { countryId: 129, code: 'MAR', name: 'Marrocos', reputation: 3, pot: 3 },
-  { countryId: 169, code: 'SEN', name: 'Senegal', reputation: 3, pot: 3 },
-  { countryId: 49, code: 'CSR', name: 'Coreia do Sul', reputation: 3, pot: 3 },
-  { countryId: 171, code: 'SER', name: 'Sérvia', reputation: 3, pot: 3 },
-  { countryId: 152, code: 'POL', name: 'Polônia', reputation: 3, pot: 3 },
-  { countryId: 42, code: 'CHI', name: 'Chile', reputation: 3, pot: 3 },
+  { countryId: 68, code: 'EUA', name: 'Estados Unidos', reputation: 3, pot: 3, confederation: 'CONCACAF' },
+  { countryId: 107, code: 'JAP', name: 'Japão', reputation: 3, pot: 3, confederation: 'AFC' },
+  { countryId: 129, code: 'MAR', name: 'Marrocos', reputation: 3, pot: 3, confederation: 'CAF' },
+  { countryId: 169, code: 'SEN', name: 'Senegal', reputation: 3, pot: 3, confederation: 'CAF' },
+  { countryId: 49, code: 'CSR', name: 'Coreia do Sul', reputation: 3, pot: 3, confederation: 'AFC' },
+  { countryId: 171, code: 'SER', name: 'Sérvia', reputation: 3, pot: 3, confederation: 'UEFA' },
+  { countryId: 152, code: 'POL', name: 'Polônia', reputation: 3, pot: 3, confederation: 'UEFA' },
+  { countryId: 42, code: 'CHI', name: 'Chile', reputation: 3, pot: 3, confederation: 'CONMEBOL' },
 
   // Pot 4: Emerging & challenging nations
-  { countryId: 14, code: 'AUS', name: 'Austrália', reputation: 2, pot: 4 },
-  { countryId: 36, code: 'CAM', name: 'Camarões', reputation: 2, pot: 4 },
-  { countryId: 141, code: 'NIG', name: 'Nigéria', reputation: 2, pot: 4 },
-  { countryId: 60, code: 'EQU', name: 'Equador', reputation: 2, pot: 4 },
-  { countryId: 38, code: 'CAN', name: 'Canadá', reputation: 2, pot: 4 },
-  { countryId: 51, code: 'CRS', name: 'Costa Rica', reputation: 2, pot: 4 },
-  { countryId: 9, code: 'ARS', name: 'Arábia Saudita', reputation: 2, pot: 4 },
-  { countryId: 57, code: 'EGI', name: 'Egito', reputation: 2, pot: 4 },
+  { countryId: 14, code: 'AUS', name: 'Austrália', reputation: 2, pot: 4, confederation: 'AFC' },
+  { countryId: 36, code: 'CAM', name: 'Camarões', reputation: 2, pot: 4, confederation: 'CAF' },
+  { countryId: 141, code: 'NIG', name: 'Nigéria', reputation: 2, pot: 4, confederation: 'CAF' },
+  { countryId: 60, code: 'EQU', name: 'Equador', reputation: 2, pot: 4, confederation: 'CONMEBOL' },
+  { countryId: 38, code: 'CAN', name: 'Canadá', reputation: 2, pot: 4, confederation: 'CONCACAF' },
+  { countryId: 51, code: 'CRS', name: 'Costa Rica', reputation: 2, pot: 4, confederation: 'CONCACAF' },
+  { countryId: 9, code: 'ARS', name: 'Arábia Saudita', reputation: 2, pot: 4, confederation: 'AFC' },
+  { countryId: 57, code: 'EGI', name: 'Egito', reputation: 2, pot: 4, confederation: 'CAF' },
 ];
 
 /** Additional authentic national teams pool available for offers or friendly tournaments */
 export const ADDITIONAL_NATIONAL_TEAMS: NationalTeamSeed[] = [
-  { countryId: 179, code: 'SUE', name: 'Suécia', reputation: 3, pot: 3 },
-  { countryId: 142, code: 'NOR', name: 'Noruega', reputation: 3, pot: 3 },
-  { countryId: 192, code: 'TUR', name: 'Turquia', reputation: 3, pot: 3 },
-  { countryId: 193, code: 'UCR', name: 'Ucrânia', reputation: 3, pot: 3 },
-  { countryId: 150, code: 'PAR', name: 'Paraguai', reputation: 3, pot: 3 },
-  { countryId: 151, code: 'PER', name: 'Peru', reputation: 3, pot: 3 },
-  { countryId: 159, code: 'RTC', name: 'República Tcheca', reputation: 3, pot: 3 },
-  { countryId: 160, code: 'ROM', name: 'Romênia', reputation: 2, pot: 4 },
-  { countryId: 1, code: 'AFS', name: 'África do Sul', reputation: 2, pot: 4 },
-  { countryId: 26, code: 'BOL', name: 'Bolívia', reputation: 1, pot: 4 },
-  { countryId: 198, code: 'VEN', name: 'Venezuela', reputation: 2, pot: 4 },
+  { countryId: 179, code: 'SUE', name: 'Suécia', reputation: 3, pot: 3, confederation: 'UEFA' },
+  { countryId: 142, code: 'NOR', name: 'Noruega', reputation: 3, pot: 3, confederation: 'UEFA' },
+  { countryId: 192, code: 'TUR', name: 'Turquia', reputation: 3, pot: 3, confederation: 'UEFA' },
+  { countryId: 193, code: 'UCR', name: 'Ucrânia', reputation: 3, pot: 3, confederation: 'UEFA' },
+  { countryId: 150, code: 'PAR', name: 'Paraguai', reputation: 3, pot: 3, confederation: 'CONMEBOL' },
+  { countryId: 151, code: 'PER', name: 'Peru', reputation: 3, pot: 3, confederation: 'CONMEBOL' },
+  { countryId: 159, code: 'RTC', name: 'República Tcheca', reputation: 3, pot: 3, confederation: 'UEFA' },
+  { countryId: 160, code: 'ROM', name: 'Romênia', reputation: 2, pot: 4, confederation: 'UEFA' },
+  { countryId: 1, code: 'AFS', name: 'África do Sul', reputation: 2, pot: 4, confederation: 'CAF' },
+  { countryId: 26, code: 'BOL', name: 'Bolívia', reputation: 1, pot: 4, confederation: 'CONMEBOL' },
+  { countryId: 198, code: 'VEN', name: 'Venezuela', reputation: 2, pot: 4, confederation: 'CONMEBOL' },
 ];
 
 /**
@@ -195,6 +258,7 @@ export function initializeNationalTeams(clubsPool: Club[] = []): NationalTeam[] 
       countryId: seed.countryId,
       code: seed.code,
       reputation: seed.reputation,
+      confederation: seed.confederation,
       flag,
       shirtUrl,
       shirt2Url,
@@ -306,29 +370,42 @@ export function evaluateUserSquadCallups(
   const newsArticles: NewsArticle[] = [];
   const teamByCountry = new Map(nationalTeams.map(t => [t.countryId, t]));
 
-  for (const player of userClub.squad) {
-    // Determine player's nationality (from club countryId or default 29 Brazil)
-    const playerCountryId = userClub.countryId || 29;
-    const nt = teamByCountry.get(playerCountryId);
-    if (!nt) continue;
+  // Determine player's nationality (from club countryId or default 29 Brazil)
+  const playerCountryId = userClub.countryId || 29;
+  const nt = teamByCountry.get(playerCountryId);
+  if (!nt) return { callups, newsArticles };
 
-    // Minimum strength threshold tailored to national team reputation:
-    // Rep 5 (Elite): >= 48 (or isStar/isWorldTop)
-    // Rep 4: >= 40
-    // Rep 3: >= 32
-    // Rep 1-2 (Minor nations): >= 22 (accessible for lower divisions and modest clubs)
-    const minStrengthRequired =
-      nt.reputation >= 5 ? 48 :
-      nt.reputation >= 4 ? 40 :
-      nt.reputation >= 3 ? 32 : 22;
+  // Minimum strength threshold tailored to national team reputation:
+  // Rep 5 (Elite): >= 48 (or isStar/isWorldTop)
+  // Rep 4: >= 40
+  // Rep 3: >= 32
+  // Rep 1-2 (Minor nations): >= 22 (accessible for lower divisions and modest clubs)
+  const minStrengthRequired =
+    nt.reputation >= 5 ? 48 :
+    nt.reputation >= 4 ? 40 :
+    nt.reputation >= 3 ? 32 : 22;
 
-    const isDeserving =
-      player.isWorldTop ||
-      player.isStar ||
-      player.strength >= minStrengthRequired;
+  // Filter candidates from squad meeting threshold
+  const candidates = userClub.squad.filter((player) => {
+    return player.isWorldTop || player.isStar || player.strength >= minStrengthRequired;
+  });
 
-    if (!isDeserving) continue;
+  // Sort candidates strictly by merit: WorldTop first, then Star, then highest strength
+  candidates.sort((a, b) => {
+    if (a.isWorldTop !== b.isWorldTop) return a.isWorldTop ? -1 : 1;
+    if (a.isStar !== b.isStar) return a.isStar ? -1 : 1;
+    return b.strength - a.strength;
+  });
 
+  // Strict Callup Cap per club (Anti-Overcalling):
+  // National teams never call up an entire club squad.
+  // Standard cap: 2 players maximum (or 3 only if club has multiple world tops).
+  // Minor nations: 1 player maximum.
+  const worldTopsCount = candidates.filter(p => p.isWorldTop).length;
+  const maxAllowed = worldTopsCount >= 2 ? 3 : (nt.reputation >= 5 ? 2 : 1);
+  const selectedPlayers = candidates.slice(0, maxAllowed);
+
+  for (const player of selectedPlayers) {
     const boostPct = player.isWorldTop ? 35 : player.isStar ? 25 : 20;
     const currentVal = player.marketValue || (player.strength * 200000);
     const boostedVal = Math.round(currentVal * (1 + boostPct / 100));
@@ -372,16 +449,62 @@ export function evaluateUserSquadCallups(
 }
 
 /**
- * Creates the complete FIFA World Cup tournament structure with 8 groups of 4 (32 teams)
- * and reserved knockout brackets (Round of 16, Quarter-Finals, Semi-Finals, and Final).
- * Matches are scheduled on the official Brasfoot June/July pause dates.
+ * Organizes 32 national teams into 4 authentic FIFA World Cup pots for a given edition.
+ * The host nation(s) are guaranteed seeds in Pot 1 (e.g. USA, MEX, CAN in 2026; ESP, POR, MAR in 2030; ARS in 2034).
  */
-export function createWorldCupTournament(
+export function getPotsForWorldCup(
   seasonYear: number,
   allTeams: NationalTeam[]
-): WorldCupTournament {
+): {
+  pot1: NationalTeam[];
+  pot2: NationalTeam[];
+  pot3: NationalTeam[];
+  pot4: NationalTeam[];
+} {
+  const hostInfo = getWorldCupHostInfo(seasonYear);
+  const hostCountryIds = new Set(hostInfo.hosts.map(h => h.countryId));
+
+  const teamByCountry = new Map(allTeams.map(t => [t.countryId, t]));
+  const seedByCountry = new Map(WORLD_CUP_QUALIFIED_TEAMS.map(s => [s.countryId, s]));
+
+  // Separate host teams into Pot 1
+  const hostTeams: NationalTeam[] = [];
+  for (const hId of hostCountryIds) {
+    const t = teamByCountry.get(hId);
+    if (t) hostTeams.push(t);
+  }
+
+  // Non-host teams sorted primarily by reputation descending, then seed pot
+  const nonHostTeams = allTeams.filter(t => !hostCountryIds.has(t.countryId));
+  nonHostTeams.sort((a, b) => {
+    if (b.reputation !== a.reputation) return b.reputation - a.reputation;
+    const seedA = seedByCountry.get(a.countryId);
+    const seedB = seedByCountry.get(b.countryId);
+    return (seedA?.pot || 4) - (seedB?.pot || 4);
+  });
+
+  // Pot 1: Hosts + top giants until length 8
+  const pot1 = [...hostTeams];
+  while (pot1.length < 8 && nonHostTeams.length > 0) {
+    pot1.push(nonHostTeams.shift()!);
+  }
+
+  const pot2 = nonHostTeams.splice(0, 8);
+  const pot3 = nonHostTeams.splice(0, 8);
+  const pot4 = nonHostTeams.splice(0, 8);
+
+  return { pot1, pot2, pot3, pot4 };
+}
+
+/**
+ * Builds the complete fixtures (groups + knockout rounds) for given 8 groups of teams.
+ */
+export function buildWorldCupFixturesAndGroups(
+  seasonYear: number,
+  groupedTeams: NationalTeam[][]
+): { groups: WorldCupGroup[]; fixtures: MatchFixture[] } {
   const letters: WorldCupGroup['groupLetter'][] = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
-  const dates = getOfficialDates('supermundial', seasonYear); // 7 dates: 21/06, 25/06, 29/06, 02/07, 06/07, 10/07, 15/07
+  const dates = getOfficialDates('supermundial', seasonYear);
   const fallbackDates = [
     { date: `${seasonYear}-06-21`, dayOfWeek: 'domingo' as const },
     { date: `${seasonYear}-06-25`, dayOfWeek: 'quinta' as const },
@@ -393,25 +516,13 @@ export function createWorldCupTournament(
   ];
   const scheduleDates = dates.length >= 7 ? dates : fallbackDates;
 
-  // Group teams into 4 pots of 8 teams each
-  const pot1 = allTeams.filter(t => WORLD_CUP_QUALIFIED_TEAMS.find(s => s.countryId === t.countryId)?.pot === 1);
-  const pot2 = allTeams.filter(t => WORLD_CUP_QUALIFIED_TEAMS.find(s => s.countryId === t.countryId)?.pot === 2);
-  const pot3 = allTeams.filter(t => WORLD_CUP_QUALIFIED_TEAMS.find(s => s.countryId === t.countryId)?.pot === 3);
-  const pot4 = allTeams.filter(t => WORLD_CUP_QUALIFIED_TEAMS.find(s => s.countryId === t.countryId)?.pot === 4);
-
   const groups: WorldCupGroup[] = [];
   const allFixtures: MatchFixture[] = [];
   let fixtureId = 80000;
 
   for (let i = 0; i < 8; i++) {
     const letter = letters[i];
-    const groupTeams: NationalTeam[] = [
-      pot1[i] || allTeams[i * 4],
-      pot2[i] || allTeams[i * 4 + 1],
-      pot3[i] || allTeams[i * 4 + 2],
-      pot4[i] || allTeams[i * 4 + 3],
-    ];
-
+    const groupTeams = groupedTeams[i] || [];
     const standings = initializeStandings(groupTeams.map(nationalTeamToClub));
 
     // Generate Berger round-robin fixtures (3 rounds of 2 matches each)
@@ -523,11 +634,108 @@ export function createWorldCupTournament(
     dayOfWeek: dateF.dayOfWeek as any,
   });
 
+  return { groups, fixtures: allFixtures };
+}
+
+/**
+ * Performs authentic FIFA World Cup draw:
+ * - Distributes 1 team from each pot (1, 2, 3, 4) into each group (A to H).
+ * - Enforces FIFA confederation constraints:
+ *   - Maximum 2 UEFA nations per group.
+ *   - Maximum 1 nation per group from CONMEBOL, CONCACAF, AFC, CAF.
+ * - In 2026, hosts are placed in distinct groups:
+ *   Mexico in Group A, Canada in Group B, USA in Group D.
+ */
+export function performWorldCupDraw(
+  seasonYear: number,
+  allTeams: NationalTeam[]
+): { groups: WorldCupGroup[]; fixtures: MatchFixture[] } {
+  const { pot1, pot2, pot3, pot4 } = getPotsForWorldCup(seasonYear, allTeams);
+
+  // Helper to check if adding a team violates FIFA confederation rules
+  const canAddToGroup = (group: NationalTeam[], candidate: NationalTeam): boolean => {
+    const conf = candidate.confederation || 'UEFA';
+    if (conf === 'UEFA') {
+      const uefaCount = group.filter(t => (t.confederation || 'UEFA') === 'UEFA').length;
+      return uefaCount < 2;
+    }
+    const sameConfCount = group.filter(t => t.confederation === conf).length;
+    return sameConfCount === 0;
+  };
+
+  // Multiple retry attempts with randomized draw
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const p1 = [...pot1].sort(() => Math.random() - 0.5);
+    const p2 = [...pot2].sort(() => Math.random() - 0.5);
+    const p3 = [...pot3].sort(() => Math.random() - 0.5);
+    const p4 = [...pot4].sort(() => Math.random() - 0.5);
+
+    // If 2026, prioritize placing hosts in A, B, D
+    if (seasonYear === 2026) {
+      const mex = p1.find(t => t.code === 'MEX');
+      const can = p1.find(t => t.code === 'CAN');
+      const eua = p1.find(t => t.code === 'EUA');
+      if (mex) { p1.splice(p1.indexOf(mex), 1); p1.unshift(mex); } // Pos 0 (Grupo A)
+      if (can) { p1.splice(p1.indexOf(can), 1); p1.splice(1, 0, can); } // Pos 1 (Grupo B)
+      if (eua) { p1.splice(p1.indexOf(eua), 1); p1.splice(3, 0, eua); } // Pos 3 (Grupo D)
+    }
+
+    const groupsTeams: NationalTeam[][] = Array.from({ length: 8 }, () => []);
+
+    // Pot 1 distribution
+    for (let g = 0; g < 8; g++) {
+      groupsTeams[g].push(p1[g]);
+    }
+
+    // Pots 2, 3, 4 distribution with constraint checks
+    let drawFailed = false;
+    for (const currentPot of [p2, p3, p4]) {
+      const remainingPot = [...currentPot];
+      for (let g = 0; g < 8; g++) {
+        const candidateIdx = remainingPot.findIndex(c => canAddToGroup(groupsTeams[g], c));
+        if (candidateIdx === -1) {
+          drawFailed = true;
+          break;
+        }
+        groupsTeams[g].push(remainingPot.splice(candidateIdx, 1)[0]);
+      }
+      if (drawFailed) break;
+    }
+
+    if (!drawFailed) {
+      return buildWorldCupFixturesAndGroups(seasonYear, groupsTeams);
+    }
+  }
+
+  // Fallback: Deterministic draw if random attempts fail
+  const fallbackGroups: NationalTeam[][] = Array.from({ length: 8 }, (_, i) => [
+    pot1[i] || allTeams[i * 4],
+    pot2[i] || allTeams[i * 4 + 1],
+    pot3[i] || allTeams[i * 4 + 2],
+    pot4[i] || allTeams[i * 4 + 3],
+  ]);
+
+  return buildWorldCupFixturesAndGroups(seasonYear, fallbackGroups);
+}
+
+/**
+ * Creates the complete FIFA World Cup tournament structure with host info and draw support.
+ */
+export function createWorldCupTournament(
+  seasonYear: number,
+  allTeams: NationalTeam[],
+  drawCompleted: boolean = false
+): WorldCupTournament {
+  const hostInfo = getWorldCupHostInfo(seasonYear);
+  const { groups, fixtures } = performWorldCupDraw(seasonYear, allTeams);
+
   return {
     seasonYear,
     status: 'groups',
+    drawCompleted,
+    hostInfo,
     groups,
-    fixtures: allFixtures,
+    fixtures,
   };
 }
 

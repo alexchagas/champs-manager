@@ -28,6 +28,7 @@ import {
 import { applySavedClubEdits } from '../data/editorPersistence';
 import { sortStandings, generateTwoSemesterCalendar, initializeStandings } from '../data/calendarGenerator';
 import { resolvePendingFixtures } from '../engine/qualification';
+import { advanceOtherLeaguesProgress, buildInitialActiveOtherLeagues } from '../engine/crossSeasonSimulation';
 import { sound } from '../audio/soundEngine';
 import { 
   commandMatchWasm,
@@ -63,6 +64,8 @@ import {
   getAvailableNationalTeamOffers,
   evaluateUserSquadCallups,
   advanceWorldCupRound,
+  performWorldCupDraw,
+  getWorldCupHostInfo,
 } from '../data/nationalTeamsData';
 import type { MarketFilter, MarketSearchResult, NewsArticle, NationalTeamOffer, WorldCupTournament } from '../types';
 import { 
@@ -126,6 +129,9 @@ interface GameContextType {
   acceptNationalTeamOffer: (offerId: number) => { success: boolean; error?: string };
   rejectNationalTeamOffer: (offerId: number) => void;
   advanceWorldCup: (round?: number) => void;
+  performWorldCupDrawAction: () => void;
+  finishWorldCupAndReturnToClub: () => void;
+  enterWorldCupMode: () => void;
   markNewsAsRead: (articleId: string) => void;
   markAllNewsAsRead: () => void;
 }
@@ -753,12 +759,52 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setGameState(prev => ({
       ...prev,
+      isWorldCupMode: true,
+      activeScreen: 'world_cup',
       nationalJob,
       nationalTeamOffers: updatedOffers,
       newsFeed: [newsArticle, ...(prev.newsFeed || [])],
     }));
 
     return { success: true };
+  };
+
+  const enterWorldCupMode = () => {
+    sound.playClick();
+    setGameState(prev => ({
+      ...prev,
+      isWorldCupMode: true,
+      activeScreen: 'world_cup',
+    }));
+  };
+
+  const performWorldCupDrawAction = () => {
+    if (!gameState.worldCup) return;
+    const nationalTeams = initializeNationalTeams(gameState.clubs);
+    const { groups, fixtures } = performWorldCupDraw(gameState.seasonYear, nationalTeams);
+    sound.playClick();
+    setGameState(prev => ({
+      ...prev,
+      worldCup: {
+        ...prev.worldCup!,
+        drawCompleted: true,
+        groups,
+        fixtures,
+      },
+    }));
+  };
+
+  const finishWorldCupAndReturnToClub = () => {
+    sound.playClick();
+    setGameState(prev => {
+      const nextRound = Math.max(prev.currentRound, 19);
+      return {
+        ...prev,
+        isWorldCupMode: false,
+        activeScreen: 'overview',
+        currentRound: nextRound,
+      };
+    });
   };
 
   const rejectNationalTeamOffer = (offerId: number) => {
@@ -842,6 +888,13 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const nationalTeamOffers = isWorldCupYear(nextYear) ? getAvailableNationalTeamOffers(human, nextYear, nationalTeams) : undefined;
       const { callups, newsArticles: callupNews } = isWorldCupYear(nextYear) ? evaluateUserSquadCallups(club, nextYear, nationalTeams) : { callups: [], newsArticles: [] };
 
+      const nextOtherLeagues = buildInitialActiveOtherLeagues(
+        club,
+        gameState.activeCountryIds || [],
+        updatedClubs,
+        nextYear
+      );
+
       const nextSeasonState: GameState = {
         ...rolled,
         clubs: updatedClubs,
@@ -853,7 +906,10 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         standings: sortStandings(initializeStandings(next.semester1Clubs)),
         standingsEstadual: sortStandings(initializeStandings(next.semester1Clubs)),
         standingsNacional: sortStandings(initializeStandings(next.semester2Clubs)),
-        standingsContinental: sortStandings(initializeStandings(next.continentalClubs)),
+        standingsContinental: sortStandings(
+          initializeStandings(next.continentalClubs, (_c, idx) => 'ABCD'[Math.floor(idx / 4)] || 'A')
+        ),
+        otherLeagues: nextOtherLeagues,
         stateChampionshipName: next.estadualName,
         nationalLeagueName: next.nacionalName,
         continentalCupName: next.continentalName,
@@ -875,6 +931,19 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return;
     }
+
+    const currentLastSlot = Math.max(...gameState.calendar.map(f => f.fixtureDateIndex ?? f.round));
+    const targetRoundNum = gameState.currentRound + 1;
+    const progressRatio = Math.min(1.0, targetRoundNum / Math.max(1, currentLastSlot));
+    const updatedOtherLeagues = gameState.otherLeagues && gameState.otherLeagues.length > 0
+      ? advanceOtherLeaguesProgress(
+          gameState.otherLeagues,
+          progressRatio,
+          gameState.clubs,
+          (gameState.clubs.find(c => c.id === gameState.userClubId)?.countryId || 29) === 29
+        )
+      : gameState.otherLeagues;
+
     if (isWasmReady()) {
       const wasmUpdated = advanceToNextRoundWasm(gameState);
       if (wasmUpdated) {
@@ -883,7 +952,15 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const currentSemester = nextCompetition === 'estadual' ? 1 : 2;
         const standings = nextCompetition === 'estadual' ? wasmUpdated.standingsEstadual || wasmUpdated.standings :
           nextCompetition === 'nacional' ? wasmUpdated.standingsNacional || wasmUpdated.standings : wasmUpdated.standings;
-        setGameState(runAiMarket({ ...wasmUpdated, activeMatch: undefined, activeMatchFixtureId: undefined, currentSemester, standings, activeScreen: 'overview' }));
+        setGameState(runAiMarket({ 
+          ...wasmUpdated, 
+          activeMatch: undefined, 
+          activeMatchFixtureId: undefined, 
+          currentSemester, 
+          standings, 
+          otherLeagues: updatedOtherLeagues,
+          activeScreen: 'overview' 
+        }));
         return;
       }
     }
@@ -899,6 +976,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         currentRound: nextRound,
         currentSemester,
         standings,
+        otherLeagues: updatedOtherLeagues,
         activeScreen: 'overview',
       });
     });
@@ -1357,6 +1435,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         acceptNationalTeamOffer,
         rejectNationalTeamOffer,
         advanceWorldCup,
+        performWorldCupDrawAction,
+        finishWorldCupAndReturnToClub,
+        enterWorldCupMode,
         markNewsAsRead,
         markAllNewsAsRead,
       }}

@@ -18,6 +18,7 @@ import {
   MoreHorizontal,
   Globe
 } from 'lucide-react';
+import { isWorldCupYear, getWorldCupHostInfo } from '../data/nationalTeamsData';
 
 export const Header: React.FC = () => {
   const { 
@@ -73,6 +74,10 @@ export const Header: React.FC = () => {
     { id: 'finances', label: 'Finanças', icon: Landmark },
   ];
 
+  const isWcYear = isWorldCupYear(gameState.seasonYear);
+  const isWcWindow = gameState.currentRound >= 18 || !!gameState.nationalJob || gameState.isWorldCupMode || activeScreen === 'world_cup';
+  const showWorldCupNav = isWcYear && isWcWindow;
+
   const secondaryNavItems: HeaderNavItem[] = [
     { 
       id: 'news', 
@@ -88,13 +93,16 @@ export const Header: React.FC = () => {
       icon: GraduationCap, 
       badgeText: youthCount > 0 ? `${youthCount}` : undefined 
     },
-    {
+  ];
+
+  if (showWorldCupNav) {
+    secondaryNavItems.push({
       id: 'world_cup',
       label: 'Copa do Mundo',
       icon: Globe,
       badgeText: (gameState.nationalTeamOffers || []).filter(o => o.status === 'pending').length > 0 ? 'Convite' : undefined
-    },
-  ];
+    });
+  }
 
   const allNavItems: HeaderNavItem[] = [
     primaryNavItems[0], // Visão Geral
@@ -105,7 +113,7 @@ export const Header: React.FC = () => {
     secondaryNavItems[3], // Juniores
     primaryNavItems[2], // Mercado
     primaryNavItems[3], // Finanças
-    secondaryNavItems[4], // Copa do Mundo
+    ...(showWorldCupNav ? [secondaryNavItems[4]] : []), // Copa do Mundo (apenas quando na época)
   ];
 
   const isSecondaryActive = secondaryNavItems.some((item) => item.id === activeScreen);
@@ -118,6 +126,68 @@ export const Header: React.FC = () => {
   const saveStatusTextClass =
     lastSavedText === 'Salvando...' ? 'text-amber-300' :
     lastSavedText === 'Erro ao salvar' ? 'text-rose-300' : 'text-emerald-400';
+
+  // Dedicated Immersive Header during World Cup Mode
+  if (activeScreen === 'world_cup' || gameState.isWorldCupMode) {
+    const hostInfo = getWorldCupHostInfo(gameState.seasonYear);
+    return (
+      <header className="h-14 bg-gradient-to-r from-slate-950 via-emerald-950/80 to-slate-950 border-b border-emerald-500/30 flex items-center justify-between px-3 sm:px-4 select-none shrink-0 z-20 shadow-lg pt-safe">
+        {/* Left: World Cup Brand and Host Flags */}
+        <div className="flex items-center space-x-2.5 shrink-0">
+          <div className="w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center shadow">
+            <Trophy className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="flex items-center gap-1.5">
+              <span className="font-black text-slate-100 text-xs sm:text-sm tracking-wider uppercase">
+                Copa do Mundo <span className="text-amber-400">FIFA {gameState.seasonYear}</span>
+              </span>
+              <span className="hidden sm:inline-flex items-center gap-1 text-[10px] bg-slate-900 border border-slate-700 px-1.5 py-0.2 rounded-full text-slate-300 font-semibold">
+                {hostInfo.hosts.map(h => h.flag).join(' ')} {hostInfo.hostTitle}
+              </span>
+            </div>
+            <p className="text-[10px] text-emerald-400 font-medium">Torneio Oficial de Seleções Nacionais</p>
+          </div>
+        </div>
+
+        {/* Center / Job Indicator */}
+        {gameState.nationalJob ? (
+          <div className="hidden md:flex items-center gap-2 bg-emerald-900/40 border border-emerald-500/40 px-3 py-1 rounded-full">
+            <img
+              src={`/selecoes/camisas/${gameState.nationalJob.code}.png`}
+              alt={gameState.nationalJob.nationalTeamName}
+              className="w-5 h-5 object-contain"
+              onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+            />
+            <span className="text-xs font-bold text-emerald-200">
+              Você comanda a Seleção {gameState.nationalJob.nationalTeamName}
+            </span>
+          </div>
+        ) : (
+          <div className="hidden md:flex items-center gap-1 text-xs text-slate-400 bg-slate-900/60 px-3 py-1 rounded-full border border-slate-800">
+            <span>América do Norte 2026 • 32 Seleções</span>
+          </div>
+        )}
+
+        {/* Right: Save Status & Main Menu */}
+        <div className="flex items-center space-x-2">
+          {lastSavedText && (
+            <span className={`inline-flex items-center gap-1 text-[10px] bg-slate-900 border border-slate-800 px-2 py-0.5 rounded font-mono ${saveStatusTextClass}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${saveStatusColor}`}></span>
+              <span>{lastSavedText}</span>
+            </span>
+          )}
+          <button
+            onClick={() => setScreen('menu')}
+            className="p-2 text-slate-400 hover:text-white rounded-md hover:bg-slate-800/60 transition cursor-pointer"
+            title="Menu Principal"
+          >
+            <MenuIcon className="w-4 h-4" />
+          </button>
+        </div>
+      </header>
+    );
+  }
 
   return (
     <header className="h-14 bg-[var(--app-surface-1)] border-b border-[var(--app-border-subtle)] flex items-center justify-between px-3 sm:px-4 select-none shrink-0 z-20 shadow-md pt-safe">

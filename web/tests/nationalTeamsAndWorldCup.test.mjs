@@ -14,6 +14,9 @@ import {
   getAvailableNationalTeamOffers,
   evaluateUserSquadCallups,
   advanceWorldCupRound,
+  getWorldCupHostInfo,
+  getPotsForWorldCup,
+  performWorldCupDraw,
 } from '../src/data/nationalTeamsData.ts';
 import { getOfficialDates } from '../src/data/officialCalendars.ts';
 import { resolvePendingFixtures } from '../src/engine/qualification.ts';
@@ -400,4 +403,121 @@ test('National team squads match realistic strength distribution and modest nati
   assert.equal(callups[0].playerId, 101, 'Player with strength 28 was called up by Costa Rica');
   assert.equal(callups[0].nationalTeamName, costaRica.name);
   assert.equal(newsArticles.length, 1);
+});
+
+test('FIFA World Cup host nations and stadiums match official cycles (2026, 2030, 2034)', () => {
+  const host2026 = getWorldCupHostInfo(2026);
+  assert.equal(host2026.seasonYear, 2026);
+  assert.equal(host2026.hosts.length, 3, '2026 has 3 host nations (USA, MEX, CAN)');
+  assert.ok(host2026.hosts.some(h => h.code === 'EUA'));
+  assert.ok(host2026.hosts.some(h => h.code === 'MEX'));
+  assert.ok(host2026.hosts.some(h => h.code === 'CAN'));
+  assert.ok(host2026.famousStadiums.length >= 2, 'MetLife, Azteca, etc.');
+
+  const host2030 = getWorldCupHostInfo(2030);
+  assert.equal(host2030.seasonYear, 2030);
+  assert.ok(host2030.hosts.some(h => h.code === 'ESP'));
+  assert.ok(host2030.hosts.some(h => h.code === 'POR'));
+  assert.ok(host2030.hosts.some(h => h.code === 'MAR'));
+
+  const host2034 = getWorldCupHostInfo(2034);
+  assert.equal(host2034.seasonYear, 2034);
+  assert.ok(host2034.hosts.some(h => h.code === 'ARS'));
+});
+
+test('FIFA World Cup draw ceremony: 4 balanced pots and confederation restrictions', () => {
+  const allClubs = getAllClubs();
+  const nationalTeams = initializeNationalTeams(allClubs);
+
+  const { pot1, pot2, pot3, pot4 } = getPotsForWorldCup(2026, nationalTeams);
+  assert.equal(pot1.length, 8, 'Pot 1 has 8 teams');
+  assert.equal(pot2.length, 8, 'Pot 2 has 8 teams');
+  assert.equal(pot3.length, 8, 'Pot 3 has 8 teams');
+  assert.equal(pot4.length, 8, 'Pot 4 has 8 teams');
+
+  // In 2026, all 3 hosts must be in Pot 1
+  assert.ok(pot1.some(t => t.code === 'EUA'), 'USA in Pot 1');
+  assert.ok(pot1.some(t => t.code === 'MEX'), 'Mexico in Pot 1');
+  assert.ok(pot1.some(t => t.code === 'CAN'), 'Canada in Pot 1');
+
+  // Draw execution
+  const { groups, fixtures } = performWorldCupDraw(2026, nationalTeams);
+  assert.equal(groups.length, 8, '8 groups formed');
+  assert.equal(fixtures.length, 63, '63 total fixtures (48 group + 15 knockout)');
+
+  // Verify confederation constraints in every group:
+  // - Max 2 UEFA
+  // - Max 1 CONMEBOL
+  // - Max 1 CONCACAF
+  for (const group of groups) {
+    assert.equal(group.teams.length, 4, `Group ${group.groupLetter} has exactly 4 teams`);
+    const uefa = group.teams.filter(t => (t.confederation || 'UEFA') === 'UEFA').length;
+    const conmebol = group.teams.filter(t => t.confederation === 'CONMEBOL').length;
+    const concacaf = group.teams.filter(t => t.confederation === 'CONCACAF').length;
+
+    assert.ok(uefa <= 2, `Group ${group.groupLetter} has at most 2 UEFA teams (got ${uefa})`);
+    assert.ok(conmebol <= 1, `Group ${group.groupLetter} has at most 1 CONMEBOL team (got ${conmebol})`);
+    assert.ok(concacaf <= 1, `Group ${group.groupLetter} has at most 1 CONCACAF team (got ${concacaf})`);
+  }
+});
+
+test('Strict callup cap prevents overcalling (e.g. Cruzeiro / Flamengo squad cap)', () => {
+  const allClubs = getAllClubs();
+  const nationalTeams = initializeNationalTeams(allClubs);
+
+  // Build a club with 20 elite players (similar to Cruzeiro/Flamengo stacked squad)
+  const stackedClub = {
+    id: 7777,
+    name: 'Cruzeiro EC',
+    countryId: 29, // Brazil
+    reputation: 5,
+    stadium: 'Mineirão',
+    capacity: 62000,
+    coach: 'Técnico',
+    primaryColor: '#0000ff',
+    secondaryColor: '#ffffff',
+    balance: 50000000,
+    ticketPrice: 50,
+    crestUrl: '',
+    crestMiniUrl: '',
+    squad: Array.from({ length: 20 }, (_, i) => ({
+      id: 2000 + i,
+      name: `Craque do Cruzeiro ${i + 1}`,
+      position: ['GOL', 'ZAG', 'LAT', 'VOL', 'MEI', 'ATA'][i % 6],
+      strength: 55 + (i % 8), // All have strength >= 55 (well above threshold)
+      age: 25,
+      foot: 'D',
+      energy: 100,
+      salary: 50000,
+      marketValue: 2000000,
+      isStarter: i < 11,
+      isStar: i < 5, // 5 stars
+      isWorldTop: i === 0, // 1 world top
+      skill1: 'Passe',
+      skill2: 'Finalização',
+      goals: 10,
+      assists: 5,
+      yellowCards: 0,
+      redCards: 0,
+      injured: false,
+      suspended: false,
+      contractYears: 3,
+    })),
+    tactics: {
+      formation: '4-4-2',
+      mentality: 'Equilibrada',
+      penaltyTakerId: 2000,
+      freeKickTakerId: 2000,
+      cornerTakerId: 2000,
+      captainId: 2000,
+    },
+  };
+
+  const { callups, newsArticles } = evaluateUserSquadCallups(stackedClub, 2026, nationalTeams);
+
+  // Anti-overcalling assertion: NEVER call up half the squad! Maximum 2 players!
+  assert.ok(callups.length >= 1, 'At least 1 player called up');
+  assert.ok(callups.length <= 2, `Cruzeiro callups must not exceed cap of 2 (got ${callups.length})`);
+  assert.equal(callups[0].playerId, 2000, 'Top merit player (World Top) is prioritized first');
+  assert.equal(newsArticles.length, callups.length);
 });
