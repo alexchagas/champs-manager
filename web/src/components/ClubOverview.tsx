@@ -445,7 +445,7 @@ export const ClubOverview: React.FC = () => {
       {/* MAIN TWO-COLUMN WORKSPACE */}
       <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden gap-2.5 sm:gap-3 min-h-0">
         {/* COLUMN 1: TABELA DE CLASSIFICAÇÃO (50% NO DESKTOP, CONDICIONAL NO MOBILE) */}
-        <div className={`bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col shadow-lg order-2 lg:order-1 lg:w-1/2 min-h-0 lg:overflow-hidden ${mobileTab === 'standings' ? 'flex-1' : 'hidden lg:flex'}`}>
+        <div className={`bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col shadow-lg order-2 lg:order-1 lg:w-1/2 min-h-[34rem] lg:min-h-0 lg:overflow-hidden ${mobileTab === 'standings' ? 'flex-1' : 'hidden lg:flex'}`}>
         {/* Table Header */}
         <div className="px-3 py-2 bg-[var(--app-surface-2)] border-b border-[var(--app-border-highlight)] flex items-center justify-between shrink-0">
           <div className="flex items-center space-x-2 min-w-0">
@@ -1031,7 +1031,7 @@ export const ClubOverview: React.FC = () => {
         </div>
 
         {/* BOTTOM: CALENDÁRIO DA TEMPORADA & JOGOS DA RODADA (EXPANDIDO) */}
-        <div className={`bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col shadow-md flex-1 min-h-0 lg:overflow-hidden ${mobileTab === 'calendar' ? 'flex' : 'hidden lg:flex'}`}>
+        <div className={`bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col shadow-md flex-1 min-h-[34rem] lg:min-h-0 lg:overflow-hidden ${mobileTab === 'calendar' ? 'flex' : 'hidden lg:flex'}`}>
           {/* Header with Round Switcher */}
           <div className="px-3 py-2 bg-[var(--app-surface-2)] border-b border-[var(--app-border-highlight)] flex items-center justify-between shrink-0">
             <div className="flex items-center space-x-2 min-w-0">
