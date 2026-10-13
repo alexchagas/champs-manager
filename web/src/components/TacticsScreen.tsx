@@ -294,11 +294,11 @@ export const TacticsScreen: React.FC = () => {
           </div>
 
           {/* Right: Actions & Error/Success Toast Notification */}
-          <div className="flex items-center gap-2 pt-0.5 ml-auto sm:ml-0 shrink-0">
+          <div className="flex items-center gap-2 pt-0.5 w-full sm:w-auto sm:ml-0 shrink-0">
             {/* Toast notification right next to the buttons */}
             {toast && (
               <div
-                className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold border shadow-md animate-in fade-in duration-200 shrink-0 ${
+                className={`fixed left-3 right-3 bottom-[calc(5rem+env(safe-area-inset-bottom,0px))] z-50 justify-center py-2.5 sm:static sm:z-auto sm:py-1 sm:justify-start flex items-center space-x-1.5 px-2.5 rounded-md text-[11px] font-semibold border shadow-xl sm:shadow-md animate-in fade-in duration-200 shrink-0 ${
                   toast.type === 'error'
                     ? 'bg-rose-950/90 border-rose-700/80 text-rose-200'
                     : 'bg-emerald-950/90 border-emerald-700/80 text-emerald-200'
@@ -309,14 +309,14 @@ export const TacticsScreen: React.FC = () => {
                 ) : (
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                 )}
-                <span className="truncate max-w-[240px] sm:max-w-none">{toast.message}</span>
+                <span className="sm:truncate sm:max-w-none">{toast.message}</span>
               </div>
             )}
 
             {/* Smart Auto-Escalar button */}
             <button
               onClick={handleSmartAutoLineup}
-              className="flex items-center justify-center space-x-1.5 px-3 py-1.5 h-8.5 sm:h-9 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-[11px] sm:text-xs rounded-lg transition-all cursor-pointer shadow-md active:scale-95 shrink-0"
+              className="flex items-center justify-center space-x-1.5 flex-1 sm:flex-none px-3 py-1.5 h-10 sm:h-9 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-[11px] sm:text-xs rounded-lg transition-all cursor-pointer shadow-md active:scale-95 shrink-0"
               title="Escala automaticamente os melhores 11 titulares, descansa atletas cansados (< 75%) e convoca o melhor banco de reservas de 11 jogadores"
             >
               <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
@@ -326,7 +326,7 @@ export const TacticsScreen: React.FC = () => {
             {/* JOGAR PARTIDA >> */}
             <button
               onClick={handlePlayMatch}
-              className={`flex items-center justify-center space-x-1.5 px-3.5 sm:px-4 h-8.5 sm:h-9 bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 text-black font-black text-[11px] sm:text-xs uppercase tracking-wider rounded-lg shadow-md active:scale-95 transition-all cursor-pointer shrink-0 ${
+              className={`flex items-center justify-center space-x-1.5 flex-1 sm:flex-none px-3.5 sm:px-4 h-10 sm:h-9 bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 text-black font-black text-[11px] sm:text-xs uppercase tracking-wider rounded-lg shadow-md active:scale-95 transition-all cursor-pointer shrink-0 ${
                 starters.length !== 11 || unavailableStarters.length > 0 ? 'opacity-85' : ''
               }`}
               title="Confirmar escalação e ir para o jogo (Espaço)"

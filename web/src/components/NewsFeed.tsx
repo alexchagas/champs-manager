@@ -117,7 +117,7 @@ export const NewsFeed: React.FC = () => {
         />
 
         {/* Subtle Newspaper Vintage Border Lines */}
-        <div className="border-b border-[var(--app-border-subtle)] pb-2 mb-2 flex items-center justify-between text-[11px] text-slate-400">
+        <div className="border-b border-[var(--app-border-subtle)] pb-2 mb-2 flex flex-wrap gap-y-1.5 items-center justify-between text-[11px] text-slate-400">
           <div className="flex items-center space-x-3">
             <span className="font-mono-numbers font-bold text-[var(--app-text-accent)]">EDIÇÃO Nº {currentRound}</span>
             <span>•</span>
@@ -159,7 +159,7 @@ export const NewsFeed: React.FC = () => {
               <Newspaper className="w-6 h-6" />
             </div>
             <div>
-              <h1 className="text-2xl font-black text-white tracking-widest uppercase font-serif drop-shadow-sm">
+              <h1 className="text-lg sm:text-2xl font-black text-white tracking-wider sm:tracking-widest uppercase font-serif drop-shadow-sm">
                 A GAZETA ESPORTIVA
               </h1>
               <p className="text-[11px] text-[var(--app-text-accent)] font-bold tracking-wider uppercase">
@@ -213,14 +213,14 @@ export const NewsFeed: React.FC = () => {
       </div>
 
       {/* NEWSPAPER CONTENT: LEAD ARTICLE + SECONDARY ARTICLES */}
-      <div className="flex-1 grid grid-cols-12 gap-3 overflow-hidden">
+      <div className="flex-1 grid grid-cols-12 gap-3 md:overflow-hidden md:min-h-0">
         {/* COLUMN 1 (7 COLS): LEAD / ACTIVELY OPEN ARTICLE */}
         <div 
           ref={mainArticleRef}
-          className="col-span-12 lg:col-span-7 bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col overflow-hidden shadow-lg"
+          className="col-span-12 lg:col-span-7 bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col md:overflow-hidden md:min-h-0 shadow-lg"
         >
           {activeArticle ? (
-            <div className="flex-1 flex flex-col overflow-y-auto p-4 space-y-3">
+            <div className="flex-1 flex flex-col md:overflow-y-auto p-4 space-y-3">
               {/* Category, Badge, Date & Read status */}
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center space-x-2">
@@ -255,10 +255,10 @@ export const NewsFeed: React.FC = () => {
 
               {/* Title & Subtitle */}
               <div>
-                <h2 className="text-lg md:text-xl font-black text-white leading-tight font-serif uppercase tracking-tight">
+                <h2 className="text-xl md:text-xl font-black text-white leading-tight font-serif uppercase tracking-tight">
                   {activeArticle.title}
                 </h2>
-                <p className="text-xs md:text-sm text-[var(--app-text-accent)]/90 font-semibold mt-1 leading-snug">
+                <p className="text-sm text-[var(--app-text-accent)]/90 font-semibold mt-1 leading-snug">
                   {activeArticle.subtitle}
                 </p>
               </div>
@@ -313,7 +313,7 @@ export const NewsFeed: React.FC = () => {
 
               {/* Main Body Text (unclipped full story) */}
               <div className="bg-[var(--app-surface-2)] border border-[var(--app-border-subtle)] rounded-lg p-3.5 space-y-2.5">
-                <p className="text-xs md:text-sm text-slate-200 leading-relaxed font-sans first-letter:text-2xl first-letter:font-bold first-letter:text-[var(--app-text-accent)] first-letter:mr-0.5 whitespace-pre-line">
+                <p className="text-sm md:text-sm text-slate-200 leading-relaxed font-sans first-letter:text-2xl first-letter:font-bold first-letter:text-[var(--app-text-accent)] first-letter:mr-0.5 whitespace-pre-line">
                   {activeArticle.content}
                 </p>
               </div>
@@ -340,7 +340,7 @@ export const NewsFeed: React.FC = () => {
         </div>
 
         {/* COLUMN 2 (5 COLS): SECONDARY ARTICLES FEED (CLICKABLE TO OPEN) */}
-        <div className="col-span-12 lg:col-span-5 bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col overflow-hidden shadow-lg">
+        <div className="col-span-12 lg:col-span-5 bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg flex flex-col md:overflow-hidden md:min-h-0 shadow-lg">
           <div className="px-3.5 py-2.5 bg-[var(--app-surface-2)] border-b border-[var(--app-border-subtle)] flex items-center justify-between shrink-0">
             <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center space-x-1.5">
               <Zap className="w-3.5 h-3.5 text-[var(--app-text-accent)]" />
@@ -349,7 +349,7 @@ export const NewsFeed: React.FC = () => {
             <span className="text-[11px] text-slate-400 font-mono-numbers">Rodada {currentRound}</span>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-2.5 space-y-2">
+          <div className="flex-1 md:overflow-y-auto p-2.5 space-y-2">
             {secondaryArticles.length === 0 ? (
               <div className="text-center text-slate-500 text-xs py-8 italic">
                 {filteredNews.length <= 1 
@@ -400,11 +400,11 @@ export const NewsFeed: React.FC = () => {
                       </span>
                     </div>
 
-                    <h3 className="font-bold text-white text-xs leading-snug group-hover:text-[var(--app-text-accent)] transition-colors">
+                    <h3 className="font-bold text-white text-sm md:text-xs leading-snug group-hover:text-[var(--app-text-accent)] transition-colors">
                       {art.title}
                     </h3>
 
-                    <p className="text-[11px] text-slate-300 leading-relaxed line-clamp-2">
+                    <p className="text-xs md:text-[11px] text-slate-300 leading-relaxed line-clamp-3 md:line-clamp-2">
                       {art.content}
                     </p>
 

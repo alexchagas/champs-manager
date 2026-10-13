@@ -2042,7 +2042,7 @@ export const LiveMatchScreen: React.FC = () => {
       )}
 
       {/* ================= BARRA INFERIOR DE AÇÕES ================= */}
-      <div className="shrink-0 bg-[var(--app-surface-1)] border-t border-[var(--app-border-subtle)] p-2.5 sm:p-3 pb-safe shadow-2xl flex items-center justify-between gap-2 z-20">
+      <div className="shrink-0 bg-[var(--app-surface-1)] border-t border-[var(--app-border-subtle)] p-2.5 sm:p-3 pb-safe shadow-2xl flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 z-20">
         {/* Speed Controls: 1x, 2x, 5x */}
         <div className="flex items-center bg-[var(--app-surface-2)] p-1 rounded-lg border border-[var(--app-border-subtle)] shrink-0">
           {[1, 2, 5].map((speed) => (
@@ -2064,7 +2064,7 @@ export const LiveMatchScreen: React.FC = () => {
         {finished ? (
           <button
             onClick={() => completeRound()}
-            className="flex-1 min-h-[44px] px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center space-x-2 shadow-lg active:scale-95 transition-all cursor-pointer"
+            className="basis-full order-first sm:order-none sm:basis-0 flex-1 min-h-[48px] px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center space-x-2 shadow-lg active:scale-95 transition-all cursor-pointer"
           >
             <CheckCircle2 className="w-4 h-4" />
             <span>Ver Resultados da Rodada</span>
@@ -2073,7 +2073,7 @@ export const LiveMatchScreen: React.FC = () => {
           <button
             disabled={!!pending}
             onClick={() => dispatchMatch({ type: session.paused ? 'resume' : 'pause' })}
-            className={`flex-1 min-h-[44px] px-4 py-2 rounded-lg font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center space-x-2 shadow-lg active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+            className={`basis-full order-first sm:order-none sm:basis-0 flex-1 min-h-[48px] px-4 py-2 rounded-lg font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center space-x-2 shadow-lg active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
               session.paused
                 ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
                 : 'bg-amber-600 hover:bg-amber-500 text-white'

@@ -72,7 +72,7 @@ export const ClubViewer: React.FC<ClubViewerProps> = ({ clubId: propClubId, onCl
   if (!club) {
     return (
       <div 
-        className="absolute inset-0 z-50 bg-[var(--app-bg-deep)] flex flex-col items-center justify-center p-6 text-slate-300"
+        className="fixed inset-0 md:absolute z-50 bg-[var(--app-bg-deep)] flex flex-col items-center justify-center p-6 text-slate-300"
         style={atmosphere.style}
       >
         <AlertCircle className="w-12 h-12 text-rose-400 mb-3" />
@@ -136,7 +136,7 @@ export const ClubViewer: React.FC<ClubViewerProps> = ({ clubId: propClubId, onCl
 
   return (
     <div 
-      className="absolute inset-0 z-50 bg-[var(--app-bg-deep)] text-slate-100 flex flex-col select-none overflow-y-auto md:overflow-hidden animate-in fade-in duration-150 pb-safe"
+      className="fixed inset-0 md:absolute z-50 bg-[var(--app-bg-deep)] text-slate-100 flex flex-col select-none overflow-y-auto overscroll-contain md:overflow-hidden animate-in fade-in duration-150 pb-safe"
       style={atmosphere.style}
       data-testid="club-viewer"
       data-club-family={atmosphere.family}
