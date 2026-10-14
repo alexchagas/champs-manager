@@ -3,7 +3,7 @@ import { generateLeagueCalendar, generateTwoSemesterCalendar, initializeStanding
 import { getContinentalTournamentField } from './continentalRepresentatives.ts';
 import { getAllClubs, getCompetitionClubs } from './teamsDatabase.ts';
 import { generateKickoffNews } from '../engine/newsEngine.ts';
-import { buildInitialActiveOtherLeagues } from '../engine/crossSeasonSimulation.ts';
+import { buildInitialActiveOtherLeagues, buildInitialNationalDivisions } from '../engine/crossSeasonSimulation.ts';
 import {
   initializeNationalTeams,
   isWorldCupYear,
@@ -244,6 +244,12 @@ export function createNewGame(
 
   const seasonYear = 2026;
 
+  const nationalDivisions = buildInitialNationalDivisions(
+    userClub,
+    clonedClubs,
+    seasonYear
+  );
+
   const otherLeagues = buildInitialActiveOtherLeagues(
     userClub,
     activeCountries,
@@ -329,6 +335,7 @@ export function createNewGame(
     standingsEstadual,
     standingsNacional,
     standingsContinental,
+    nationalDivisions,
     otherLeagues,
     clubs: clonedClubs,
     calendar,

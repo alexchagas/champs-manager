@@ -47,6 +47,7 @@ import { getLeaguesMeta, loadClubsForActiveCountries, loadLeagueBundle, LeaguesM
 import { getCountryFlag, POPULAR_COUNTRIES } from '../data/countryFlags';
 import { AutoSaveMode, Club } from '../types';
 import { getClubTheme, deriveClubAtmosphere } from '../theme/clubTheme';
+import { normalizeSearchString, matchesSearch } from '../utils/stringNormalizer';
 
 export const MainMenu: React.FC = () => {
   const { 
@@ -161,17 +162,17 @@ export const MainMenu: React.FC = () => {
 
   // Filtered clubs for selection list
   const filteredClubs = useMemo(() => {
-    const query = searchFilter.trim().toLowerCase();
+    const rawQuery = searchFilter.trim();
 
-    // Global search if query is 2+ chars
-    if (query.length >= 2) {
+    // Global accent- and case-insensitive search if query is 2+ chars
+    if (rawQuery.length >= 2) {
       return allClubs
         .filter((c) =>
-          c.name.toLowerCase().includes(query) ||
-          c.stadium.toLowerCase().includes(query) ||
-          (c.stateName && c.stateName.toLowerCase().includes(query)) ||
-          (c.stateCode && c.stateCode.toLowerCase().includes(query)) ||
-          c.coach.toLowerCase().includes(query)
+          matchesSearch(c.name, rawQuery) ||
+          matchesSearch(c.stadium, rawQuery) ||
+          matchesSearch(c.stateName, rawQuery) ||
+          matchesSearch(c.stateCode, rawQuery) ||
+          matchesSearch(c.coach, rawQuery)
         )
         .sort((a, b) => b.reputation - a.reputation || a.name.localeCompare(b.name));
     }
@@ -929,7 +930,13 @@ export const MainMenu: React.FC = () => {
                           <MapPin className="w-3.5 h-3.5 text-emerald-400" />
                           <select
                             value={selectedStateCode}
-                            onChange={(e) => setSelectedStateCode(e.target.value)}
+                            onChange={(e) => {
+                              const newCode = e.target.value;
+                              setSelectedStateCode(newCode);
+                              if (newCode !== 'all') {
+                                setSelectedDivision('all');
+                              }
+                            }}
                             className="bg-[#12231a] border border-[#1e3c2d] text-slate-300 text-xs px-2 py-1.5 rounded cursor-pointer focus:outline-none focus:border-emerald-500 font-semibold"
                           >
                             <option value="all">Filtrar por Estado (Todos)</option>
