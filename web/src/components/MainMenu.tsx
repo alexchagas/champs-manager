@@ -302,6 +302,16 @@ export const MainMenu: React.FC = () => {
     }
   };
 
+  // Com carreira em andamento, pede confirmação antes de substituí-la
+  const [confirmReplaceOpen, setConfirmReplaceOpen] = useState<boolean>(false);
+  const requestStartGame = () => {
+    if (hasActiveCareer) {
+      setConfirmReplaceOpen(true);
+      return;
+    }
+    handleStartGame();
+  };
+
   const [saveStatus, setSaveStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -394,6 +404,50 @@ export const MainMenu: React.FC = () => {
 
   return (
     <div className="flex-1 flex flex-col bg-[#09120e] text-slate-100 select-none overflow-hidden h-full relative">
+      {/* Confirmação antes de substituir a carreira ativa */}
+      {confirmReplaceOpen && hasActiveCareer && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="confirm-replace-title"
+          data-testid="confirm-replace-career"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+        >
+          <div className="w-full max-w-sm rounded-lg border border-[#2b5941] bg-[#0d1a14] p-5 shadow-2xl space-y-4">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+              <h2 id="confirm-replace-title" className="text-sm font-extrabold text-white">
+                Substituir carreira atual?
+              </h2>
+            </div>
+            <p className="text-xs leading-relaxed text-slate-300">
+              Você tem uma carreira em andamento ({userClub.name}, Rodada {gameState.currentRound}).
+              Começar um novo jogo vai substituí-la. Para continuar com ela depois, salve antes em{' '}
+              <strong className="text-emerald-300">Salvar / Carregar</strong>.
+            </p>
+            <div className="flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
+              <button
+                onClick={() => setConfirmReplaceOpen(false)}
+                className="min-h-[44px] px-4 rounded border border-[#2b5941] text-xs font-bold text-slate-200 hover:bg-[#152e22] cursor-pointer"
+                data-testid="confirm-replace-cancel"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  setConfirmReplaceOpen(false);
+                  handleStartGame();
+                }}
+                className="min-h-[44px] px-4 rounded bg-amber-500 hover:bg-amber-400 text-xs font-black text-black cursor-pointer"
+                data-testid="confirm-replace-accept"
+              >
+                Começar novo jogo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Floating Feedback Toast Notification */}
       {toast && (
         <div
@@ -491,7 +545,7 @@ export const MainMenu: React.FC = () => {
             }`}
           >
             <FolderOpen className="w-3.5 h-3.5" />
-            <span>Carregar</span>
+            <span>Salvar / Carregar</span>
           </button>
           <button
             onClick={() => changeTab('editor')}
@@ -618,7 +672,7 @@ export const MainMenu: React.FC = () => {
                 }`}
               >
                 <FolderOpen className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>💾 Carregar Jogo</span>
+                <span>💾 Salvar / Carregar</span>
               </button>
 
               <button
@@ -1259,7 +1313,7 @@ export const MainMenu: React.FC = () => {
                     style={{ borderColor: selectedClubAtmosphere.borderSubtle }}
                   >
                     <button
-                      onClick={handleStartGame}
+                      onClick={requestStartGame}
                       disabled={isStartingGame || activeCountryIds.length < 1}
                       className={`w-full py-3 font-black rounded-lg shadow-xl text-xs uppercase tracking-wider transition-all transform active:scale-98 cursor-pointer flex items-center justify-center space-x-2 ${
                         isStartingGame || activeCountryIds.length < 1 ? 'opacity-60 cursor-not-allowed' : ''
@@ -1284,7 +1338,7 @@ export const MainMenu: React.FC = () => {
               {/* Mobile Sticky CTA to start career */}
               <div className="md:hidden fixed bottom-0 left-0 right-0 p-3 bg-[#0c1511]/95 backdrop-blur-md border-t border-[#1b3629] pb-safe z-30 shadow-2xl">
                 <button
-                  onClick={handleStartGame}
+                  onClick={requestStartGame}
                   disabled={isStartingGame || activeCountryIds.length < 1}
                   className={`w-full py-3 font-black rounded-lg shadow-xl text-xs uppercase tracking-wider transition-all transform active:scale-98 cursor-pointer flex items-center justify-center space-x-2 ${
                     isStartingGame || activeCountryIds.length < 1 ? 'opacity-60 cursor-not-allowed' : ''

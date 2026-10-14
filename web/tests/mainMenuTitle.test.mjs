@@ -29,7 +29,7 @@ test('MainMenu.tsx organizes all classic buttons including lekD Games credits', 
   const content = fs.readFileSync(menuPath, 'utf8');
 
   assert.ok(content.includes('⚽ Novo Jogo'), 'Has Novo Jogo button');
-  assert.ok(content.includes('💾 Carregar Jogo'), 'Has Carregar Jogo button');
+  assert.ok(content.includes('💾 Salvar / Carregar'), 'Has Salvar / Carregar button');
   assert.ok(content.includes('🛠️ Editor de Equipes'), 'Has Editor de Equipes button');
   assert.ok(content.includes('⚙️ Opções & Áudio'), 'Has Opções & Áudio button');
   assert.ok(content.includes('🏆 Créditos (lekD Games)'), 'Has Créditos button');
@@ -73,3 +73,36 @@ test('MainMenu.tsx replaces native browser alerts with polished floating toast n
   assert.ok(content.includes('Máximo de 5 ligas ativas'), 'Provides friendly message for maximum active leagues');
 });
 
+
+test('MainMenu.tsx labels the save/load section as "Salvar / Carregar" on desktop and mobile', () => {
+  const menuPath = path.join(__dirname, '../src/components/MainMenu.tsx');
+  const content = fs.readFileSync(menuPath, 'utf8');
+
+  assert.ok(content.includes('<span>💾 Salvar / Carregar</span>'), 'Desktop sidebar uses "Salvar / Carregar"');
+  assert.ok(content.includes('<span>Salvar / Carregar</span>'), 'Mobile tab uses "Salvar / Carregar"');
+  assert.ok(!content.includes('Carregar Jogo</span>'), 'Old "Carregar Jogo" label is gone');
+  assert.ok(!content.includes('<span>Carregar</span>'), 'Old short "Carregar" mobile label is gone');
+});
+
+test('MainMenu.tsx asks for in-page confirmation before replacing an active career', () => {
+  const menuPath = path.join(__dirname, '../src/components/MainMenu.tsx');
+  const content = fs.readFileSync(menuPath, 'utf8');
+
+  // Both start buttons (desktop + mobile sticky) go through the guard, never straight to handleStartGame
+  assert.equal(content.split('onClick={handleStartGame}').length - 1, 0, 'No start button calls handleStartGame directly');
+  assert.ok(content.split('onClick={requestStartGame}').length - 1 >= 2, 'Desktop and mobile start buttons use requestStartGame');
+
+  // Guard: with an active career, open the confirmation instead of starting
+  const guard = content.match(/const requestStartGame = \(\) => \{[\s\S]*?\n  \};/);
+  assert.ok(guard, 'requestStartGame is defined');
+  assert.match(guard[0], /if \(hasActiveCareer\) \{\s*setConfirmReplaceOpen\(true\);\s*return;\s*\}/, 'Active career opens the confirmation');
+  assert.ok(guard[0].includes('handleStartGame()'), 'Without an active career, starts the game as before');
+  assert.ok(!guard[0].includes('confirm('), 'Guard must not use native window.confirm');
+
+  // In-page dialog with clear message and both actions
+  assert.ok(content.includes('data-testid="confirm-replace-career"'), 'Renders confirmation dialog with test id');
+  assert.ok(content.includes('Substituir carreira atual?'), 'Dialog has a clear title');
+  assert.ok(content.includes('data-testid="confirm-replace-cancel"'), 'Dialog has a cancel action');
+  assert.ok(content.includes('data-testid="confirm-replace-accept"'), 'Dialog has a confirm action');
+  assert.ok(content.includes('Começar novo jogo'), 'Confirm action label');
+});
