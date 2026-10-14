@@ -482,10 +482,12 @@ impl ActiveMatchSession {
                         self.clock.minute = 45;
                         self.clock.added = 0;
                     }
-                    if let Some(d) = &self.pending_decision {
+                    if let Some(d) = self.pending_decision.clone() {
                         if d.kind == "penalty" {
                             let taker = d.default_taker_id.unwrap_or(0);
                             let _ = self.resolve_penalty(taker);
+                        } else if d.kind == "injury" {
+                            self.auto_replace_injured(&d);
                         } else {
                             self.pending_decision = None;
                         }
@@ -621,6 +623,29 @@ impl ActiveMatchSession {
         }
         self.ensure_goalkeeper(side);
         Ok(())
+    }
+    /// "Simular até o fim": troca o lesionado do time humano sem perguntar.
+    /// Prefere um reserva da mesma posição; senão, o primeiro elegível (a lista `eligible_ids`
+    /// já respeita a regra do goleiro). Sem reserva ou sem substituições, segue com 10.
+    fn auto_replace_injured(&mut self, decision: &PendingDecision) {
+        if let Some(outgoing) = decision.player_id {
+            let side = decision.side;
+            let position = self.teams[side].player(outgoing).position.clone();
+            let incoming = decision
+                .eligible_ids
+                .iter()
+                .find(|id| self.teams[side].player(**id).position == position)
+                .or_else(|| decision.eligible_ids.first())
+                .copied();
+            if let Some(incoming) = incoming {
+                let paused = self.paused;
+                self.paused = true;
+                let _ = self.substitute(side, outgoing, incoming);
+                self.paused = paused;
+            }
+        }
+        // Se a troca não aconteceu, continua sem reposição (mesmo efeito de "Continuar sem trocar").
+        self.pending_decision = None;
     }
     fn ensure_goalkeeper(&mut self, side: usize) {
         if self.teams[side]
