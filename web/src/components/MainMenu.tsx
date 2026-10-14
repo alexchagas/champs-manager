@@ -32,6 +32,7 @@ import {
 import { sound } from '../audio/soundEngine';
 import { TeamEditorScreen } from './TeamEditorScreen';
 import { ClubCrest } from './ClubCrest';
+import { searchClubs } from '../utils/clubSearch';
 import { 
   getAllClubs, 
   getAllCountries, 
@@ -161,19 +162,9 @@ export const MainMenu: React.FC = () => {
 
   // Filtered clubs for selection list
   const filteredClubs = useMemo(() => {
-    const query = searchFilter.trim().toLowerCase();
-
-    // Global search if query is 2+ chars
-    if (query.length >= 2) {
-      return allClubs
-        .filter((c) =>
-          c.name.toLowerCase().includes(query) ||
-          c.stadium.toLowerCase().includes(query) ||
-          (c.stateName && c.stateName.toLowerCase().includes(query)) ||
-          (c.stateCode && c.stateCode.toLowerCase().includes(query)) ||
-          c.coach.toLowerCase().includes(query)
-        )
-        .sort((a, b) => b.reputation - a.reputation || a.name.localeCompare(b.name));
+    // Global search if query is 2+ chars (ordenada por relevância, sem diferenciar acentos)
+    if (searchFilter.trim().length >= 2) {
+      return searchClubs(allClubs, searchFilter);
     }
 
     let list: Club[] = [];
