@@ -106,3 +106,54 @@ test('MainMenu.tsx asks for in-page confirmation before replacing an active care
   assert.ok(content.includes('data-testid="confirm-replace-accept"'), 'Dialog has a confirm action');
   assert.ok(content.includes('Começar novo jogo'), 'Confirm action label');
 });
+
+// ---- Etapa 2: o menu abre primeiro numa lista de opções (hub), não no formulário de Novo Jogo ----
+
+const readMenu = () => fs.readFileSync(path.join(__dirname, '../src/components/MainMenu.tsx'), 'utf8');
+const hubBlock = (content) => {
+  const start = content.indexOf('{/* MENU HUB START */}');
+  const end = content.indexOf('{/* MENU HUB END */}');
+  assert.ok(start !== -1 && end > start, 'Hub block is delimited by MENU HUB START/END markers');
+  return content.slice(start, end);
+};
+
+test('MainMenu.tsx opens on the hub instead of the Novo Jogo form', () => {
+  const content = readMenu();
+  assert.ok(/type MenuTab = 'hub' \| /.test(content), "MenuTab type includes 'hub'");
+  assert.ok(content.includes("useState<MenuTab>('hub')"), "Initial tab is 'hub'");
+  assert.ok(!content.includes("('new_game');"), "Initial tab is no longer 'new_game'");
+  assert.ok(content.includes("activeTab === 'hub' ? ("), 'Hub replaces the sidebar/tabs layout while active');
+});
+
+test('MainMenu.tsx hub highlights Continuar carreira with an active career, Novo jogo otherwise', () => {
+  const hub = hubBlock(readMenu());
+  assert.ok(hub.includes('data-testid="main-menu-hub"'), 'Hub has test id');
+  assert.ok(/\{hasActiveCareer \? \(/.test(hub), 'Primary action depends on hasActiveCareer');
+  assert.ok(hub.includes('data-testid="hub-continue-career"') && hub.includes('onClick={returnToGame}'), 'Continuar carreira returns to the game');
+  assert.ok(hub.includes('{userClub.name} · {gameState.seasonYear} · Rodada {gameState.currentRound}'), 'Shows club, year and round');
+  assert.ok(hub.includes('data-testid="hub-new-game-primary"'), 'Novo jogo is the primary action without a career');
+});
+
+test('MainMenu.tsx hub lists every section and the bug report', () => {
+  const hub = hubBlock(readMenu());
+  for (const tab of ['new_game', 'load_game', 'editor', 'options', 'credits']) {
+    assert.ok(hub.includes(`changeTab('${tab}')`), `Hub links to ${tab}`);
+  }
+  for (const label of ['Novo jogo', 'Salvar / Carregar', 'Editor de equipes', 'Opções & áudio', 'Créditos', 'Reportar bug']) {
+    assert.ok(hub.includes(label), `Hub shows "${label}"`);
+  }
+  assert.ok(hub.includes("new CustomEvent('champs:open-bug-report')"), 'Reportar bug opens the existing bug report');
+});
+
+test('MainMenu.tsx hub has no emoji and comfortable touch targets', () => {
+  const hub = hubBlock(readMenu());
+  assert.ok(!/\p{Extended_Pictographic}/u.test(hub), 'Hub uses icons only, no emoji');
+  assert.ok(hub.includes('min-h-[44px]'), 'Hub buttons are at least 44px tall');
+});
+
+test('MainMenu.tsx offers a "Menu" button back to the hub from any section', () => {
+  const content = readMenu();
+  assert.ok(content.includes("{activeTab !== 'hub' && ("), 'Back button only outside the hub');
+  assert.ok(content.includes('data-testid="back-to-menu-btn"'), 'Back button has test id');
+  assert.ok(content.includes("onClick={() => changeTab('hub')}"), 'Back button returns to the hub');
+});
