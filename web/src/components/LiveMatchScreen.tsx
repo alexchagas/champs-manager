@@ -23,8 +23,11 @@ import {
   Target,
   Sparkles,
   Footprints,
-  X
+  X,
+  ArrowLeftRight,
+  Cross
 } from 'lucide-react';
+import type { MatchEvent } from '../types';
 
 const POSITION_COLORS: Record<string, { bg: string; text: string }> = {
   GOL: { bg: 'bg-amber-600', text: 'text-amber-100' },
@@ -33,6 +36,63 @@ const POSITION_COLORS: Record<string, { bg: string; text: string }> = {
   VOL: { bg: 'bg-emerald-600', text: 'text-emerald-100' },
   MEI: { bg: 'bg-purple-600', text: 'text-purple-100' },
   ATA: { bg: 'bg-rose-600', text: 'text-rose-100' },
+};
+
+const formatEventMinute = (e: MatchEvent) =>
+  `${e.clock?.minute ?? e.minute}${e.clock?.added ? '+' + e.clock.added : ''}′`;
+
+const EventIcon: React.FC<{ type: MatchEvent['type'] }> = ({ type }) => {
+  if (type === 'goal') return <span className="text-sm leading-none" aria-hidden="true">⚽</span>;
+  if (type === 'yellow_card') return <span className="inline-block w-2.5 h-3.5 rounded-[2px] bg-yellow-400 shadow-sm" aria-hidden="true" />;
+  if (type === 'red_card') return <span className="inline-block w-2.5 h-3.5 rounded-[2px] bg-red-600 shadow-sm" aria-hidden="true" />;
+  if (type === 'injury') return <Cross className="w-3.5 h-3.5 text-rose-400" aria-hidden="true" />;
+  if (type === 'substitution') return <ArrowLeftRight className="w-3.5 h-3.5 text-slate-300" aria-hidden="true" />;
+  return null;
+};
+
+/** Uma linha do feed "Lance a Lance" — usada tanto no desktop quanto na aba do celular. */
+const MatchEventRow: React.FC<{ event: MatchEvent; teamName: string; isUserGoal: boolean }> = ({ event: e, teamName, isUserGoal }) => {
+  // Intervalo e fim de jogo: faixa cinza fixa, centralizada, sem nome de time
+  if (e.type === 'halftime' || e.type === 'fulltime') {
+    return (
+      <div className="px-2.5 py-2 rounded-md bg-zinc-800 border border-zinc-700 text-center">
+        <div className="flex items-center justify-center gap-1.5 text-sm font-bold uppercase tracking-wider text-slate-100">
+          <Clock className="w-4 h-4 text-slate-400" aria-hidden="true" />
+          <span>{e.type === 'halftime' ? 'Intervalo' : 'Fim de jogo'}</span>
+          <span className="font-mono text-slate-400 text-xs normal-case">· {formatEventMinute(e)}</span>
+        </div>
+        {e.type === 'halftime' && (
+          <div className="mt-0.5 text-[11px] text-slate-400">{e.description}</div>
+        )}
+      </div>
+    );
+  }
+
+  const style =
+    e.type === 'goal'
+      ? isUserGoal
+        ? 'bg-emerald-950 border-2 border-emerald-500 text-emerald-100 font-medium'
+        : 'bg-slate-900 border border-rose-800 text-rose-200 font-medium'
+      : e.type === 'red_card'
+      ? 'bg-red-950/70 border border-red-600 text-red-100 font-medium'
+      : e.type === 'yellow_card'
+      ? 'bg-amber-950/50 border border-amber-700/50 text-amber-200'
+      : e.type === 'injury'
+      ? 'bg-rose-950/60 border border-rose-700/60 text-rose-200'
+      : 'bg-[var(--app-surface-2)]/80 border border-[var(--app-border-subtle)] text-slate-200';
+
+  return (
+    <div className={`p-2.5 rounded-md transition-all shadow-xs ${style}`}>
+      <div className="flex items-center justify-between mb-1">
+        <span className="font-mono font-bold text-emerald-400 text-[11px]">{formatEventMinute(e)}</span>
+        <span className="text-[10px] uppercase font-bold text-slate-400">{teamName}</span>
+      </div>
+      <div className="leading-snug flex items-center gap-2">
+        <EventIcon type={e.type} />
+        <span>{e.description}</span>
+      </div>
+    </div>
+  );
 };
 
 export const LiveMatchScreen: React.FC = () => {
@@ -1917,36 +1977,14 @@ export const LiveMatchScreen: React.FC = () => {
             {session.events.length === 0 ? (
               <div className="text-center text-slate-500 py-8">Aguardando o início dos lances...</div>
             ) : (
-              displayedEvents.map((e) => {
-                const isUserGoal = e.type === 'goal' && e.team === (humanSide === 1 ? 'away' : 'home');
-
-                return (
-                  <div 
-                    key={e.id} 
-                    className={`p-2.5 rounded-md transition-all shadow-xs ${
-                      e.type === 'goal' 
-                        ? isUserGoal
-                          ? 'bg-emerald-950 border-2 border-emerald-500 text-emerald-100 font-medium'
-                          : 'bg-slate-900 border border-rose-800 text-rose-200 font-medium'
-                        : e.type === 'yellow_card' || e.type === 'red_card'
-                        ? 'bg-amber-950/50 border border-amber-700/50 text-amber-200'
-                        : e.type === 'injury'
-                        ? 'bg-rose-950/60 border border-rose-700/60 text-rose-200'
-                        : 'bg-[var(--app-surface-2)]/80 border border-[var(--app-border-subtle)] text-slate-200'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-mono font-bold text-emerald-400 text-[11px]">
-                        {e.clock?.minute ?? e.minute}{e.clock?.added ? '+' + e.clock.added : ''}′
-                      </span>
-                      <span className="text-[10px] uppercase font-bold text-slate-400">
-                        {session.teams[e.team === 'home' ? 0 : 1].name}
-                      </span>
-                    </div>
-                    <div className="leading-snug">{e.description}</div>
-                  </div>
-                );
-              })
+              displayedEvents.map((e) => (
+                <MatchEventRow
+                  key={e.id}
+                  event={e}
+                  teamName={session.teams[e.team === 'home' ? 0 : 1].name}
+                  isUserGoal={e.type === 'goal' && e.team === (humanSide === 1 ? 'away' : 'home')}
+                />
+              ))
             )}
           </div>
         </div>
@@ -1997,26 +2035,12 @@ export const LiveMatchScreen: React.FC = () => {
                 <div className="text-center text-slate-500 py-8">Aguardando o início dos lances...</div>
               ) : (
                 displayedEvents.map((e) => (
-                  <div 
-                    key={e.id} 
-                    className={`p-2.5 rounded-md shadow-xs ${
-                      e.type === 'goal' 
-                        ? 'bg-emerald-950/90 border border-emerald-600/70 text-emerald-100 font-medium' 
-                        : e.type === 'yellow_card' || e.type === 'red_card'
-                        ? 'bg-amber-950/50 border border-amber-700/50 text-amber-200'
-                        : 'bg-[var(--app-surface-2)]/80 border border-[var(--app-border-subtle)] text-slate-200'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-mono font-bold text-emerald-400 text-[11px]">
-                        {e.clock?.minute ?? e.minute}{e.clock?.added ? '+' + e.clock.added : ''}′
-                      </span>
-                      <span className="text-[10px] uppercase font-bold text-slate-400">
-                        {session.teams[e.team === 'home' ? 0 : 1].name}
-                      </span>
-                    </div>
-                    <div className="leading-snug">{e.description}</div>
-                  </div>
+                  <MatchEventRow
+                    key={e.id}
+                    event={e}
+                    teamName={session.teams[e.team === 'home' ? 0 : 1].name}
+                    isUserGoal={e.type === 'goal' && e.team === (humanSide === 1 ? 'away' : 'home')}
+                  />
                 ))
               )}
             </div>
