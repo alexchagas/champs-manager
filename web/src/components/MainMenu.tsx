@@ -27,7 +27,8 @@ import {
   AlertTriangle,
   AlertCircle,
   CheckCircle2,
-  X
+  X,
+  Menu as MenuIcon
 } from 'lucide-react';
 import { sound } from '../audio/soundEngine';
 import { TeamEditorScreen } from './TeamEditorScreen';
@@ -65,9 +66,11 @@ export const MainMenu: React.FC = () => {
     rustVersion
   } = useGame();
 
-  const [activeTab, setActiveTab] = useState<'new_game' | 'load_game' | 'options' | 'editor' | 'credits'>('new_game');
+  // 'hub' = menu inicial só com a lista de opções; as demais são as seções existentes
+  type MenuTab = 'hub' | 'new_game' | 'load_game' | 'options' | 'editor' | 'credits';
+  const [activeTab, setActiveTab] = useState<MenuTab>('hub');
   const [editorDirty, setEditorDirty] = useState(false);
-  const changeTab = (tab: 'new_game' | 'load_game' | 'options' | 'editor' | 'credits') => {
+  const changeTab = (tab: MenuTab) => {
     if (activeTab === 'editor' && tab !== 'editor' && editorDirty && !window.confirm('Há alterações não salvas. Sair do editor?')) return;
     setEditorDirty(false);
     sound.playClick();
@@ -293,6 +296,16 @@ export const MainMenu: React.FC = () => {
     }
   };
 
+  // Com carreira em andamento, pede confirmação antes de substituí-la
+  const [confirmReplaceOpen, setConfirmReplaceOpen] = useState<boolean>(false);
+  const requestStartGame = () => {
+    if (hasActiveCareer) {
+      setConfirmReplaceOpen(true);
+      return;
+    }
+    handleStartGame();
+  };
+
   const [saveStatus, setSaveStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -385,6 +398,50 @@ export const MainMenu: React.FC = () => {
 
   return (
     <div className="flex-1 flex flex-col bg-[#09120e] text-slate-100 select-none overflow-hidden h-full relative">
+      {/* Confirmação antes de substituir a carreira ativa */}
+      {confirmReplaceOpen && hasActiveCareer && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="confirm-replace-title"
+          data-testid="confirm-replace-career"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+        >
+          <div className="w-full max-w-sm rounded-lg border border-[#2b5941] bg-[#0d1a14] p-5 shadow-2xl space-y-4">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+              <h2 id="confirm-replace-title" className="text-sm font-extrabold text-white">
+                Substituir carreira atual?
+              </h2>
+            </div>
+            <p className="text-xs leading-relaxed text-slate-300">
+              Você tem uma carreira em andamento ({userClub.name}, Rodada {gameState.currentRound}).
+              Começar um novo jogo vai substituí-la. Para continuar com ela depois, salve antes em{' '}
+              <strong className="text-emerald-300">Salvar / Carregar</strong>.
+            </p>
+            <div className="flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
+              <button
+                onClick={() => setConfirmReplaceOpen(false)}
+                className="min-h-[44px] px-4 rounded border border-[#2b5941] text-xs font-bold text-slate-200 hover:bg-[#152e22] cursor-pointer"
+                data-testid="confirm-replace-cancel"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  setConfirmReplaceOpen(false);
+                  handleStartGame();
+                }}
+                className="min-h-[44px] px-4 rounded bg-amber-500 hover:bg-amber-400 text-xs font-black text-black cursor-pointer"
+                data-testid="confirm-replace-accept"
+              >
+                Começar novo jogo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Floating Feedback Toast Notification */}
       {toast && (
         <div
@@ -432,33 +489,138 @@ export const MainMenu: React.FC = () => {
       )}
 
       {/* Top Banner with Brand and Return Button */}
-      <div className="h-14 bg-[#0d1a14] border-b border-[#1b3629] px-6 flex items-center justify-between shadow-md shrink-0">
-        <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 rounded bg-gradient-to-br from-emerald-500 to-green-700 flex items-center justify-center font-digital font-black text-black text-lg shadow">
+      <div className="h-14 bg-[#0d1a14] border-b border-[#1b3629] px-3 sm:px-6 flex items-center justify-between gap-2 shadow-md shrink-0">
+        <div className="flex items-center space-x-3 min-w-0">
+          <div className="shrink-0 w-8 h-8 rounded bg-gradient-to-br from-emerald-500 to-green-700 flex items-center justify-center font-digital font-black text-black text-lg shadow">
             CM
           </div>
-          <div>
-            <h1 className="text-base font-extrabold tracking-wider uppercase text-emerald-400">
+          <div className="min-w-0">
+            <h1 className="truncate text-sm sm:text-base font-extrabold tracking-wider uppercase text-emerald-400">
               Champs Manager <span className="text-white text-xs font-normal">2026</span>
             </h1>
-            <p className="text-[10px] text-slate-400">O Clássico Gerenciador de Futebol • Base Real de 703 Clubes</p>
+            <p className="hidden sm:block text-[10px] text-slate-400">O Clássico Gerenciador de Futebol • Base Real de 703 Clubes</p>
           </div>
         </div>
+
+        <div className="flex items-center gap-2">
+        {/* Volta para o menu inicial (hub) a partir de qualquer seção */}
+        {activeTab !== 'hub' && (
+          <button
+            onClick={() => changeTab('hub')}
+            className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#12231a] hover:bg-[#1b3d2d] text-slate-200 border border-[#2b5941] rounded text-xs font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            data-testid="back-to-menu-btn"
+          >
+            <MenuIcon className="w-3.5 h-3.5" />
+            <span>Menu</span>
+          </button>
+        )}
 
         {/* Continue playing button if career is running */}
         {hasActiveCareer && (
           <button
             onClick={returnToGame}
-            className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#152e22] hover:bg-[#1b3d2d] text-emerald-300 border border-[#2b5941] rounded text-xs font-bold transition-colors cursor-pointer"
+            className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#152e22] hover:bg-[#1b3d2d] text-emerald-300 border border-[#2b5941] rounded text-xs font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0"
             data-testid="return-to-game-header-btn"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Voltar ao Jogo</span>
+            <span><span className="hidden sm:inline">Voltar ao </span>Jogo</span>
           </button>
         )}
+        </div>
       </div>
 
-      {/* Main Content Layout */}
+      {activeTab === 'hub' ? (
+      <div className="flex-1 overflow-y-auto px-4 py-6 flex items-start md:items-center justify-center">
+        {/* MENU HUB START */}
+        <nav aria-label="Menu principal" className="w-full max-w-sm space-y-3" data-testid="main-menu-hub">
+          {/* Ação principal: continuar a carreira ativa ou começar um jogo novo */}
+          {hasActiveCareer ? (
+            <button
+              onClick={returnToGame}
+              className="w-full min-h-[44px] flex items-center justify-between gap-3 px-4 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-black shadow-lg transition-colors cursor-pointer"
+              data-testid="hub-continue-career"
+            >
+              <span className="flex items-center gap-3 min-w-0 text-left">
+                <Play className="w-5 h-5 fill-current shrink-0" />
+                <span className="min-w-0">
+                  <span className="block text-sm font-black">Continuar carreira</span>
+                  <span className="block text-[11px] font-semibold text-emerald-950 truncate">
+                    {userClub.name} · {gameState.seasonYear} · Rodada {gameState.currentRound}
+                  </span>
+                </span>
+              </span>
+              <ClubCrest club={userClub} size="sm" />
+            </button>
+          ) : (
+            <button
+              onClick={() => changeTab('new_game')}
+              className="w-full min-h-[44px] flex items-center gap-3 px-4 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-black text-sm font-black shadow-lg transition-colors cursor-pointer"
+              data-testid="hub-new-game-primary"
+            >
+              <Play className="w-5 h-5 fill-current shrink-0" />
+              <span>Novo jogo</span>
+            </button>
+          )}
+
+          {/* Seções principais */}
+          <div className="rounded-lg border border-[#1b3629] bg-[#0d1a14] divide-y divide-[#1b3629] overflow-hidden">
+            {hasActiveCareer && (
+              <button
+                onClick={() => changeTab('new_game')}
+                className="w-full min-h-[44px] flex items-center gap-3 px-4 text-sm font-bold text-slate-200 hover:bg-[#152e22] hover:text-white transition-colors cursor-pointer text-left"
+              >
+                <Play className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>Novo jogo</span>
+              </button>
+            )}
+            <button
+              onClick={() => changeTab('load_game')}
+              className="w-full min-h-[44px] flex items-center gap-3 px-4 text-sm font-bold text-slate-200 hover:bg-[#152e22] hover:text-white transition-colors cursor-pointer text-left"
+            >
+              <FolderOpen className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>Salvar / Carregar</span>
+            </button>
+            <button
+              onClick={() => changeTab('editor')}
+              className="w-full min-h-[44px] flex items-center gap-3 px-4 text-sm font-bold text-slate-200 hover:bg-[#152e22] hover:text-white transition-colors cursor-pointer text-left"
+            >
+              <Users className="w-4 h-4 text-sky-400 shrink-0" />
+              <span>Editor de equipes</span>
+            </button>
+            <button
+              onClick={() => changeTab('options')}
+              className="w-full min-h-[44px] flex items-center gap-3 px-4 text-sm font-bold text-slate-200 hover:bg-[#152e22] hover:text-white transition-colors cursor-pointer text-left"
+            >
+              <Settings className="w-4 h-4 text-slate-400 shrink-0" />
+              <span>Opções & áudio</span>
+            </button>
+          </div>
+
+          {/* Ações secundárias, menores */}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => changeTab('credits')}
+              className="min-h-[44px] flex items-center justify-center gap-2 px-3 rounded-lg border border-[#1b3629] text-xs font-bold text-slate-300 hover:bg-[#152e22] hover:text-white transition-colors cursor-pointer"
+            >
+              <Trophy className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span>Créditos</span>
+            </button>
+            <button
+              onClick={() => {
+                sound.playClick();
+                window.dispatchEvent(new CustomEvent('champs:open-bug-report'));
+              }}
+              className="min-h-[44px] flex items-center justify-center gap-2 px-3 rounded-lg border border-[#1b3629] text-xs font-bold text-emerald-400 hover:bg-emerald-950/60 transition-colors cursor-pointer"
+            >
+              <Bug className="w-3.5 h-3.5 shrink-0" />
+              <span>Reportar bug</span>
+            </button>
+          </div>
+        </nav>
+        {/* MENU HUB END */}
+      </div>
+      ) : (
+      /* Main Content Layout */
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
         {/* Mobile Navigation Tabs Bar (< md) */}
         <div className="flex md:hidden bg-[var(--app-surface-1)] border-b border-[var(--app-border-subtle)] px-2.5 py-2 overflow-x-auto no-scrollbar shrink-0 gap-1.5 items-center">
@@ -482,7 +644,7 @@ export const MainMenu: React.FC = () => {
             }`}
           >
             <FolderOpen className="w-3.5 h-3.5" />
-            <span>Carregar</span>
+            <span>Salvar / Carregar</span>
           </button>
           <button
             onClick={() => changeTab('editor')}
@@ -609,7 +771,7 @@ export const MainMenu: React.FC = () => {
                 }`}
               >
                 <FolderOpen className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>💾 Carregar Jogo</span>
+                <span>💾 Salvar / Carregar</span>
               </button>
 
               <button
@@ -1250,7 +1412,7 @@ export const MainMenu: React.FC = () => {
                     style={{ borderColor: selectedClubAtmosphere.borderSubtle }}
                   >
                     <button
-                      onClick={handleStartGame}
+                      onClick={requestStartGame}
                       disabled={isStartingGame || activeCountryIds.length < 1}
                       className={`w-full py-3 font-black rounded-lg shadow-xl text-xs uppercase tracking-wider transition-all transform active:scale-98 cursor-pointer flex items-center justify-center space-x-2 ${
                         isStartingGame || activeCountryIds.length < 1 ? 'opacity-60 cursor-not-allowed' : ''
@@ -1275,7 +1437,7 @@ export const MainMenu: React.FC = () => {
               {/* Mobile Sticky CTA to start career */}
               <div className="md:hidden fixed bottom-0 left-0 right-0 p-3 bg-[#0c1511]/95 backdrop-blur-md border-t border-[#1b3629] pb-safe z-30 shadow-2xl">
                 <button
-                  onClick={handleStartGame}
+                  onClick={requestStartGame}
                   disabled={isStartingGame || activeCountryIds.length < 1}
                   className={`w-full py-3 font-black rounded-lg shadow-xl text-xs uppercase tracking-wider transition-all transform active:scale-98 cursor-pointer flex items-center justify-center space-x-2 ${
                     isStartingGame || activeCountryIds.length < 1 ? 'opacity-60 cursor-not-allowed' : ''
@@ -1706,6 +1868,7 @@ export const MainMenu: React.FC = () => {
           )}
         </div>
       </div>
+      )}
     </div>
   );
 };
