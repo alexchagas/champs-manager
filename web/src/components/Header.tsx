@@ -191,7 +191,7 @@ export const Header: React.FC = () => {
   }
 
   return (
-    <header className="h-14 bg-[var(--app-surface-1)] border-b border-[var(--app-border-subtle)] flex items-center justify-between px-3 sm:px-4 select-none shrink-0 z-20 shadow-md pt-safe">
+    <header className="h-14 bg-zinc-950 border-b border-[var(--app-border-subtle)] flex items-center justify-between px-3 sm:px-4 select-none shrink-0 z-20 shadow-md pt-safe">
       {/* Left: Game Logo Brand Anchor */}
       <div 
         onClick={() => setScreen('overview')}
