@@ -18,6 +18,8 @@ import {
   UserMinus, 
   Sparkles,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
   Filter
 } from 'lucide-react';
 import { Player, Position, MarketFilter, MarketSearchResult, TransferOffer } from '../types';
@@ -36,6 +38,46 @@ const POSITION_COLORS: Record<Position, { bg: string; text: string; border: stri
   MEI: { bg: 'bg-emerald-950/70', text: 'text-emerald-400', border: 'border-emerald-700/60' },
   ATA: { bg: 'bg-rose-950/70', text: 'text-rose-400', border: 'border-rose-700/60' },
 };
+
+// Ordenação das tabelas do Mercado (Passes Livres, Buscar Jogadores, Contratos do Elenco)
+type ContractSortKey = 'name' | 'position' | 'age' | 'strength' | 'salary' | 'marketValue' | 'contractYears';
+type FreeAgentSortKey = 'name' | 'position' | 'age' | 'foot' | 'strength' | 'demandedSalary' | 'marketValue';
+type SearchSortKey = 'name' | 'club' | 'position' | 'age' | 'strength' | 'marketValue' | 'askingPrice';
+const POSITION_ORDER: Position[] = ['GOL', 'LAT', 'ZAG', 'VOL', 'MEI', 'ATA'];
+
+/** Ordena uma cópia da lista: texto por ordem alfabética (pt-BR), números pelo valor. */
+function sortByValue<T>(list: T[], value: (item: T) => number | string, asc: boolean): T[] {
+  return [...list].sort((a, b) => {
+    const va = value(a);
+    const vb = value(b);
+    const diff = typeof va === 'string' ? va.localeCompare(vb as string, 'pt-BR') : va - (vb as number);
+    return asc ? diff : -diff;
+  });
+}
+
+/** Cabeçalho clicável: 1º clique ordena, 2º inverte. Mostra a seta da direção atual. */
+function SortableTh<K extends string>({ label, sortKey, sort, onSort, className, justify }: {
+  label: string;
+  sortKey: K;
+  sort: { key: K; asc: boolean } | null;
+  onSort: (key: K) => void;
+  className: string;
+  justify: 'justify-start' | 'justify-center' | 'justify-end';
+}) {
+  const active = sort?.key === sortKey;
+  return (
+    <th className={className} aria-sort={active ? (sort!.asc ? 'ascending' : 'descending') : 'none'}>
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className={`w-full inline-flex items-center gap-1 ${justify} uppercase tracking-wider cursor-pointer hover:text-slate-200 transition-colors ${active ? 'text-slate-100' : ''}`}
+      >
+        <span>{label}</span>
+        {active && (sort!.asc ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
+      </button>
+    </th>
+  );
+}
 
 export const TransfersScreen: React.FC = () => {
   const { 
@@ -103,6 +145,33 @@ export const TransfersScreen: React.FC = () => {
   const squadCount = userClub.squad.length;
   const isSquadFull = squadCount >= 30;
   const isSquadAtMin = squadCount <= 16;
+  // Para contratar, o elenco precisa ficar abaixo de 30 (alguns clubes já começam acima)
+  const playersToFreeUp = Math.max(0, squadCount - 29);
+  const squadFullHint = `Elenco cheio (${squadCount}/30). Dispense ou venda ${playersToFreeUp} jogador(es) para abrir vaga.`;
+
+  // Ordenação da tabela de contratos (null = ordem atual do elenco)
+  const [contractSort, setContractSort] = useState<{ key: ContractSortKey; asc: boolean } | null>(null);
+  const toggleContractSort = (key: ContractSortKey) => {
+    sound.playClick();
+    setContractSort((prev) =>
+      prev && prev.key === key ? { key, asc: !prev.asc } : { key, asc: key === 'name' || key === 'position' }
+    );
+  };
+  const sortedContractsSquad = useMemo(() => {
+    if (!contractSort) return userClub.squad;
+    const value = (p: Player): number | string => {
+      switch (contractSort.key) {
+        case 'name': return p.name;
+        case 'position': return POSITION_ORDER.indexOf(p.position);
+        case 'age': return p.age;
+        case 'strength': return p.strength;
+        case 'salary': return p.salary;
+        case 'marketValue': return p.marketValue;
+        case 'contractYears': return p.contractYears ?? 3;
+      }
+    };
+    return sortByValue(userClub.squad, value, contractSort.asc);
+  }, [userClub.squad, contractSort]);
   const freeAgentsList = gameState.freeAgents || [];
   const transferOffersList = gameState.transferOffers || [];
 
@@ -113,13 +182,61 @@ export const TransfersScreen: React.FC = () => {
       if (faMinStrength > 0 && p.strength < faMinStrength) return false;
       if (faSearch.trim() && !p.name.toLowerCase().includes(faSearch.toLowerCase().trim())) return false;
       return true;
-    }).sort((a, b) => b.strength - a.strength);
+    });
   }, [freeAgentsList, faPosition, faMinStrength, faSearch]);
+
+  // Ordenação de "Passes Livres" (começa por Força, maior primeiro, como antes)
+  const [freeAgentSort, setFreeAgentSort] = useState<{ key: FreeAgentSortKey; asc: boolean } | null>({ key: 'strength', asc: false });
+  const toggleFreeAgentSort = (key: FreeAgentSortKey) => {
+    sound.playClick();
+    setFreeAgentSort((prev) =>
+      prev && prev.key === key ? { key, asc: !prev.asc } : { key, asc: key === 'name' || key === 'position' || key === 'foot' }
+    );
+  };
+  const sortedFreeAgents = useMemo(() => {
+    if (!freeAgentSort) return filteredFreeAgents;
+    const value = (p: Player): number | string => {
+      switch (freeAgentSort.key) {
+        case 'name': return p.name;
+        case 'position': return POSITION_ORDER.indexOf(p.position);
+        case 'age': return p.age;
+        case 'foot': return p.foot;
+        case 'strength': return p.strength;
+        case 'demandedSalary': return calculateDemandedSalary(p.salary, p.marketValue);
+        case 'marketValue': return p.marketValue;
+      }
+    };
+    return sortByValue(filteredFreeAgents, value, freeAgentSort.asc);
+  }, [filteredFreeAgents, freeAgentSort]);
 
   // Search Results
   const searchResults = useMemo(() => {
     return searchPlayers(searchFilter);
   }, [searchFilter, gameState.clubs, searchPlayers]);
+
+  // Ordenação de "Buscar Jogadores" (começa na ordem da busca)
+  const [searchSort, setSearchSort] = useState<{ key: SearchSortKey; asc: boolean } | null>(null);
+  const toggleSearchSort = (key: SearchSortKey) => {
+    sound.playClick();
+    setSearchSort((prev) =>
+      prev && prev.key === key ? { key, asc: !prev.asc } : { key, asc: key === 'name' || key === 'club' || key === 'position' }
+    );
+  };
+  const sortedSearchResults = useMemo(() => {
+    if (!searchSort) return searchResults;
+    const value = (item: MarketSearchResult): number | string => {
+      switch (searchSort.key) {
+        case 'name': return item.player.name;
+        case 'club': return item.clubName;
+        case 'position': return POSITION_ORDER.indexOf(item.player.position);
+        case 'age': return item.player.age;
+        case 'strength': return item.player.strength;
+        case 'marketValue': return item.player.marketValue;
+        case 'askingPrice': return item.askingPrice;
+      }
+    };
+    return sortByValue(searchResults, value, searchSort.asc);
+  }, [searchResults, searchSort]);
 
   // Open Sign Free Agent Modal
   const handleOpenSign = (player: Player) => {
@@ -392,6 +509,30 @@ export const TransfersScreen: React.FC = () => {
 
       {/* MAIN CONTENT AREA */}
       <div className="flex-1 overflow-y-auto p-4">
+        {/* Aviso: elenco cheio bloqueia contratações */}
+        {isSquadFull && (activeTab === 'free_agents' || activeTab === 'search') && (
+          <div
+            className="max-w-7xl mx-auto mb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-lg bg-amber-950/60 border border-amber-700/60 text-amber-100"
+            data-testid="squad-full-notice"
+          >
+            <div className="flex items-start gap-2 text-xs leading-relaxed">
+              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <span>
+                <strong className="text-amber-300">Elenco cheio ({squadCount}/30).</strong>{' '}
+                Para contratar, o elenco precisa ter menos de 30 jogadores. Dispense ou venda pelo menos{' '}
+                <strong className="text-amber-300">{playersToFreeUp}</strong> para abrir vaga.
+              </span>
+            </div>
+            <button
+              onClick={() => { setActiveTab('contracts'); sound.playClick(); }}
+              className="min-h-[44px] sm:min-h-0 px-3 py-1.5 rounded bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold whitespace-nowrap shrink-0 cursor-pointer"
+              data-testid="squad-full-go-contracts"
+            >
+              Ver contratos do elenco
+            </button>
+          </div>
+        )}
+
         {/* ================= TAB 1: PASSES LIVRES ================= */}
         {activeTab === 'free_agents' && (
           <div className="space-y-3 max-w-7xl mx-auto">
@@ -450,13 +591,13 @@ export const TransfersScreen: React.FC = () => {
               <table className="w-full text-left text-xs text-slate-300 min-w-[620px] md:min-w-0">
                 <thead className="bg-[var(--app-surface-2)] text-slate-400 text-[11px] uppercase tracking-wider border-b border-[var(--app-border-subtle)]">
                   <tr>
-                    <th className="py-2.5 px-3">Nome</th>
-                    <th className="py-2.5 px-2 text-center">Pos</th>
-                    <th className="py-2.5 px-2 text-center">Idade</th>
-                    <th className="py-2.5 px-2 text-center">Perna</th>
-                    <th className="py-2.5 px-3 text-center">Força</th>
-                    <th className="py-2.5 px-3 text-right">Salário Pedido</th>
-                    <th className="py-2.5 px-3 text-right">Valor Mercado</th>
+                    <SortableTh label="Nome" sortKey="name" sort={freeAgentSort} onSort={toggleFreeAgentSort} className="py-2.5 px-3" justify="justify-start" />
+                    <SortableTh label="Pos" sortKey="position" sort={freeAgentSort} onSort={toggleFreeAgentSort} className="py-2.5 px-2 text-center" justify="justify-center" />
+                    <SortableTh label="Idade" sortKey="age" sort={freeAgentSort} onSort={toggleFreeAgentSort} className="py-2.5 px-2 text-center" justify="justify-center" />
+                    <SortableTh label="Perna" sortKey="foot" sort={freeAgentSort} onSort={toggleFreeAgentSort} className="py-2.5 px-2 text-center" justify="justify-center" />
+                    <SortableTh label="Força" sortKey="strength" sort={freeAgentSort} onSort={toggleFreeAgentSort} className="py-2.5 px-3 text-center" justify="justify-center" />
+                    <SortableTh label="Salário Pedido" sortKey="demandedSalary" sort={freeAgentSort} onSort={toggleFreeAgentSort} className="py-2.5 px-3 text-right" justify="justify-end" />
+                    <SortableTh label="Valor Mercado" sortKey="marketValue" sort={freeAgentSort} onSort={toggleFreeAgentSort} className="py-2.5 px-3 text-right" justify="justify-end" />
                     <th className="py-2.5 px-3 text-center">Ação</th>
                   </tr>
                 </thead>
@@ -468,7 +609,7 @@ export const TransfersScreen: React.FC = () => {
                       </td>
                     </tr>
                   ) : (
-                    filteredFreeAgents.map((p) => {
+                    sortedFreeAgents.map((p) => {
                       const posStyle = POSITION_COLORS[p.position] || POSITION_COLORS.MEI;
                       const demanded = calculateDemandedSalary(p.salary, p.marketValue);
                       return (
@@ -502,6 +643,7 @@ export const TransfersScreen: React.FC = () => {
                           <td className="py-2.5 px-3 text-center">
                             <button
                               disabled={isSquadFull}
+                              title={isSquadFull ? squadFullHint : undefined}
                               onClick={() => handleOpenSign(p)}
                               style={!isSquadFull ? { backgroundColor: clubTheme.primaryAccent, color: clubTheme.onPrimaryAccent } : undefined}
                               className={`px-3 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
@@ -510,7 +652,7 @@ export const TransfersScreen: React.FC = () => {
                                   : 'shadow hover:brightness-110 active:scale-95'
                               }`}
                             >
-                              Contratar
+                              {isSquadFull ? 'Elenco cheio' : 'Contratar'}
                             </button>
                           </td>
                         </tr>
@@ -633,13 +775,13 @@ export const TransfersScreen: React.FC = () => {
               <table className="w-full text-left text-xs text-slate-300 min-w-[680px] md:min-w-0">
                 <thead className="bg-[var(--app-surface-2)] text-slate-400 text-[11px] uppercase tracking-wider border-b border-[var(--app-border-subtle)]">
                   <tr>
-                    <th className="py-2.5 px-3">Atleta</th>
-                    <th className="py-2.5 px-3">Clube Atual</th>
-                    <th className="py-2.5 px-2 text-center">Pos</th>
-                    <th className="py-2.5 px-2 text-center">Idade</th>
-                    <th className="py-2.5 px-3 text-center">Força</th>
-                    <th className="py-2.5 px-3 text-right">Valor Mercado</th>
-                    <th className="py-2.5 px-3 text-right">Preço Pedido</th>
+                    <SortableTh label="Atleta" sortKey="name" sort={searchSort} onSort={toggleSearchSort} className="py-2.5 px-3" justify="justify-start" />
+                    <SortableTh label="Clube Atual" sortKey="club" sort={searchSort} onSort={toggleSearchSort} className="py-2.5 px-3" justify="justify-start" />
+                    <SortableTh label="Pos" sortKey="position" sort={searchSort} onSort={toggleSearchSort} className="py-2.5 px-2 text-center" justify="justify-center" />
+                    <SortableTh label="Idade" sortKey="age" sort={searchSort} onSort={toggleSearchSort} className="py-2.5 px-2 text-center" justify="justify-center" />
+                    <SortableTh label="Força" sortKey="strength" sort={searchSort} onSort={toggleSearchSort} className="py-2.5 px-3 text-center" justify="justify-center" />
+                    <SortableTh label="Valor Mercado" sortKey="marketValue" sort={searchSort} onSort={toggleSearchSort} className="py-2.5 px-3 text-right" justify="justify-end" />
+                    <SortableTh label="Preço Pedido" sortKey="askingPrice" sort={searchSort} onSort={toggleSearchSort} className="py-2.5 px-3 text-right" justify="justify-end" />
                     <th className="py-2.5 px-3 text-center">Ação</th>
                   </tr>
                 </thead>
@@ -651,7 +793,7 @@ export const TransfersScreen: React.FC = () => {
                       </td>
                     </tr>
                   ) : (
-                    searchResults.map((item) => {
+                    sortedSearchResults.map((item) => {
                       const p = item.player;
                       const posStyle = POSITION_COLORS[p.position] || POSITION_COLORS.MEI;
                       const canAfford = userClub.balance >= item.askingPrice;
@@ -687,6 +829,7 @@ export const TransfersScreen: React.FC = () => {
                           <td className="py-2.5 px-3 text-center">
                             <button
                               disabled={isSquadFull}
+                              title={isSquadFull ? squadFullHint : undefined}
                               onClick={() => handleOpenBuy(item)}
                               style={!isSquadFull && canAfford ? { backgroundColor: clubTheme.primaryAccent, color: clubTheme.onPrimaryAccent } : undefined}
                               className={`px-3 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
@@ -697,7 +840,7 @@ export const TransfersScreen: React.FC = () => {
                                   : 'shadow hover:brightness-110 active:scale-95'
                               }`}
                             >
-                              Comprar
+                              {isSquadFull ? 'Elenco cheio' : 'Comprar'}
                             </button>
                           </td>
                         </tr>
@@ -869,18 +1012,18 @@ export const TransfersScreen: React.FC = () => {
               <table className="w-full text-left text-xs text-slate-300 min-w-[680px] md:min-w-0">
                 <thead className="bg-[var(--app-surface-2)] text-slate-400 text-[11px] uppercase tracking-wider border-b border-[var(--app-border-subtle)]">
                   <tr>
-                    <th className="py-2.5 px-3">Atleta</th>
-                    <th className="py-2.5 px-2 text-center">Pos</th>
-                    <th className="py-2.5 px-2 text-center">Idade</th>
-                    <th className="py-2.5 px-3 text-center">Força</th>
-                    <th className="py-2.5 px-3 text-right">Salário Atual</th>
-                    <th className="py-2.5 px-3 text-right">Valor Mercado</th>
-                    <th className="py-2.5 px-3 text-center">Contrato Restante</th>
+                    <SortableTh label="Atleta" sortKey="name" sort={contractSort} onSort={toggleContractSort} className="py-2.5 px-3" justify="justify-start" />
+                    <SortableTh label="Pos" sortKey="position" sort={contractSort} onSort={toggleContractSort} className="py-2.5 px-2 text-center" justify="justify-center" />
+                    <SortableTh label="Idade" sortKey="age" sort={contractSort} onSort={toggleContractSort} className="py-2.5 px-2 text-center" justify="justify-center" />
+                    <SortableTh label="Força" sortKey="strength" sort={contractSort} onSort={toggleContractSort} className="py-2.5 px-3 text-center" justify="justify-center" />
+                    <SortableTh label="Salário Atual" sortKey="salary" sort={contractSort} onSort={toggleContractSort} className="py-2.5 px-3 text-right" justify="justify-end" />
+                    <SortableTh label="Valor Mercado" sortKey="marketValue" sort={contractSort} onSort={toggleContractSort} className="py-2.5 px-3 text-right" justify="justify-end" />
+                    <SortableTh label="Contrato Restante" sortKey="contractYears" sort={contractSort} onSort={toggleContractSort} className="py-2.5 px-3 text-center" justify="justify-center" />
                     <th className="py-2.5 px-3 text-center">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#173022]">
-                  {userClub.squad.map((p) => {
+                  {sortedContractsSquad.map((p) => {
                     const posStyle = POSITION_COLORS[p.position] || POSITION_COLORS.MEI;
                     const years = p.contractYears ?? 3;
                     const isExpiring = years <= 1;
