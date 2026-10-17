@@ -1,0 +1,47 @@
+name: CI & PR Build Verification
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Test & Build Check
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+          cache-dependency-path: 'web/package-lock.json'
+
+      - name: Install Dependencies
+        run: npm --prefix web ci
+
+      - name: Run Tests
+        run: npm --prefix web test
+
+      - name: Run Build
+        run: npm --prefix web run build
+        env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
+
+      - name: Upload Build Artifact (PR Preview / Inspection)
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-dist-pr-${{ github.event.pull_request.number }}
+          path: web/dist
+          retention-days: 5
