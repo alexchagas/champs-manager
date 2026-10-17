@@ -20,6 +20,7 @@ import {
 import { NewsArticle, NewsCategory } from '../types';
 import { sound } from '../audio/soundEngine';
 import { getClubTheme } from '../theme/clubTheme';
+import { ClubCrest } from './ClubCrest';
 
 export const NewsFeed: React.FC = () => {
   const { gameState, userClub, markNewsAsRead, markAllNewsAsRead } = useGame();
@@ -269,10 +270,11 @@ export const NewsFeed: React.FC = () => {
                   {activeArticle.clubName && (
                     <div className="flex items-center space-x-2.5">
                       {activeArticle.clubCrest ? (
-                        <img
-                          src={activeArticle.clubCrest}
-                          alt={activeArticle.clubName}
-                          className="w-10 h-10 object-contain drop-shadow"
+                        <ClubCrest
+                          club={{ name: activeArticle.clubName, crestMiniUrl: activeArticle.clubCrest }}
+                          preferMini
+                          size="lg"
+                          className="w-10 h-10"
                         />
                       ) : (
                         <div className="w-9 h-9 rounded-full bg-[var(--app-surface-1)] border border-[var(--app-border-highlight)] flex items-center justify-center font-bold text-xs text-white">
@@ -291,10 +293,11 @@ export const NewsFeed: React.FC = () => {
                       <span className="font-serif font-black text-slate-500 text-sm">VS</span>
                       <div className="flex items-center space-x-2.5">
                         {activeArticle.secondaryClubCrest ? (
-                          <img
-                            src={activeArticle.secondaryClubCrest}
-                            alt={activeArticle.secondaryClubName}
-                            className="w-10 h-10 object-contain drop-shadow"
+                          <ClubCrest
+                            club={{ name: activeArticle.secondaryClubName, crestMiniUrl: activeArticle.secondaryClubCrest }}
+                            preferMini
+                            size="lg"
+                            className="w-10 h-10"
                           />
                         ) : (
                           <div className="w-9 h-9 rounded-full bg-slate-800 flex items-center justify-center font-bold text-xs text-white">
@@ -412,7 +415,7 @@ export const NewsFeed: React.FC = () => {
                       {art.clubName ? (
                         <div className="flex items-center space-x-1.5 font-medium" style={{ color: isUserClub ? clubTheme.primaryAccent : undefined }}>
                           {art.clubCrest && (
-                            <img src={art.clubCrest} alt="" className="w-3.5 h-3.5 object-contain" />
+                            <ClubCrest club={{ name: art.clubName, crestMiniUrl: art.clubCrest }} preferMini size="sm" className="w-3.5 h-3.5" />
                           )}
                           <span className={isUserClub ? 'font-bold' : 'text-slate-300'}>{art.clubName}</span>
                           {art.relatedPlayerName && (
