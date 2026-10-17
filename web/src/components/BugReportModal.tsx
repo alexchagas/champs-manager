@@ -137,7 +137,7 @@ export const BugReportModal: React.FC<BugReportModalProps> = ({
               )}
 
               <div>
-                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5 select-none">
                   Seu Nome ou Apelido (opcional)
                 </label>
                 <input
@@ -145,12 +145,12 @@ export const BugReportModal: React.FC<BugReportModalProps> = ({
                   value={authorName}
                   onChange={(e) => setAuthorName(e.target.value)}
                   placeholder="Ex: Treinador Alex"
-                  className="w-full px-3 py-2 bg-[#0c1511] border border-[#234234] focus:border-[#10b981] rounded-xl text-slate-100 text-sm placeholder:text-slate-600 outline-none"
+                  className="w-full px-3 py-2 bg-[#0c1511] border border-[#234234] focus:border-[#10b981] rounded-xl text-slate-100 text-base sm:text-sm placeholder:text-slate-600 outline-none select-text cursor-text"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5 select-none">
                   O que aconteceu? <span className="text-rose-400">*</span>
                 </label>
                 <textarea
@@ -161,7 +161,7 @@ export const BugReportModal: React.FC<BugReportModalProps> = ({
                     if (errorMessage) setErrorMessage('');
                   }}
                   placeholder="Descreva o que você estava fazendo e o que deu errado (ou deixe uma sugestão)..."
-                  className="w-full px-3 py-2 bg-[#0c1511] border border-[#234234] focus:border-[#10b981] rounded-xl text-slate-100 text-sm placeholder:text-slate-600 outline-none resize-none"
+                  className="w-full px-3 py-2 bg-[#0c1511] border border-[#234234] focus:border-[#10b981] rounded-xl text-slate-100 text-base sm:text-sm placeholder:text-slate-600 outline-none resize-none select-text cursor-text"
                 />
               </div>
 
