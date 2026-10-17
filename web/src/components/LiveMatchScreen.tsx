@@ -8,6 +8,7 @@ import {
   Play, 
   Pause, 
   FastForward, 
+  SkipForward,
   Volume2, 
   VolumeX, 
   ArrowLeft, 
@@ -99,6 +100,12 @@ export const LiveMatchScreen: React.FC = () => {
   const { gameState, dispatchMatch, completeRound, updateOptions, setScreen, matchError, viewedClubId } = useGame();
   const session = gameState.activeMatch;
   const seenEvents = useRef(session?.events.length ?? 0);
+  // "Simular até o fim": não reapresenta lances que já passaram (animações de pênalti, sons em cascata)
+  const skipPresentationRef = useRef(false);
+  const simulateToEnd = () => {
+    skipPresentationRef.current = true;
+    dispatchMatch({ type: 'fast_forward' });
+  };
   const pending = session?.pendingDecision;
   const finished = session?.phase === 'full_time' || session?.phase === 'committed';
 
@@ -233,6 +240,13 @@ export const LiveMatchScreen: React.FC = () => {
     const humanSide = session.humanSide ?? 0;
     const userTeamKind = humanSide === 1 ? 'away' : 'home';
     const newEvents = session.events.slice(seenEvents.current);
+
+    if (skipPresentationRef.current) {
+      skipPresentationRef.current = false;
+      if (newEvents.some(e => e.type === 'fulltime')) sound.playFullTimeWhistle();
+      seenEvents.current = session.events.length;
+      return;
+    }
 
     for (const event of newEvents) {
       if (event.type === 'goal') {
@@ -2138,10 +2152,23 @@ export const LiveMatchScreen: React.FC = () => {
             disabled={!!pending || session.phase === 'halftime'}
             onClick={() => dispatchMatch({ type: 'finish' })}
             className="min-h-[44px] px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer active:scale-95 shrink-0 flex items-center space-x-1"
-            title="Simular até o apito final ou próxima intervenção"
+            title="Simular até a próxima decisão ou o intervalo"
           >
             <FastForward className="w-4 h-4 text-emerald-400" />
             <span className="hidden sm:inline">Simular</span>
+          </button>
+        )}
+
+        {/* Simular até o fim: vai direto ao apito final (pênalti com batedor padrão, lesão com troca automática) */}
+        {!finished && (
+          <button
+            onClick={simulateToEnd}
+            className="min-h-[44px] px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-all cursor-pointer active:scale-95 shrink-0 flex items-center space-x-1"
+            title="Simular até o fim: vai direto ao resultado final, sem parar em pênaltis, lesões ou intervalo"
+            data-testid="simulate-to-end-btn"
+          >
+            <SkipForward className="w-4 h-4 text-emerald-400" />
+            <span className="hidden sm:inline">Simular até o fim</span>
           </button>
         )}
 

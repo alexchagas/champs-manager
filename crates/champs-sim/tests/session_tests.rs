@@ -564,3 +564,38 @@ fn unbalanced_match_anti_blowout_caps_unrealistic_goleadas() {
     }
     assert!(max_goals <= 8, "Placar discrepante detectado: {max_goals} gols!");
 }
+#[test]
+fn fast_forward_auto_substitutes_human_injury_and_reaches_final_whistle() {
+    // Time humano (lado 0): no elenco de teste o banco tem só GOL e ATA.
+    let mut s = game(true, true);
+    s.incident(0, 105, true).unwrap(); // 105 = MEI titular se lesiona
+    assert_eq!(s.pending_decision.as_ref().unwrap().kind, "injury");
+
+    s.command(MatchCommand::FastForward).unwrap();
+
+    assert!(s.is_finished(), "\"Simular até o fim\" chega ao apito final");
+    assert!(s.pending_decision.is_none());
+    let sub = s
+        .events
+        .iter()
+        .find(|e| e.event_type == "substitution" && e.team == "home" && e.scorer_id == Some(105))
+        .expect("lesionado é substituído automaticamente, sem ficar com 10");
+    let incoming = sub.incoming_id.unwrap();
+    assert_ne!(s.teams[0].player(incoming).position, "GOL", "reserva de linha entra no lugar do jogador de linha");
+}
+
+#[test]
+fn fast_forward_injured_goalkeeper_is_replaced_by_bench_goalkeeper() {
+    let mut s = game(true, true);
+    s.incident(0, 100, true).unwrap(); // goleiro titular se lesiona; 111 é o goleiro reserva
+
+    s.command(MatchCommand::FastForward).unwrap();
+
+    assert!(s.is_finished());
+    let sub = s
+        .events
+        .iter()
+        .find(|e| e.event_type == "substitution" && e.team == "home" && e.scorer_id == Some(100))
+        .expect("goleiro lesionado é substituído");
+    assert_eq!(sub.incoming_id, Some(111));
+}
