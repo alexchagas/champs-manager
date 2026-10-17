@@ -1,6 +1,7 @@
 import type { Club, StandingRow, OtherLeagueStandings, LeagueInfo } from '../types/index.ts';
-import { generateLeagueCalendar, initializeStandings, sortStandings } from '../data/calendarGenerator.ts';
+import { generateLeagueCalendar, initializeStandings, sortStandings, sortClubsByMeritocracy } from '../data/calendarGenerator.ts';
 import { getLeaguesByCountry, getClubsByLeague, getAllLeagues } from '../data/teamsDatabase.ts';
+import { getStateDivisionInfo } from '../data/stateLeagueFormulas.ts';
 
 // Países europeus / hemisfério norte com temporada cruzada (Agosto a Maio)
 export const CROSS_SEASON_COUNTRY_IDS = new Set([
@@ -131,6 +132,120 @@ export function preSimulateLeagueRounds(
   }
 
   return sortStandings(Array.from(standingsMap.values()));
+}
+
+/**
+ * Inicializa as outras divisões nacionais simultâneas do mesmo país do clube principal (ex: Séries B, C e D do Brasil)
+ */
+export function buildInitialNationalDivisions(
+  sourceClub: Club,
+  allAvailableClubs: Club[] = [],
+  seasonYear = 2026
+): OtherLeagueStandings[] {
+  const sourceCountryId = sourceClub.countryId || 29;
+  const sameCountryLeagues = getLeaguesByCountry(sourceCountryId);
+  const userDivision = sourceClub.division ?? 1;
+  const results: OtherLeagueStandings[] = [];
+
+  for (const sLeague of sameCountryLeagues) {
+    if (sLeague.division === userDivision) continue;
+    if (sLeague.division > 4) continue;
+
+    let sClubs = getClubsByLeague(sLeague);
+    if (sClubs.length < 4) {
+      sClubs = allAvailableClubs.filter((c) => c.countryId === sourceCountryId && c.division === sLeague.division);
+    }
+    if (sClubs.length < 2) continue;
+
+    const fieldClubs = sClubs.length > 20 ? sClubs.slice(0, 20) : sClubs;
+    const totalTeams = fieldClubs.length;
+    const totalRounds = (totalTeams - 1) * 2;
+
+    const standings = preSimulateLeagueRounds(
+      fieldClubs,
+      0,
+      1000 + sourceCountryId * 13 + sLeague.division * 7
+    );
+
+    const divLetter = sLeague.division === 1 ? 'A' : sLeague.division === 2 ? 'B' : sLeague.division === 3 ? 'C' : sLeague.division === 4 ? 'D' : '';
+    const canonicalName = sourceCountryId === 29 && divLetter
+      ? `Brasileirão Série ${divLetter}`
+      : `${sLeague.name} ${sLeague.divisionName}`;
+
+    results.push({
+      id: `league-${sourceCountryId}-div${sLeague.division}`,
+      countryId: sourceCountryId,
+      countryName: sourceClub.countryName || 'Brasil',
+      leagueName: canonicalName,
+      division: sLeague.division,
+      seasonLabel: `${seasonYear}`,
+      currentRound: 0,
+      totalRounds,
+      standings,
+    });
+  }
+
+  return results;
+}
+
+/**
+ * Constrói a 2ª Divisão Estadual de forma segura apenas onde restarem pelo menos 8 clubes reais
+ * após a seleção do elenco de elite do estadual.
+ * Não fabrica torneios nem clubes inexistentes.
+ */
+export function buildInitialStateDivisions(
+  sourceClub: Club,
+  allAvailableClubs: Club[] = [],
+  seasonYear = 2026
+): OtherLeagueStandings[] {
+  const sourceCountryId = sourceClub.countryId || 29;
+  if (sourceCountryId !== 29) return [];
+  const stateCode = sourceClub.stateCode;
+  if (!stateCode) return [];
+
+  const divInfo = getStateDivisionInfo(stateCode, allAvailableClubs);
+  if (!divInfo.hasSecondDivision || !divInfo.tier2) return [];
+
+  const sameState = (c: Club) => c.countryId === 29 && (
+    (sourceClub.stateId != null && c.stateId === sourceClub.stateId) ||
+    (sourceClub.stateCode != null && c.stateCode === sourceClub.stateCode)
+  );
+
+  const rawStateClubs = allAvailableClubs.filter(sameState);
+  const sortedStateClubs = sortClubsByMeritocracy(rawStateClubs);
+  const eliteCount = divInfo.eliteClubsCount;
+
+  // Os clubes de elite ocupam as primeiras vagas
+  const eliteClubs = sortedStateClubs.slice(0, eliteCount);
+  const eliteIds = new Set(eliteClubs.map((c) => c.id));
+  eliteIds.add(sourceClub.id);
+
+  // Clubes reais remanescentes no estado
+  const remainingClubs = sortedStateClubs.filter((c) => !eliteIds.has(c.id));
+  if (remainingClubs.length < 8) return [];
+
+  const targetSize = Math.min(remainingClubs.length, 16);
+  const fieldClubs = remainingClubs.slice(0, targetSize);
+  const totalTeams = fieldClubs.length;
+  const totalRounds = (totalTeams - 1) * 2;
+
+  const standings = preSimulateLeagueRounds(
+    fieldClubs,
+    0,
+    2000 + (sourceClub.stateId || 1) * 17
+  );
+
+  return [{
+    id: `state-${stateCode.toLowerCase()}-div2`,
+    countryId: 29,
+    countryName: 'Brasil',
+    leagueName: divInfo.tier2.leagueName,
+    division: 2,
+    seasonLabel: `${seasonYear}`,
+    currentRound: 0,
+    totalRounds,
+    standings,
+  }];
 }
 
 /**

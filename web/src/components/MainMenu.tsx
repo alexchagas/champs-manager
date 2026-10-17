@@ -1082,7 +1082,13 @@ export const MainMenu: React.FC = () => {
                           <MapPin className="w-3.5 h-3.5 text-emerald-400" />
                           <select
                             value={selectedStateCode}
-                            onChange={(e) => setSelectedStateCode(e.target.value)}
+                            onChange={(e) => {
+                              const code = e.target.value;
+                              setSelectedStateCode(code);
+                              if (code !== 'all') {
+                                setSelectedDivision('all');
+                              }
+                            }}
                             className="bg-[#12231a] border border-[#1e3c2d] text-slate-300 text-xs px-2 py-1.5 rounded cursor-pointer focus:outline-none focus:border-emerald-500 font-semibold"
                           >
                             <option value="all">Filtrar por Estado (Todos)</option>

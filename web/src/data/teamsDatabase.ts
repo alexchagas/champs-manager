@@ -186,23 +186,32 @@ export function getCompetitionClubs(selectedClubId: number, customPool?: Club[])
       ? league.clubIds.map((id) => customPool.find((c) => c.id === id) || clubsById.get(id)!).filter(Boolean)
       : getClubsByLeague(league);
 
+    let isSerieDGroup = false;
     // If it's Série D (64 clubs), take the 8-team subgroup containing the chosen club
     if (allLeagueClubs.length > 24) {
+      isSerieDGroup = true;
       const idx = allLeagueClubs.findIndex((c) => c.id === selectedClub.id);
       const groupSize = 8;
       const groupIndex = idx >= 0 ? Math.floor(idx / groupSize) : 0;
       const start = groupIndex * groupSize;
       competitionClubs = allLeagueClubs.slice(start, start + groupSize);
-      leagueName = `Brasileirão Série D • Grupo ${groupIndex + 1}`;
+      leagueName = 'Brasileirão Série D';
       divisionName = `Série D (Grupo ${groupIndex + 1})`;
     } else {
       competitionClubs = allLeagueClubs;
     }
   }
 
+  // Canonicalize Brazilian national competition name
+  if ((selectedClub.countryId || 29) === 29) {
+    leagueName = getCanonicalNationalLeagueName(selectedClub);
+  }
+
   // If division has fewer than 16 clubs (e.g. access pool, incomplete division like Spain Div 7 or England Div 7):
   // Supplement with peers of similar level/reputation from that same country to build a viable competitive tournament group
-  if (competitionClubs.length < 16) {
+  // (Do NOT pad official 8-club regional groups from Série D with unrelated access clubs)
+  const isSerieD = divisionName.includes('Série D') || (selectedClub.division === 4 && selectedClub.countryId === 29);
+  if (!isSerieD && competitionClubs.length < 16) {
     const pool = customPool || database.clubs;
     const sameCountry = pool.filter((c) => c.countryId === (selectedClub.countryId || 29));
     
@@ -245,4 +254,24 @@ export function getCompetitionClubs(selectedClubId: number, customPool?: Club[])
     divisionName,
     countryName,
   };
+}
+
+export function getCanonicalNationalLeagueName(club: {
+  countryId?: number;
+  division?: number;
+  leagueName?: string;
+  divisionName?: string;
+}): string {
+  const isBrazil = (club.countryId ?? 29) === 29;
+  if (isBrazil) {
+    const div = club.division;
+    const letter = div === 1 ? 'A' : div === 2 ? 'B' : div === 3 ? 'C' : div === 4 ? 'D' : '';
+    if (letter) return `Brasileirão Série ${letter}`;
+    if (club.divisionName && /^Série [ABCD]/i.test(club.divisionName)) {
+      const match = club.divisionName.match(/Série ([ABCD])/i);
+      if (match) return `Brasileirão Série ${match[1].toUpperCase()}`;
+    }
+    return 'Brasileirão Série A';
+  }
+  return club.leagueName || 'Campeonato Nacional';
 }

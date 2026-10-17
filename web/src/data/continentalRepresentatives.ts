@@ -73,10 +73,16 @@ export type ContinentalCompetitionType =
   | 'concacaf'
   | 'mundial';
 
+export interface ContinentalTournamentOptions {
+  userParticipates?: boolean;
+  forceUserParticipation?: boolean;
+}
+
 export interface ContinentalTournamentInfo {
   type: ContinentalCompetitionType;
   name: string;
   clubs: Club[];
+  userParticipates: boolean;
 }
 
 /**
@@ -85,7 +91,8 @@ export interface ContinentalTournamentInfo {
 export function getContinentalTournamentField(
   userClub: Club,
   availableClubs?: Club[],
-  activeCountryIds?: number[]
+  activeCountryIds?: number[],
+  options?: ContinentalTournamentOptions
 ): ContinentalTournamentInfo {
   const userCountryId = userClub.countryId ?? 29;
   const allClubs = getAllClubs();
@@ -107,17 +114,19 @@ export function getContinentalTournamentField(
   const isEurope = EUROPE_COUNTRY_IDS.has(userCountryId);
   const isConcacaf = CONCACAF_COUNTRY_IDS.has(userCountryId);
 
+  // Lower division clubs (e.g. Portuguesa in Série D) must not participate without qualification
+  const isLowerDivision = (userClub.division ?? 1) > 1;
+  const userParticipates = options?.forceUserParticipation ?? (options?.userParticipates ?? !isLowerDivision);
+
   let type: ContinentalCompetitionType = 'libertadores';
   let name = 'Copa Libertadores';
 
   if (isSouthAmerica) {
-    const isElite = (userClub.reputation ?? 3) >= 3 || (userClub.division ?? 1) <= 1;
-    type = isElite ? 'libertadores' : 'sulamericana';
-    name = isElite ? 'Copa Libertadores' : 'Copa Sul-Americana';
+    type = 'libertadores';
+    name = 'Copa Libertadores';
   } else if (isEurope) {
-    const isElite = (userClub.reputation ?? 3) >= 4 || (userClub.division ?? 1) <= 1;
-    type = isElite ? 'champions' : 'europa_league';
-    name = isElite ? 'UEFA Champions League' : 'UEFA Europa League';
+    type = 'champions';
+    name = 'UEFA Champions League';
   } else if (isConcacaf) {
     type = 'concacaf';
     name = 'CONCACAF Champions Cup';
@@ -148,9 +157,11 @@ export function getContinentalTournamentField(
 
   // Balanced continental selection:
   // We want representation from multiple countries of the continent!
-  const selected: Club[] = [userClub];
+  const selected: Club[] = userParticipates ? [userClub] : [];
   const countPerCountry = new Map<number, number>();
-  countPerCountry.set(userCountryId, 1);
+  if (userParticipates) {
+    countPerCountry.set(userCountryId, 1);
+  }
 
   // Maximum allowed clubs from user's own country in the 16-club field (e.g. max 5 from Brazil or Spain)
   const maxOwnCountry = 5;
@@ -201,5 +212,6 @@ export function getContinentalTournamentField(
     type,
     name,
     clubs: selected.slice(0, 16),
+    userParticipates,
   };
 }
