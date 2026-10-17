@@ -27,7 +27,7 @@ import {
 } from '../engine/careerEconomy';
 import { applySavedClubEdits } from '../data/editorPersistence';
 import { sortStandings, generateTwoSemesterCalendar, initializeStandings } from '../data/calendarGenerator';
-import { advanceOtherLeaguesProgress, buildInitialActiveOtherLeagues, buildInitialNationalDivisions } from '../engine/crossSeasonSimulation';
+import { advanceOtherLeaguesProgress, buildInitialActiveOtherLeagues, buildInitialNationalDivisions, buildInitialStateDivisions } from '../engine/crossSeasonSimulation';
 import { sound } from '../audio/soundEngine';
 import { 
   commandMatchWasm,
@@ -54,6 +54,7 @@ import {
   createChampionshipNews,
 } from '../engine/newsEngine';
 import { detectNewlyCompletedCompetitions, isSeasonComplete } from '../engine/tournamentCompletion';
+import { resolvePendingFixtures } from '../engine/qualification';
 import { withInitialLineup } from '../engine/initialLineup';
 import {
   initializeNationalTeams,
@@ -942,6 +943,12 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       nextYear
     );
 
+    const nextStateDivisions = buildInitialStateDivisions(
+      club,
+      updatedClubs,
+      nextYear
+    );
+
     const nextSeasonState: GameState = {
       ...rolled,
       clubs: updatedClubs,
@@ -957,6 +964,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         initializeStandings(next.continentalClubs, (_c, idx) => 'ABCD'[Math.floor(idx / 4)] || 'A')
       ),
       nationalDivisions: nextNationalDivisions,
+      stateDivisions: nextStateDivisions,
       otherLeagues: nextOtherLeagues,
       stateChampionshipName: next.estadualName,
       nationalLeagueName: next.nacionalName,
@@ -1002,6 +1010,15 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         )
       : gameState.nationalDivisions;
 
+    const updatedStateDivisions = gameState.stateDivisions && gameState.stateDivisions.length > 0
+      ? advanceOtherLeaguesProgress(
+          gameState.stateDivisions,
+          progressRatio,
+          gameState.clubs,
+          true
+        )
+      : gameState.stateDivisions;
+
     const updatedOtherLeagues = gameState.otherLeagues && gameState.otherLeagues.length > 0
       ? advanceOtherLeaguesProgress(
           gameState.otherLeagues,
@@ -1026,6 +1043,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           currentSemester, 
           standings, 
           nationalDivisions: updatedNationalDivisions,
+          stateDivisions: updatedStateDivisions,
           otherLeagues: updatedOtherLeagues,
           activeScreen: 'overview' 
         }));
@@ -1045,6 +1063,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         currentSemester,
         standings,
         nationalDivisions: updatedNationalDivisions,
+        stateDivisions: updatedStateDivisions,
         otherLeagues: updatedOtherLeagues,
         activeScreen: 'overview',
       });
