@@ -27,8 +27,7 @@ import {
 } from '../engine/careerEconomy';
 import { applySavedClubEdits } from '../data/editorPersistence';
 import { sortStandings, generateTwoSemesterCalendar, initializeStandings } from '../data/calendarGenerator';
-import { resolvePendingFixtures } from '../engine/qualification';
-import { advanceOtherLeaguesProgress, buildInitialActiveOtherLeagues } from '../engine/crossSeasonSimulation';
+import { advanceOtherLeaguesProgress, buildInitialActiveOtherLeagues, buildInitialNationalDivisions, buildInitialStateDivisions } from '../engine/crossSeasonSimulation';
 import { sound } from '../audio/soundEngine';
 import { 
   commandMatchWasm,
@@ -55,6 +54,7 @@ import {
   createChampionshipNews,
 } from '../engine/newsEngine';
 import { detectNewlyCompletedCompetitions, isSeasonComplete } from '../engine/tournamentCompletion';
+import { resolvePendingFixtures } from '../engine/qualification';
 import { withInitialLineup } from '../engine/initialLineup';
 import {
   initializeNationalTeams,
@@ -930,9 +930,21 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const nationalTeamOffers = isWorldCupYear(nextYear) ? getAvailableNationalTeamOffers(human, nextYear, nationalTeams) : undefined;
     const { callups, newsArticles: callupNews } = isWorldCupYear(nextYear) ? evaluateUserSquadCallups(club, nextYear, nationalTeams) : { callups: [], newsArticles: [] };
 
+    const nextNationalDivisions = buildInitialNationalDivisions(
+      club,
+      updatedClubs,
+      nextYear
+    );
+
     const nextOtherLeagues = buildInitialActiveOtherLeagues(
       club,
       gameState.activeCountryIds || [],
+      updatedClubs,
+      nextYear
+    );
+
+    const nextStateDivisions = buildInitialStateDivisions(
+      club,
       updatedClubs,
       nextYear
     );
@@ -951,6 +963,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       standingsContinental: sortStandings(
         initializeStandings(next.continentalClubs, (_c, idx) => 'ABCD'[Math.floor(idx / 4)] || 'A')
       ),
+      nationalDivisions: nextNationalDivisions,
+      stateDivisions: nextStateDivisions,
       otherLeagues: nextOtherLeagues,
       stateChampionshipName: next.estadualName,
       nationalLeagueName: next.nacionalName,
@@ -987,6 +1001,24 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const currentLastSlot = Math.max(...gameState.calendar.map(f => f.fixtureDateIndex ?? f.round));
     const targetRoundNum = gameState.currentRound + 1;
     const progressRatio = Math.min(1.0, targetRoundNum / Math.max(1, currentLastSlot));
+    const updatedNationalDivisions = gameState.nationalDivisions && gameState.nationalDivisions.length > 0
+      ? advanceOtherLeaguesProgress(
+          gameState.nationalDivisions,
+          progressRatio,
+          gameState.clubs,
+          (gameState.clubs.find(c => c.id === gameState.userClubId)?.countryId || 29) === 29
+        )
+      : gameState.nationalDivisions;
+
+    const updatedStateDivisions = gameState.stateDivisions && gameState.stateDivisions.length > 0
+      ? advanceOtherLeaguesProgress(
+          gameState.stateDivisions,
+          progressRatio,
+          gameState.clubs,
+          true
+        )
+      : gameState.stateDivisions;
+
     const updatedOtherLeagues = gameState.otherLeagues && gameState.otherLeagues.length > 0
       ? advanceOtherLeaguesProgress(
           gameState.otherLeagues,
@@ -1010,6 +1042,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           activeMatchFixtureId: undefined, 
           currentSemester, 
           standings, 
+          nationalDivisions: updatedNationalDivisions,
+          stateDivisions: updatedStateDivisions,
           otherLeagues: updatedOtherLeagues,
           activeScreen: 'overview' 
         }));
@@ -1028,6 +1062,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         currentRound: nextRound,
         currentSemester,
         standings,
+        nationalDivisions: updatedNationalDivisions,
+        stateDivisions: updatedStateDivisions,
         otherLeagues: updatedOtherLeagues,
         activeScreen: 'overview',
       });
