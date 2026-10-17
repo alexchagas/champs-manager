@@ -253,15 +253,27 @@ export function generateTwoSemesterCalendar(
   const nationalRounds = nationalRaw.length ? Math.max(...nationalRaw.map(f => f.round)) : 0;
   for (let r = 1; r <= nationalRounds; r++) addRound(nationalRaw, r, nationalStart + r - 1, 'nacional', nacionalName, `Rodada ${r}`);
 
-  // Continental matches are generated for the 16 eligible clubs
-  if (continentalClubs.length === 16) {
+  if (continentalClubs.length >= 4) {
     const continentalType = continentalInfo.type === 'sulamericana' ? 'sulamericana' : continentalInfo.type === 'libertadores' ? 'libertadores' : 'champions';
-    for (let group = 0; group < 4; group++) {
-      const raw = generateLeagueCalendar(continentalClubs.slice(group * 4, group * 4 + 4));
-      for (let r = 1; r <= 6; r++) addRound(raw, r, nationalStart + r * 2, continentalType, continentalName,
-        `Grupo ${'ABCD'[group]} • Rodada ${r}`, 3);
+    const groupCount = Math.max(1, Math.ceil(continentalClubs.length / 4));
+    const groupLabels = Array.from({ length: groupCount }, (_, index) => {
+      let label = '';
+      let value = index;
+      do { label = String.fromCharCode(65 + (value % 26)) + label; value = Math.floor(value / 26) - 1; } while (value >= 0);
+      return label;
+    });
+    const groups = groupLabels.map((label, index) => ({ label, clubs: continentalClubs.slice(index * 4, (index + 1) * 4) })).filter(group => group.clubs.length >= 2);
+    for (const [groupIndex, group] of groups.entries()) {
+      const raw = generateLeagueCalendar(group.clubs);
+      const rounds = Math.max(...raw.map(f => f.round), 0);
+      for (let r = 1; r <= rounds; r++) addRound(raw, r, nationalStart + r * 2, continentalType, continentalName,
+        `Grupo ${groupLabels[groupIndex]} • Rodada ${r}`, 3);
     }
+    const knockoutRounds = Math.max(0, Math.floor(groups.length / 2));
     for (const [stage, firstRound, ties] of [['Quartas de Final', 7, 4], ['Semifinal', 9, 2], ['Final', 11, 1]] as const) {
+      if (stage === 'Quartas de Final' && knockoutRounds < 4) continue;
+      if (stage === 'Semifinal' && knockoutRounds < 2) continue;
+      if (stage === 'Final' && knockoutRounds < 1) continue;
       for (let leg = 1; leg <= 2; leg++) for (let tie = 0; tie < ties; tie++) reserve(continentalType, continentalName,
         firstRound + leg - 1, nationalStart + (firstRound + leg - 1) * 2,
         `${stage} (${leg === 1 ? 'Ida' : 'Volta'})`, stage, 'quarta', leg as 1 | 2);

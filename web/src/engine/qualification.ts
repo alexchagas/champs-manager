@@ -2,7 +2,7 @@ import type { GameState, MatchFixture, StandingRow } from '../types/index.ts';
 
 const byId = (a: MatchFixture, b: MatchFixture) => a.id - b.id;
 const ranking = (a: StandingRow, b: StandingRow) =>
-  b.points - a.points || b.won - a.won || b.goalDiff - a.goalDiff || b.goalsFor - a.goalsFor || a.clubId - b.clubId;
+  b.points - a.points || b.won - a.won || b.goalDiff - a.goalDiff ||  b.goalsFor - a.goalsFor || a.clubId - b.clubId;
 
 function winner(fixture: MatchFixture): number {
   if ((fixture.homeScore ?? 0) !== (fixture.awayScore ?? 0)) {
@@ -106,19 +106,21 @@ export function resolvePendingFixtures(state: GameState): GameState {
 
   const continental = calendar.filter(f => ['libertadores', 'sulamericana', 'champions'].includes(f.competitionType || ''));
   const quartersFirst = continental.filter(f => f.stage === 'Quartas de Final' && f.leg === 1).sort(byId);
-  if (quartersFirst.length === 4 && quartersFirst.every(f => f.pendingQualification)) {
-    const groups = 'ABCD'.split('').map(letter => continental.filter(f => f.competitionRound?.startsWith(`Grupo ${letter} •`)));
-    if (groups.every(group => group.length === 12 && group.every(f => f.played))) {
+  if (quartersFirst.length >= 2 && quartersFirst.every(f => f.pendingQualification)) {
+    const groupLabels = [...new Set(continental.map(f => f.competitionRound?.match(/^Grupo ([A-Z]+) •/)?.[1]).filter(Boolean))] as string[];
+    const groups = groupLabels.map(letter => continental.filter(f => f.competitionRound?.startsWith(`Grupo ${letter} •`)));
+    if (groups.length >= 2 && groups.every(group => group.length > 0 && group.every(f => f.played))) {
       const standings = new Map((state.standingsContinental || []).map(row => [row.clubId, row]));
       const qualified = groups.map(group => {
         const ids = [...new Set(group.flatMap(f => [f.homeClubId, f.awayClubId]))];
         return ids.map(id => standings.get(id)!).filter(Boolean).sort(ranking).slice(0, 2).map(row => row.clubId);
       });
-      if (qualified.every(group => group.length === 2)) {
-        const pairs: [number, number][] = [
-          [qualified[0][0], qualified[1][1]], [qualified[1][0], qualified[0][1]],
-          [qualified[2][0], qualified[3][1]], [qualified[3][0], qualified[2][1]],
-        ];
+      if (qualified.length >= 2 && qualified.every(group => group.length === 2)) {
+        const pairs: [number, number][] = [];
+        for (let i = 0; i + 1 < qualified.length; i += 2) {
+          pairs.push([qualified[i][0], qualified[i + 1][1]], [qualified[i + 1][0], qualified[i][1]]);
+        }
+        if (pairs.length !== quartersFirst.length) return calendar === state.calendar ? state : { ...state, calendar };
         updatePairs(quartersFirst, pairs);
         updatePairs(continental.filter(f => f.stage === 'Quartas de Final' && f.leg === 2).sort(byId),
           pairs.map(([home, away]) => [away, home]));

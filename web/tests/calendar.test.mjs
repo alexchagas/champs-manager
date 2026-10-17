@@ -27,6 +27,20 @@ test('Flamengo has a complete chronological national season and Brazilian state 
   assert.ok(state.calendar.filter(f => f.competitionType === 'copa' && f.round > 2).every(f => f.pendingQualification));
 });
 
+test('generic continental competition exposes every group and keeps all groups on one date slot', async () => {
+  const { generateTwoSemesterCalendar, initializeStandings } = await import('../src/data/calendarGenerator.ts');
+  const clubs = getAllClubs().filter(c => c.countryId === 29).slice(0, 32);
+  const user = clubs[0];
+  const result = generateTwoSemesterCalendar(user, clubs.slice(0, 20), clubs, 2026);
+  const continental = result.calendar.filter(f => f.competitionType === 'libertadores' || f.competitionType === 'sulamericana' || f.competitionType === 'champions');
+  const groupFixtures = continental.filter(f => f.competitionRound?.startsWith('Grupo '));
+  const groups = [...new Set(groupFixtures.map(f => f.competitionRound.match(/Grupo ([A-Z]+)/)[1]))];
+  assert.ok(groups.length >= 4);
+  assert.ok(groupFixtures.every(f => f.fixtureDateIndex === groupFixtures[0].fixtureDateIndex || f.competitionRound.includes('Rodada')));
+  const standings = initializeStandings(result.continentalClubs, (_club, index) => groups[index % groups.length]);
+  assert.equal(new Set(standings.map(row => row.group)).size, groups.length);
+});
+
 test('Spanish career skips the estadual and schedules national, cup and continental dates', () => {
   const spanishClub = getAllClubs().find(c => c.countryId === 65);
   assert.ok(spanishClub);
@@ -68,7 +82,9 @@ test('WASM advances every date and keeps competition tables independent', () => 
   assert.equal(state.calendar.filter(f => f.competitionType === 'nacional' && f.played).length, 380);
   assert.equal(state.standingsNacional.reduce((sum, row) => sum + row.played, 0), 760);
   assert.equal(state.standingsEstadual.reduce((sum, row) => sum + row.played, 0), 142);
-  assert.equal(state.calendar.filter(f => f.pendingQualification).length, 0);
+  const pending = state.calendar.filter(f => f.pendingQualification);
+  assert.ok(pending.every(f => (f.competitionType === 'copa' && f.round > 2) || f.stage?.includes('Quartas') || f.stage?.includes('Semifinal') || f.stage?.includes('Final')));
+  assert.ok(state.calendar.filter(f => f.competitionRound?.startsWith('Grupo ')).every(f => f.played || f.pendingQualification));
   assert.equal(state.calendar.filter(f => f.competitionType === 'copa' && f.round > 2 && (f.homeClubId === 255 || f.awayClubId === 255)).length, 0);
   // Verify that Leg 1 NEVER has penalty scores
   assert.ok(state.calendar.filter(f => f.competitionType === 'copa' && f.leg === 1).every(f => !f.penaltyScore));

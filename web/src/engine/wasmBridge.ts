@@ -37,8 +37,12 @@ function mergeCareerState(current: GameState, parsed: GameState): GameState {
       const existingGroup = current.standingsContinental?.find(c => c.clubId === row.clubId)?.group;
       if (existingGroup) return { ...row, group: existingGroup };
       const fix = current.calendar?.find(f => (f.homeClubId === row.clubId || f.awayClubId === row.clubId) && f.competitionRound?.startsWith('Grupo '));
-      const g = fix?.competitionRound?.match(/Grupo ([A-Z])/)?.[1];
+      const g = fix?.competitionRound?.match(/Grupo ([A-Z]+)(?:\s|$)/)?.[1];
       return g ? { ...row, group: g } : row;
+    }),
+    calendar: parsed.calendar.map(fixture => {
+      const existing = current.calendar.find(item => item.id === fixture.id);
+      return existing?.competitionRound && !fixture.competitionRound ? { ...fixture, competitionRound: existing.competitionRound } : fixture;
     }),
     stateChampionshipName: current.stateChampionshipName,
     nationalLeagueName: current.nationalLeagueName,

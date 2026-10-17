@@ -344,7 +344,7 @@ export const RoundResultsScreen: React.FC = () => {
             ? standingsList.map(row => {
                 if (row.group) return row;
                 const fix = gameState.calendar.find(f => (f.homeClubId === row.clubId || f.awayClubId === row.clubId) && f.competitionRound?.startsWith('Grupo '));
-                const g = fix?.competitionRound?.match(/Grupo ([A-Z])/)?.[1];
+                const g = fix?.competitionRound?.match(/Grupo ([A-Z]+)(?:\s|$)/)?.[1];
                 return g ? { ...row, group: g } : row;
               })
             : standingsList;
@@ -358,7 +358,7 @@ export const RoundResultsScreen: React.FC = () => {
 
           const competitionZones = getCompetitionZones({
             competitionType: currentCompetition || (isEstadual ? 'estadual' : isContinental ? 'libertadores' : 'nacional'),
-            totalTeams: isContinental ? 4 : standingsList.length,
+            totalTeams: isContinental ? Math.max(4, standingsList.filter(row => row.group === (continentalGroups[0] || row.group)).length) : standingsList.length,
             division: userClub.division ?? 1,
             countryId: userClub.countryId ?? 29,
             stateCode: userClub.stateCode,

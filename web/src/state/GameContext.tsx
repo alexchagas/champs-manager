@@ -27,7 +27,9 @@ import {
 } from '../engine/careerEconomy';
 import { applySavedClubEdits } from '../data/editorPersistence';
 import { sortStandings, generateTwoSemesterCalendar, initializeStandings } from '../data/calendarGenerator';
+import { resolvePendingFixtures } from '../engine/qualification';
 import { advanceOtherLeaguesProgress, buildInitialActiveOtherLeagues, buildInitialNationalDivisions, buildInitialStateDivisions } from '../engine/crossSeasonSimulation';
+import { simulateMatchWasm } from '../engine/wasmBridge';
 import { sound } from '../audio/soundEngine';
 import { 
   commandMatchWasm,
@@ -763,6 +765,20 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) { setMatchError(String(error instanceof Error ? error.message : error)); }
   };
 
+  function simulateBackgroundCompetitionFixtures(state: GameState): GameState {
+    const slot = state.currentRound;
+    let calendar = state.calendar;
+    for (const fixture of calendar.filter(f => (f.fixtureDateIndex ?? f.round) === slot && !f.played && !f.pendingQualification && f.competitionType && f.competitionType !== 'copa' && f.competitionType !== 'estadual' && f.competitionType !== 'nacional')) {
+      const home = state.clubs.find(c => c.id === fixture.homeClubId);
+      const away = state.clubs.find(c => c.id === fixture.awayClubId);
+      if (!home || !away) continue;
+      const result = simulateMatchWasm(home, away, fixture.id + slot);
+      if (!result) continue;
+      calendar = calendar.map(f => f.id === fixture.id ? { ...f, played: true, homeScore: result.homeScore, awayScore: result.awayScore, events: result.events } : f);
+    }
+    return calendar === state.calendar ? state : { ...state, calendar };
+  }
+
   const acceptManagerJob = (clubId: number) => { if (!matchInProgress()) setGameState(prev => appointHuman(prev, clubId)); };
 
   const acceptNationalTeamOffer = (offerId: number) => {
@@ -961,7 +977,10 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       standingsEstadual: sortStandings(initializeStandings(next.semester1Clubs)),
       standingsNacional: sortStandings(initializeStandings(next.semester2Clubs)),
       standingsContinental: sortStandings(
-        initializeStandings(next.continentalClubs, (_c, idx) => 'ABCD'[Math.floor(idx / 4)] || 'A')
+        initializeStandings(next.continentalClubs, (_c, idx) => {
+          const groupIndex = Math.floor(idx / 4);
+          return String.fromCharCode(65 + groupIndex);
+        })
       ),
       nationalDivisions: nextNationalDivisions,
       stateDivisions: nextStateDivisions,
@@ -1036,8 +1055,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const currentSemester = nextCompetition === 'estadual' ? 1 : 2;
         const standings = nextCompetition === 'estadual' ? wasmUpdated.standingsEstadual || wasmUpdated.standings :
           nextCompetition === 'nacional' ? wasmUpdated.standingsNacional || wasmUpdated.standings : wasmUpdated.standings;
+        const synchronized = simulateBackgroundCompetitionFixtures({ ...wasmUpdated, otherLeagues: updatedOtherLeagues });
         setGameState(runAiMarket({ 
-          ...wasmUpdated, 
+          ...synchronized,
           activeMatch: undefined, 
           activeMatchFixtureId: undefined, 
           currentSemester, 
@@ -1056,7 +1076,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const currentSemester = nextCompetition === 'estadual' ? 1 : 2;
       const standings = nextCompetition === 'estadual' ? prev.standingsEstadual || prev.standings :
         nextCompetition === 'nacional' ? prev.standingsNacional || prev.standings : prev.standings;
-      return runAiMarket({
+      return runAiMarket(simulateBackgroundCompetitionFixtures({
         ...prev,
         activeMatch: undefined, activeMatchFixtureId: undefined,
         currentRound: nextRound,
@@ -1066,7 +1086,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         stateDivisions: updatedStateDivisions,
         otherLeagues: updatedOtherLeagues,
         activeScreen: 'overview',
-      });
+      }));
     });
   };
 

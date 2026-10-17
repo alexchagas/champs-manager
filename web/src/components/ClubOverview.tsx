@@ -204,7 +204,7 @@ export const ClubOverview: React.FC = () => {
       if (row.group) set.add(row.group);
       else {
         const fix = gameState.calendar.find(f => (f.homeClubId === row.clubId || f.awayClubId === row.clubId) && f.competitionRound?.startsWith('Grupo '));
-        const g = fix?.competitionRound?.match(/Grupo ([A-Z])/)?.[1];
+        const g = fix?.competitionRound?.match(/Grupo ([A-Z]+)(?:\s|$)/)?.[1];
         if (g) set.add(g);
       }
     }
@@ -216,7 +216,7 @@ export const ClubOverview: React.FC = () => {
     return standingsList.map(row => {
       if (row.group) return row;
       const fix = gameState.calendar.find(f => (f.homeClubId === row.clubId || f.awayClubId === row.clubId) && f.competitionRound?.startsWith('Grupo '));
-      const g = fix?.competitionRound?.match(/Grupo ([A-Z])/)?.[1];
+      const g = fix?.competitionRound?.match(/Grupo ([A-Z]+)(?:\s|$)/)?.[1];
       return g ? { ...row, group: g } : row;
     });
   }, [tableIsContinental, standingsList, gameState.calendar]);
@@ -225,7 +225,7 @@ export const ClubOverview: React.FC = () => {
   const roundCalendarGroups = useMemo(() => {
     const set = new Set<string>();
     for (const fix of roundFixtures) {
-      const match = fix.competitionRound?.match(/Grupo ([A-Z])/i);
+      const match = fix.competitionRound?.match(/Grupo ([A-Z]+)/i);
       if (match?.[1]) set.add(match[1].toUpperCase());
     }
     return Array.from(set).sort();
@@ -276,7 +276,7 @@ export const ClubOverview: React.FC = () => {
     }
     return getCompetitionZones({
       competitionType: activeCompetitionTab || (tableIsEstadual ? 'estadual' : tableIsContinental ? 'libertadores' : 'nacional'),
-      totalTeams: tableIsContinental ? 4 : standingsList.length,
+      totalTeams: tableIsContinental ? Math.max(4, standingsList.filter(row => row.group === (continentalGroups[0] || row.group)).length) : standingsList.length,
       division: userClub.division ?? 1,
       countryId: userClub.countryId ?? 29,
       stateCode: userClub.stateCode,
@@ -1187,7 +1187,7 @@ export const ClubOverview: React.FC = () => {
               const away = gameState.clubs.find((c) => c.id === fix.awayClubId) || getAllClubs().find(c => c.id === fix.awayClubId);
               if (!home || !away) return null;
               const isUserMatch = home.id === userClub.id || away.id === userClub.id;
-              const groupMatch = fix.competitionRound?.match(/Grupo ([A-Z])/i)?.[1];
+              const groupMatch = fix.competitionRound?.match(/Grupo ([A-Z]+)/i)?.[1];
 
               return (
                 <div

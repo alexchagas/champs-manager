@@ -237,8 +237,15 @@ export function createNewGame(
   const calendar = twoSemesterData.calendar;
   const standingsEstadual = sortStandings(initializeStandings(twoSemesterData.semester1Clubs));
   const standingsNacional = sortStandings(initializeStandings(twoSemesterData.semester2Clubs));
+  const continentalGroupCount = Math.max(1, Math.ceil(twoSemesterData.continentalClubs.length / 4));
   const standingsContinental = sortStandings(
-    initializeStandings(twoSemesterData.continentalClubs, (_c, idx) => 'ABCD'[Math.floor(idx / 4)] || 'A')
+    initializeStandings(twoSemesterData.continentalClubs, (_c, idx) => {
+      const groupIndex = Math.floor(idx / 4);
+      let label = '';
+      let value = groupIndex;
+      do { label = String.fromCharCode(65 + (value % 26)) + label; value = Math.floor(value / 26) - 1; } while (value >= 0);
+      return groupIndex < continentalGroupCount ? label : undefined;
+    })
   );
   const standings = twoSemesterData.semester1Clubs.length ? standingsEstadual : standingsNacional;
 
