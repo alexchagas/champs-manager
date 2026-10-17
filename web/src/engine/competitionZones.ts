@@ -67,13 +67,13 @@ export function getCompetitionZones(params: CompetitionZoneParams): CompetitionZ
   if (competitionType === 'estadual') {
     const zones: CompetitionZone[] = [];
 
-    // Playoff spots (default: 4 for Semifinals)
-    const playoffSpots = totalTeams >= 4 ? 4 : Math.min(2, totalTeams);
+    // Playoff spots: 2 per group when grouped in 4-team groups (e.g. Paulistão), 4 for single-table Semifinals
+    const playoffSpots = totalTeams >= 6 ? 4 : Math.min(2, totalTeams);
     if (playoffSpots > 0) {
       zones.push({
         minPos: 1,
         maxPos: playoffSpots,
-        label: playoffSpots >= 4 ? 'Semifinais' : 'Final',
+        label: totalTeams === 4 ? 'Quartas de Final' : playoffSpots >= 4 ? 'Semifinais' : 'Final',
         colorClass: 'text-emerald-400 font-bold',
         bgHoverClass: 'hover:bg-emerald-950/20',
         dotColor: 'bg-emerald-400',
@@ -86,7 +86,9 @@ export function getCompetitionZones(params: CompetitionZoneParams): CompetitionZ
     // 3. Fallback: if totalClubsInState is provided, relegation exists only if totalClubsInState > totalTeams
     // 4. Fallback default: standard 12-team state leagues have 2 relegated, smaller single-flight states (<=8) do not
     let hasRelegation = false;
-    if (stateDivisions !== undefined) {
+    if (totalTeams <= 4) {
+      hasRelegation = false;
+    } else if (stateDivisions !== undefined) {
       hasRelegation = stateDivisions > 1;
     } else if (totalClubsInState !== undefined) {
       hasRelegation = totalClubsInState > totalTeams;
@@ -206,7 +208,9 @@ export function getCompetitionZones(params: CompetitionZoneParams): CompetitionZ
   // Access Divisions (Série B, Série C)
   if (division === 2 || division === 3) {
     const zones: CompetitionZone[] = [];
-    const promoCount = Math.min(4, totalTeams);
+    const promoCount = division === 3 && isBrazil && totalTeams >= 16
+      ? 8
+      : Math.min(4, totalTeams);
 
     if (promoCount > 0) {
       zones.push({

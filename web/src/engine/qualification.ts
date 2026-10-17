@@ -42,16 +42,52 @@ export function resolvePendingFixtures(state: GameState): GameState {
   };
 
   const estadual = calendar.filter(f => f.competitionType === 'estadual');
+  const estQuarters = estadual.filter(f => f.stage === 'Quartas de Final').sort(byId);
   const semisFirst = estadual.filter(f => f.stage === 'Semifinal' && f.leg === 1).sort(byId);
   const semisSecond = estadual.filter(f => f.stage === 'Semifinal' && f.leg === 2).sort(byId);
   const final = estadual.filter(f => f.stage === 'Final').sort(byId);
+
+  if (estQuarters.length === 4 && estQuarters.every(f => f.pendingQualification)) {
+    const groupMatches = estadual.filter(f => f.stage?.startsWith('Rodada') || f.competitionRound?.startsWith('Grupo '));
+    const estStandings = state.standingsEstadual || [];
+    if (groupMatches.length && groupMatches.every(f => f.played) && estStandings.length >= 8) {
+      const groupLabels = [...new Set(estStandings.map(r => r.group).filter(Boolean))] as string[];
+      if (groupLabels.length === 4) {
+        const pairs: [number, number][] = groupLabels.sort().map(g => {
+          const gRows = estStandings.filter(r => r.group === g).sort(ranking);
+          return [gRows[0].clubId, gRows[1].clubId] as [number, number];
+        });
+        updatePairs(estQuarters, pairs);
+      } else {
+        const ranked = [...estStandings].sort(ranking);
+        const pairs: [number, number][] = [
+          [ranked[0].clubId, ranked[7].clubId],
+          [ranked[1].clubId, ranked[6].clubId],
+          [ranked[2].clubId, ranked[5].clubId],
+          [ranked[3].clubId, ranked[4].clubId],
+        ];
+        updatePairs(estQuarters, pairs);
+      }
+    }
+  }
+
   if (semisFirst.length === 2 && semisFirst.every(f => f.pendingQualification)) {
-    const group = estadual.filter(f => f.stage?.startsWith('Rodada'));
-    const ranked = [...(state.standingsEstadual || [])].sort(ranking);
-    if (group.length && group.every(f => f.played) && ranked.length >= 4) {
-      const pairs: [number, number][] = [[ranked[0].clubId, ranked[3].clubId], [ranked[1].clubId, ranked[2].clubId]];
-      updatePairs(semisFirst, pairs);
-      updatePairs(semisSecond, pairs.map(([home, away]) => [away, home]));
+    if (estQuarters.length === 4) {
+      if (estQuarters.every(f => f.played)) {
+        estQuarters.filter(f => f.homeScore === f.awayScore).forEach(f => recordPenalties(f.id, [5, 4]));
+        const winners = estQuarters.map(q => winner(calendar.find(f => f.id === q.id)!));
+        const pairs: [number, number][] = [[winners[0], winners[3]], [winners[1], winners[2]]];
+        updatePairs(semisFirst, pairs);
+        updatePairs(semisSecond, pairs.map(([home, away]) => [away, home]));
+      }
+    } else {
+      const group = estadual.filter(f => f.stage?.startsWith('Rodada'));
+      const ranked = [...(state.standingsEstadual || [])].sort(ranking);
+      if (group.length && group.every(f => f.played) && ranked.length >= 4) {
+        const pairs: [number, number][] = [[ranked[0].clubId, ranked[3].clubId], [ranked[1].clubId, ranked[2].clubId]];
+        updatePairs(semisFirst, pairs);
+        updatePairs(semisSecond, pairs.map(([home, away]) => [away, home]));
+      }
     }
   }
   if (final.length === 1 && final[0].pendingQualification && semisSecond.length === 2 && semisSecond.every(f => f.played)) {
@@ -59,6 +95,96 @@ export function resolvePendingFixtures(state: GameState): GameState {
     updatePairs(final, [[aggregateWinner(semisFirst[0], calendar.find(f => f.id === semisSecond[0].id)!), aggregateWinner(semisFirst[1], calendar.find(f => f.id === semisSecond[1].id)!)]]);
   }
   if (final.length === 1 && final[0].played && final[0].homeScore === final[0].awayScore) recordPenalties(final[0].id, [5, 4]);
+
+  // Nacional Playoffs (ex: Brasileirão Série D e Série C)
+  const nacional = calendar.filter(f => f.competitionType === 'nacional');
+  const natPlayoffStageOrder = ['Segunda Fase', 'Oitavas de Final', 'Quartas de Final', 'Semifinal', 'Final'] as const;
+  const activeNatPlayoffStages = natPlayoffStageOrder.filter(st => nacional.some(f => f.stage === st));
+  if (activeNatPlayoffStages.length > 0) {
+    const firstStage = activeNatPlayoffStages[0];
+    const firstLeg1 = nacional.filter(f => f.stage === firstStage && f.leg === 1).sort(byId);
+    const firstLeg2 = nacional.filter(f => f.stage === firstStage && f.leg === 2).sort(byId);
+    const regularMatches = nacional.filter(
+      f => f.competitionRound?.startsWith('Grupo ') || f.competitionRound?.startsWith('Rodada ')
+    );
+
+    if (
+      firstLeg1.length > 0 &&
+      firstLeg1.every(f => f.pendingQualification) &&
+      regularMatches.length > 0 &&
+      regularMatches.every(f => f.played)
+    ) {
+      const natStandings = state.standingsNacional || [];
+      const groupLabels = [
+        ...new Set(
+          regularMatches
+            .map(f => f.competitionRound?.match(/^Grupo ([A-Z]+) •/)?.[1])
+            .filter(Boolean)
+        ),
+      ] as string[];
+
+      const totalQualifiers = firstLeg1.length * 2;
+      const pairs: [number, number][] = [];
+
+      if (groupLabels.length >= 2) {
+        const standingsMap = new Map(natStandings.map(r => [r.clubId, r]));
+        const perGroup = Math.max(1, Math.floor(totalQualifiers / groupLabels.length));
+        const qualifiedByGroup = groupLabels.map(letter => {
+          const grpMatches = regularMatches.filter(f => f.competitionRound?.startsWith(`Grupo ${letter} •`));
+          const ids = [...new Set(grpMatches.flatMap(f => [f.homeClubId, f.awayClubId]))];
+          return ids
+            .map(id => standingsMap.get(id)!)
+            .filter(Boolean)
+            .sort(ranking)
+            .slice(0, perGroup)
+            .map(r => r.clubId);
+        });
+
+        if (qualifiedByGroup.every(g => g.length === perGroup)) {
+          for (let i = 0; i + 1 < qualifiedByGroup.length; i += 2) {
+            const g1 = qualifiedByGroup[i];
+            const g2 = qualifiedByGroup[i + 1];
+            for (let m = 0; m < perGroup; m++) {
+              pairs.push([g1[m], g2[perGroup - 1 - m]]);
+            }
+          }
+        }
+      } else if (natStandings.length >= totalQualifiers) {
+        const ranked = [...natStandings].sort(ranking).slice(0, totalQualifiers);
+        for (let i = 0; i < firstLeg1.length; i++) {
+          pairs.push([ranked[i].clubId, ranked[totalQualifiers - 1 - i].clubId]);
+        }
+      }
+
+      if (pairs.length === firstLeg1.length) {
+        updatePairs(firstLeg1, pairs);
+        updatePairs(firstLeg2, pairs.map(([home, away]) => [away, home]));
+      }
+    }
+
+    for (let sIdx = 0; sIdx + 1 < activeNatPlayoffStages.length; sIdx++) {
+      const sourceStage = activeNatPlayoffStages[sIdx];
+      const targetStage = activeNatPlayoffStages[sIdx + 1];
+      const first = nacional.filter(f => f.stage === sourceStage && f.leg === 1).sort(byId);
+      const second = nacional.filter(f => f.stage === sourceStage && f.leg === 2).sort(byId);
+      const nextFirst = nacional.filter(f => f.stage === targetStage && f.leg === 1).sort(byId);
+      const nextSecond = nacional.filter(f => f.stage === targetStage && f.leg === 2).sort(byId);
+
+      if (first.length === nextFirst.length * 2 && second.length === first.length && second.every(f => f.played)) {
+        first.forEach((f, i) => recordAggregateTie(f, second[i]));
+        const winners = first.map((f, i) => aggregateWinner(f, calendar.find(x => x.id === second[i].id)!));
+        const pairs: [number, number][] = nextFirst.map((_, i) => [winners[2 * i], winners[2 * i + 1]]);
+        updatePairs(nextFirst, pairs);
+        updatePairs(nextSecond, pairs.map(([home, away]) => [away, home]));
+      }
+    }
+
+    const natFinalFirst = nacional.find(f => f.stage === 'Final' && f.leg === 1);
+    const natFinalSecond = nacional.find(f => f.stage === 'Final' && f.leg === 2);
+    if (natFinalFirst?.played && natFinalSecond?.played) {
+      recordAggregateTie(natFinalFirst, natFinalSecond);
+    }
+  }
 
   const cup = calendar.filter(f => f.competitionType === 'copa');
   if (cup.some(f => f.leg === 1)) {

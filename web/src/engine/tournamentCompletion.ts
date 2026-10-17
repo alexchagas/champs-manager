@@ -320,14 +320,45 @@ export function detectNewlyCompletedCompetitions(rawState: GameState): Champions
     }
   }
 
-  // 4. CAMPEONATO NACIONAL (League / Points)
+  // 4. CAMPEONATO NACIONAL (League / Points or Groups + Playoffs)
   const nationalMatches = calendar.filter(f => f.competitionType === 'nacional');
   if (nationalMatches.length > 0) {
     const nationalName = state.nationalLeagueName || state.leagueName || 'Campeonato Nacional';
     if (!isAlreadyRecorded('nacional', nationalName)) {
-      // Completed when all national matches have been played
+      const natFinals = nationalMatches.filter(f => f.stage === 'Final');
       const allNationalPlayed = nationalMatches.every(f => f.played);
-      if (allNationalPlayed) {
+      if (natFinals.length >= 2 && natFinals.every(f => f.played && f.homeClubId > 0 && f.awayClubId > 0)) {
+        const leg1 = natFinals.find(f => f.leg === 1) || natFinals[0];
+        const leg2 = natFinals.find(f => f.leg === 2) || natFinals[1];
+        const { winnerId, runnerUpId, scoreText } = aggregateWinner(leg1, leg2);
+        const champ = getClub(winnerId);
+        const runner = getClub(runnerUpId);
+        const isUserChamp = winnerId === state.userClubId;
+        const isUserRunner = runnerUpId === state.userClubId;
+        const userPosition = isUserChamp ? 'Campeão 🏆' : isUserRunner ? 'Vice-campeão 🥈' : 'Participante';
+        const prize = getCompetitionPrizeMoney('nacional', isUserChamp, isUserRunner);
+        const topScorer = getTopScorer(nationalMatches.flatMap(m => [m.homeClubId, m.awayClubId]));
+
+        records.push({
+          id: `${seasonYear}-nacional`,
+          seasonYear,
+          competitionType: 'nacional',
+          competitionName: nationalName,
+          championClubId: winnerId,
+          championClubName: champ?.name || 'Campeão',
+          championClubCrest: champ?.crestMiniUrl || champ?.crestUrl,
+          runnerUpClubId: runnerUpId,
+          runnerUpClubName: runner?.name || 'Vice-campeão',
+          runnerUpClubCrest: runner?.crestMiniUrl || runner?.crestUrl,
+          topScorerName: topScorer?.name,
+          topScorerClubName: topScorer?.clubName,
+          topScorerGoals: topScorer?.goals,
+          finalScoreText: scoreText,
+          userPositionText: userPosition,
+          userPrizeMoney: isUserChamp || isUserRunner ? prize : undefined,
+          managerName: isUserChamp ? state.managerName : undefined,
+        });
+      } else if (natFinals.length === 0 && allNationalPlayed) {
         const standings = state.standingsNacional || state.standings || [];
         if (standings.length >= 2) {
           const champRow = standings[0];

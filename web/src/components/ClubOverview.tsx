@@ -146,7 +146,7 @@ export const ClubOverview: React.FC = () => {
     }
     if (gameState.standingsNacional && gameState.standingsNacional.length > 0) {
       const divisionLetter = userClub.countryId === 29
-        ? (userClub.division === 1 ? 'A' : userClub.division === 2 ? 'B' : userClub.division === 3 ? 'C' : userClub.division === 4 ? 'D' : '')
+        ? (userClub.division === 1 ? 'A' : userClub.division === 2 ? 'B' : userClub.division === 3 ? 'C' : userClub.division >= 4 ? 'D' : '')
         : '';
       const nationalLabel = divisionLetter
         ? `Brasileirão Série ${divisionLetter}`
@@ -197,29 +197,35 @@ export const ClubOverview: React.FC = () => {
     return list;
   }, [gameState, currentCompetition, userClub.countryId, userClub.division]);
 
-  const continentalGroups = useMemo(() => {
-    if (!tableIsContinental) return [];
-    const set = new Set<string>();
-    for (const row of standingsList) {
-      if (row.group) set.add(row.group);
-      else {
-        const fix = gameState.calendar.find(f => (f.homeClubId === row.clubId || f.awayClubId === row.clubId) && f.competitionRound?.startsWith('Grupo '));
-        const g = fix?.competitionRound?.match(/Grupo ([A-Z]+)(?:\s|$)/)?.[1];
-        if (g) set.add(g);
-      }
-    }
-    return Array.from(set).sort();
-  }, [tableIsContinental, standingsList, gameState.calendar]);
-
   const enrichedStandingsList = useMemo(() => {
-    if (!tableIsContinental) return standingsList;
+    const matchesTargetComp = (compType?: string) => {
+      if (tableIsOtherLeague) return false;
+      if (tableIsContinental) return compType === 'libertadores' || compType === 'sulamericana' || compType === 'champions';
+      if (tableIsEstadual) return compType === 'estadual';
+      if (tableIsNacional) return compType === 'nacional';
+      return false;
+    };
     return standingsList.map(row => {
       if (row.group) return row;
-      const fix = gameState.calendar.find(f => (f.homeClubId === row.clubId || f.awayClubId === row.clubId) && f.competitionRound?.startsWith('Grupo '));
+      if (tableIsOtherLeague) return row;
+      const fix = gameState.calendar.find(
+        f =>
+          matchesTargetComp(f.competitionType) &&
+          (f.homeClubId === row.clubId || f.awayClubId === row.clubId) &&
+          f.competitionRound?.startsWith('Grupo ')
+      );
       const g = fix?.competitionRound?.match(/Grupo ([A-Z]+)(?:\s|$)/)?.[1];
       return g ? { ...row, group: g } : row;
     });
-  }, [tableIsContinental, standingsList, gameState.calendar]);
+  }, [tableIsOtherLeague, tableIsContinental, tableIsEstadual, tableIsNacional, standingsList, gameState.calendar]);
+
+  const continentalGroups = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of enrichedStandingsList) {
+      if (row.group) set.add(row.group);
+    }
+    return set.size > 1 ? Array.from(set).sort() : [];
+  }, [enrichedStandingsList]);
 
   // Grupos presentes na rodada selecionada no calendário
   const roundCalendarGroups = useMemo(() => {
@@ -255,12 +261,16 @@ export const ClubOverview: React.FC = () => {
   }, [tableIsCopa, gameState.calendar]);
 
   const competitionZones = useMemo(() => {
+    const teamsPerTableOrGroup = continentalGroups.length > 0
+      ? Math.max(4, enrichedStandingsList.filter(row => row.group === continentalGroups[0]).length)
+      : standingsList.length;
+
     if (selectedOtherLeague) {
       const isStateDiv = gameState.stateDivisions?.some(d => d.id === selectedOtherLeague.id);
       if (isStateDiv) {
         return getCompetitionZones({
           competitionType: 'estadual',
-          totalTeams: selectedOtherLeague.standings.length,
+          totalTeams: teamsPerTableOrGroup,
           division: 2,
           countryId: 29,
           stateCode: userClub.stateCode,
@@ -269,22 +279,25 @@ export const ClubOverview: React.FC = () => {
       }
       return getCompetitionZones({
         competitionType: 'nacional',
-        totalTeams: selectedOtherLeague.standings.length,
+        totalTeams: teamsPerTableOrGroup,
         division: selectedOtherLeague.division ?? 1,
         countryId: selectedOtherLeague.countryId,
       });
     }
+    const effectiveDivision = userClub.countryId === 29 && (userClub.division ?? 1) >= 4
+      ? 4
+      : (userClub.division ?? 1);
     return getCompetitionZones({
-      competitionType: activeCompetitionTab || (tableIsEstadual ? 'estadual' : tableIsContinental ? 'libertadores' : 'nacional'),
-      totalTeams: tableIsContinental ? Math.max(4, standingsList.filter(row => row.group === (continentalGroups[0] || row.group)).length) : standingsList.length,
-      division: userClub.division ?? 1,
+      competitionType: tableIsEstadual ? 'estadual' : tableIsContinental ? 'libertadores' : 'nacional',
+      totalTeams: teamsPerTableOrGroup,
+      division: effectiveDivision,
       countryId: userClub.countryId ?? 29,
       stateCode: userClub.stateCode,
       stateDivisions: (gameState.stateDivisions && gameState.stateDivisions.length > 0) ? 2 : (userStateInfo?.divisions ?? 1),
       totalClubsInState: userStateInfo?.clubCount,
       customRelegated: userLeagueInfo?.relegated,
     });
-  }, [selectedOtherLeague, activeCompetitionTab, tableIsEstadual, tableIsContinental, standingsList.length, userClub, userStateInfo, userLeagueInfo, gameState.stateDivisions]);
+  }, [selectedOtherLeague, tableIsEstadual, tableIsContinental, continentalGroups, enrichedStandingsList, standingsList.length, userClub, userStateInfo, userLeagueInfo, gameState.stateDivisions]);
 
   // Sector strengths and availability for user and opponent
   const userStarters = getSquadStarters(userClub);
@@ -550,6 +563,7 @@ export const ClubOverview: React.FC = () => {
                   onClick={() => {
                     sound.playClick();
                     setSelectedCompetitionTab(comp.id);
+                    setSelectedGroupTab('all');
                   }}
                   className={`px-2.5 py-1 rounded font-bold text-[10px] sm:text-[11px] transition-all flex items-center space-x-1.5 shrink-0 cursor-pointer ${
                     isSelected
@@ -572,14 +586,14 @@ export const ClubOverview: React.FC = () => {
           </div>
         )}
 
-        {/* Continental Groups Filter Bar */}
-        {tableIsContinental && continentalGroups.length > 0 && (
+        {/* Groups Filter Bar (Continental, Série D, Paulistão, etc.) */}
+        {continentalGroups.length > 0 && (
           <div className="flex items-center space-x-1 px-3 py-1 bg-[var(--app-surface-2)]/80 border-b border-[var(--app-border-subtle)] overflow-x-auto no-scrollbar shrink-0 text-xs">
             <button
               type="button"
               onClick={() => setSelectedGroupTab('all')}
               className={`px-2 py-0.5 rounded font-bold text-[10px] sm:text-[11px] transition-colors cursor-pointer ${
-                selectedGroupTab === 'all'
+                selectedGroupTab === 'all' || !continentalGroups.includes(selectedGroupTab)
                   ? 'bg-[var(--app-surface-3)] text-white border border-[var(--app-text-accent)]/60'
                   : 'text-slate-400 hover:text-white'
               }`}
@@ -699,9 +713,9 @@ export const ClubOverview: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#14281f] font-mono-numbers">
-              {tableIsContinental && continentalGroups.length > 0 ? (
+              {continentalGroups.length > 0 ? (
                 continentalGroups
-                  .filter(grp => selectedGroupTab === 'all' || selectedGroupTab === grp)
+                  .filter(grp => selectedGroupTab === 'all' || !continentalGroups.includes(selectedGroupTab) || selectedGroupTab === grp)
                   .map(grp => {
                     const groupRows = enrichedStandingsList.filter(r => r.group === grp);
                     return (
@@ -714,9 +728,9 @@ export const ClubOverview: React.FC = () => {
                         {groupRows.map((row, indexInGroup) => {
                           const pos = indexInGroup + 1;
                           const isUser = row.clubId === userClub.id;
-                          const isQualified = pos <= 2;
-                          const posColor = isQualified ? 'text-emerald-400 font-bold' : 'text-slate-400';
-                          const rowBg = isQualified ? 'hover:bg-emerald-950/20' : '';
+                          const zone = getZoneForPosition(competitionZones, pos);
+                          const posColor = zone ? zone.colorClass : 'text-slate-400';
+                          const rowBg = zone ? zone.bgHoverClass : '';
 
                           return (
                             <tr

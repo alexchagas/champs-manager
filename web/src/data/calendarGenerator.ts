@@ -1,5 +1,6 @@
 import type { Club, MatchFixture, StandingRow } from '../types/index.ts';
 import { getContinentalTournamentField } from './continentalRepresentatives.ts';
+import { formatGroupLabel, getDivisionConfig } from './leagueConfigurations.ts';
 import { getStateLeagueRule } from './stateLeagueFormulas.ts';
 import { getCanonicalNationalLeagueName } from './teamsDatabase.ts';
 
@@ -231,15 +232,17 @@ export function generateTwoSemesterCalendar(
   // Knockout slots have no participants until qualification is decided.
   if (semester1Clubs.length >= 4) {
     if (isFormula7) {
-      // TODO(SPEC-009/SPEC-008): Formula 7 authentic format features 8-club Quartas de Final.
-      // Currently using 4-club Semifinais until multi-tier state knockout brackets are expanded.
-      for (let tie = 0; tie < 2; tie++) {
-        reserve('estadual', estadualName, 13, 11, 'Semifinal (Ida)', 'Semifinal', 'quarta', 1);
+      // Paulistão Fórmula 7: Quartas de Final (1º x 2º de cada grupo A, B, C, D) -> Semifinal -> Final
+      for (let tie = 0; tie < 4; tie++) {
+        reserve('estadual', estadualName, 13, 11, 'Quartas de Final', 'Quartas de Final', 'quarta');
       }
       for (let tie = 0; tie < 2; tie++) {
-        reserve('estadual', estadualName, 14, 12, 'Semifinal (Volta)', 'Semifinal', 'domingo', 2);
+        reserve('estadual', estadualName, 14, 12, 'Semifinal (Ida)', 'Semifinal', 'quarta', 1);
       }
-      reserve('estadual', estadualName, 15, 13, 'Final', 'Final', 'domingo');
+      for (let tie = 0; tie < 2; tie++) {
+        reserve('estadual', estadualName, 15, 12, 'Semifinal (Volta)', 'Semifinal', 'domingo', 2);
+      }
+      reserve('estadual', estadualName, 16, 13, 'Final', 'Final', 'domingo');
     } else {
       for (let leg = 1; leg <= 2; leg++) for (let tie = 0; tie < 2; tie++) reserve('estadual', estadualName,
         estadualGroupRounds + leg, estadualGroupRounds + leg - 1,
@@ -249,19 +252,79 @@ export function generateTwoSemesterCalendar(
   }
 
   const nationalStart = isBrazil ? 14 : 0;
-  const nationalRaw = generateLeagueCalendar(semester2Clubs);
-  const nationalRounds = nationalRaw.length ? Math.max(...nationalRaw.map(f => f.round)) : 0;
-  for (let r = 1; r <= nationalRounds; r++) addRound(nationalRaw, r, nationalStart + r - 1, 'nacional', nacionalName, `Rodada ${r}`);
+  const divConfig = getDivisionConfig(
+    userClub.countryId || 29,
+    userClub.division || 1,
+    undefined,
+    semester2Clubs.length
+  );
+  const nationalGroupCount =
+    divConfig?.groupCount && divConfig.groupCount > 1 && semester2Clubs.length >= divConfig.groupCount * 2
+      ? divConfig.groupCount
+      : 1;
+
+  let nationalPhaseRounds = 0;
+  if (nationalGroupCount > 1) {
+    const groupSize = Math.ceil(semester2Clubs.length / nationalGroupCount);
+    for (let gIdx = 0; gIdx < nationalGroupCount; gIdx++) {
+      const label = formatGroupLabel(gIdx);
+      const groupClubs = semester2Clubs.slice(gIdx * groupSize, (gIdx + 1) * groupSize);
+      if (groupClubs.length < 2) continue;
+      const raw = generateLeagueCalendar(groupClubs);
+      const singleTurnRounds = groupClubs.length % 2 === 0 ? groupClubs.length - 1 : groupClubs.length;
+      const maxRound = divConfig?.rounds === 1 ? singleTurnRounds : Math.max(...raw.map(f => f.round), 0);
+      if (maxRound > nationalPhaseRounds) nationalPhaseRounds = maxRound;
+      for (let r = 1; r <= maxRound; r++) {
+        addRound(raw, r, nationalStart + r - 1, 'nacional', nacionalName, `Grupo ${label} • Rodada ${r}`);
+      }
+    }
+  } else {
+    const nationalRaw = generateLeagueCalendar(semester2Clubs);
+    const singleTurnRounds = semester2Clubs.length % 2 === 0 ? semester2Clubs.length - 1 : semester2Clubs.length;
+    const totalRawRounds = nationalRaw.length ? Math.max(...nationalRaw.map(f => f.round)) : 0;
+    nationalPhaseRounds = divConfig?.rounds === 1 ? Math.min(singleTurnRounds, totalRawRounds) : totalRawRounds;
+    for (let r = 1; r <= nationalPhaseRounds; r++) {
+      addRound(nationalRaw, r, nationalStart + r - 1, 'nacional', nacionalName, `Rodada ${r}`);
+    }
+  }
+
+  if (divConfig?.format === 'groups_and_playoffs' && (divConfig.playoffTeams ?? 0) >= 2) {
+    const playoffTeams = divConfig.playoffTeams ?? 0;
+    const allPlayoffStages = [
+      { stage: 'Segunda Fase', ties: 16, minTeams: 32 },
+      { stage: 'Oitavas de Final', ties: 8, minTeams: 16 },
+      { stage: 'Quartas de Final', ties: 4, minTeams: 8 },
+      { stage: 'Semifinal', ties: 2, minTeams: 4 },
+      { stage: 'Final', ties: 1, minTeams: 2 },
+    ] as const;
+
+    let nextNatRound = nationalPhaseRounds + 1;
+    let nextNatWeek = nationalStart + nationalPhaseRounds;
+    for (const { stage, ties, minTeams } of allPlayoffStages) {
+      if (playoffTeams < minTeams) continue;
+      for (let leg = 1; leg <= 2; leg++) {
+        for (let tie = 0; tie < ties; tie++) {
+          reserve(
+            'nacional',
+            nacionalName,
+            nextNatRound,
+            nextNatWeek,
+            `${stage} (${leg === 1 ? 'Ida' : 'Volta'})`,
+            stage,
+            'domingo',
+            leg as 1 | 2
+          );
+        }
+        nextNatRound++;
+        nextNatWeek++;
+      }
+    }
+  }
 
   if (continentalClubs.length >= 4) {
     const continentalType = continentalInfo.type === 'sulamericana' ? 'sulamericana' : continentalInfo.type === 'libertadores' ? 'libertadores' : 'champions';
     const groupCount = Math.max(1, Math.ceil(continentalClubs.length / 4));
-    const groupLabels = Array.from({ length: groupCount }, (_, index) => {
-      let label = '';
-      let value = index;
-      do { label = String.fromCharCode(65 + (value % 26)) + label; value = Math.floor(value / 26) - 1; } while (value >= 0);
-      return label;
-    });
+    const groupLabels = Array.from({ length: groupCount }, (_, index) => formatGroupLabel(index));
     const groups = groupLabels.map((label, index) => ({ label, clubs: continentalClubs.slice(index * 4, (index + 1) * 4) })).filter(group => group.clubs.length >= 2);
     for (const [groupIndex, group] of groups.entries()) {
       const raw = generateLeagueCalendar(group.clubs);
@@ -397,3 +460,38 @@ export function sortStandings(standings: StandingRow[]): StandingRow[] {
     return a.clubName.localeCompare(b.clubName);
   });
 }
+
+export function initializeEstadualStandings(userClub: Club, clubs: Club[]): StandingRow[] {
+  const isBrazil = (userClub.countryId ?? 29) === 29;
+  const stateRule = isBrazil ? getStateLeagueRule(userClub.stateCode) : undefined;
+  const isFormula7 = stateRule?.formulaId === 7 && clubs.length === 16;
+  return sortStandings(
+    initializeStandings(clubs, isFormula7 ? (_c, idx) => formatGroupLabel(Math.floor(idx / 4)) : undefined)
+  );
+}
+
+export function initializeNacionalStandings(userClub: Club, clubs: Club[]): StandingRow[] {
+  const divConfig = getDivisionConfig(userClub.countryId || 29, userClub.division || 1, undefined, clubs.length);
+  const groupCount =
+    divConfig?.groupCount && divConfig.groupCount > 1 && clubs.length >= divConfig.groupCount * 2
+      ? divConfig.groupCount
+      : 1;
+  const groupSize = groupCount > 1 ? Math.ceil(clubs.length / groupCount) : clubs.length;
+  return sortStandings(
+    initializeStandings(
+      clubs,
+      groupCount > 1 ? (_c, idx) => formatGroupLabel(Math.floor(idx / groupSize)) : undefined
+    )
+  );
+}
+
+export function initializeContinentalStandings(clubs: Club[]): StandingRow[] {
+  const groupCount = Math.max(1, Math.ceil(clubs.length / 4));
+  return sortStandings(
+    initializeStandings(clubs, (_c, idx) => {
+      const groupIndex = Math.floor(idx / 4);
+      return groupIndex < groupCount ? formatGroupLabel(groupIndex) : undefined;
+    })
+  );
+}
+

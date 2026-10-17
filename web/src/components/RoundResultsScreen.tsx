@@ -340,26 +340,36 @@ export const RoundResultsScreen: React.FC = () => {
             ? gameState.standingsContinental || gameState.standings
             : gameState.standingsNacional || gameState.standings;
 
-          const enrichedStandingsList = isContinental
-            ? standingsList.map(row => {
-                if (row.group) return row;
-                const fix = gameState.calendar.find(f => (f.homeClubId === row.clubId || f.awayClubId === row.clubId) && f.competitionRound?.startsWith('Grupo '));
-                const g = fix?.competitionRound?.match(/Grupo ([A-Z]+)(?:\s|$)/)?.[1];
-                return g ? { ...row, group: g } : row;
-              })
-            : standingsList;
+          const enrichedStandingsList = standingsList.map(row => {
+            if (row.group) return row;
+            const fix = gameState.calendar.find(
+              f =>
+                f.competitionType === currentCompetition &&
+                (f.homeClubId === row.clubId || f.awayClubId === row.clubId) &&
+                f.competitionRound?.startsWith('Grupo ')
+            );
+            const g = fix?.competitionRound?.match(/Grupo ([A-Z]+)(?:\s|$)/)?.[1];
+            return g ? { ...row, group: g } : row;
+          });
 
-          const continentalGroups = isContinental
-            ? Array.from(new Set(enrichedStandingsList.map(r => r.group).filter(Boolean))).sort() as string[]
-            : [];
+          const rawGroups = Array.from(new Set(enrichedStandingsList.map(r => r.group).filter(Boolean))).sort() as string[];
+          const continentalGroups = rawGroups.length > 1 ? rawGroups : [];
 
           const userStateInfo = getStateByCode(userClub.stateCode) || getStateById(userClub.stateId);
           const userLeagueInfo = findLeagueForClub(userClub.id);
 
+          const teamsPerTableOrGroup = continentalGroups.length > 0
+            ? Math.max(4, enrichedStandingsList.filter(row => row.group === continentalGroups[0]).length)
+            : standingsList.length;
+
+          const effectiveDivision = userClub.countryId === 29 && (userClub.division ?? 1) >= 4
+            ? 4
+            : (userClub.division ?? 1);
+
           const competitionZones = getCompetitionZones({
             competitionType: currentCompetition || (isEstadual ? 'estadual' : isContinental ? 'libertadores' : 'nacional'),
-            totalTeams: isContinental ? Math.max(4, standingsList.filter(row => row.group === (continentalGroups[0] || row.group)).length) : standingsList.length,
-            division: userClub.division ?? 1,
+            totalTeams: teamsPerTableOrGroup,
+            division: effectiveDivision,
             countryId: userClub.countryId ?? 29,
             stateCode: userClub.stateCode,
             stateDivisions: userStateInfo?.divisions,
@@ -394,7 +404,7 @@ export const RoundResultsScreen: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--app-border-subtle)] font-mono-numbers">
-                    {isContinental && continentalGroups.length > 0 ? (
+                    {continentalGroups.length > 0 ? (
                       continentalGroups.map(grp => {
                         const groupRows = enrichedStandingsList.filter(r => r.group === grp);
                         return (
@@ -407,9 +417,9 @@ export const RoundResultsScreen: React.FC = () => {
                             {groupRows.map((row, idxInGroup) => {
                               const pos = idxInGroup + 1;
                               const isUser = row.clubId === userClub.id;
-                              const isQualified = pos <= 2;
-                              const posColor = isQualified ? 'text-emerald-400 font-bold' : 'text-slate-400';
-                              const rowBg = isQualified ? 'hover:bg-emerald-950/20' : '';
+                              const zone = getZoneForPosition(competitionZones, pos);
+                              const posColor = zone ? zone.colorClass : 'text-slate-400';
+                              const rowBg = zone ? zone.bgHoverClass : '';
 
                               return (
                                 <tr

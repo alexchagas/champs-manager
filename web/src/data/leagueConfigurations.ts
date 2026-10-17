@@ -44,8 +44,8 @@ export const COUNTRY_LEAGUE_PRESETS: Record<number, CountryLeagueConfig> = {
     divisions: [
       { division: 1, name: 'Brasileirão Série A', teamCount: 20, rounds: 2, format: 'round_robin', relegationDirect: 4, tiebreakPriority: 'wins' },
       { division: 2, name: 'Brasileirão Série B', teamCount: 20, rounds: 2, format: 'round_robin', relegationDirect: 4, tiebreakPriority: 'wins' },
-      { division: 3, name: 'Brasileirão Série C', teamCount: 20, rounds: 1, format: 'groups_and_playoffs', groupCount: 2, playoffTeams: 4, relegationDirect: 4, tiebreakPriority: 'wins' },
-      { division: 4, name: 'Brasileirão Série D', teamCount: 64, rounds: 2, format: 'groups_and_playoffs', groupCount: 8, playoffTeams: 32, relegationDirect: 0, tiebreakPriority: 'wins' },
+      { division: 3, name: 'Brasileirão Série C', teamCount: 20, rounds: 1, format: 'groups_and_playoffs', groupCount: 1, playoffTeams: 8, promotionPlayoff: 4, relegationDirect: 4, tiebreakPriority: 'wins' },
+      { division: 4, name: 'Brasileirão Série D', teamCount: 64, rounds: 2, format: 'groups_and_playoffs', groupCount: 8, playoffTeams: 32, promotionPlayoff: 4, relegationDirect: 0, tiebreakPriority: 'wins' },
     ],
   },
 
@@ -262,3 +262,34 @@ export function getCountryLeagueConfig(countryId: number, countryName = 'Naciona
     hasNationalCup: true,
   };
 }
+
+/**
+ * Returns the DivisionConfig for a specific country and division (falling back to the last configured division if division > 4).
+ */
+export function getDivisionConfig(
+  countryId: number = 29,
+  division: number = 1,
+  countryName = 'Nacional',
+  totalClubs = 20
+): DivisionConfig | undefined {
+  const countryConfig = getCountryLeagueConfig(countryId, countryName, totalClubs);
+  const effectiveDiv = countryId === 29 && division >= 4 ? 4 : division;
+  return (
+    countryConfig.divisions.find((d) => d.division === effectiveDiv) ||
+    countryConfig.divisions[countryConfig.divisions.length - 1]
+  );
+}
+
+/**
+ * Converts a 0-based group index to an uppercase alphabetic label (0 -> 'A', 1 -> 'B', ..., 7 -> 'H', 26 -> 'AA').
+ */
+export function formatGroupLabel(groupIndex: number): string {
+  let label = '';
+  let value = Math.max(0, groupIndex);
+  do {
+    label = String.fromCharCode(65 + (value % 26)) + label;
+    value = Math.floor(value / 26) - 1;
+  } while (value >= 0);
+  return label;
+}
+

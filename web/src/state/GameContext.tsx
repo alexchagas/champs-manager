@@ -26,7 +26,14 @@ import {
   automaticMatchBench 
 } from '../engine/careerEconomy';
 import { applySavedClubEdits } from '../data/editorPersistence';
-import { sortStandings, generateTwoSemesterCalendar, initializeStandings } from '../data/calendarGenerator';
+import {
+  sortStandings,
+  generateTwoSemesterCalendar,
+  initializeStandings,
+  initializeEstadualStandings,
+  initializeNacionalStandings,
+  initializeContinentalStandings,
+} from '../data/calendarGenerator';
 import { advanceOtherLeaguesProgress, buildInitialActiveOtherLeagues, buildInitialNationalDivisions, buildInitialStateDivisions } from '../engine/crossSeasonSimulation';
 import { simulateMatchWasm } from '../engine/wasmBridge';
 import { sound } from '../audio/soundEngine';
@@ -972,15 +979,10 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       currentRound: 1,
       currentSemester: 1,
       calendar: next.calendar,
-      standings: sortStandings(initializeStandings(next.semester1Clubs)),
-      standingsEstadual: sortStandings(initializeStandings(next.semester1Clubs)),
-      standingsNacional: sortStandings(initializeStandings(next.semester2Clubs)),
-      standingsContinental: sortStandings(
-        initializeStandings(next.continentalClubs, (_c, idx) => {
-          const groupIndex = Math.floor(idx / 4);
-          return String.fromCharCode(65 + groupIndex);
-        })
-      ),
+      standings: sortStandings(initializeEstadualStandings(club, next.semester1Clubs)),
+      standingsEstadual: sortStandings(initializeEstadualStandings(club, next.semester1Clubs)),
+      standingsNacional: sortStandings(initializeNacionalStandings(club, next.semester2Clubs)),
+      standingsContinental: sortStandings(initializeContinentalStandings(next.continentalClubs)),
       nationalDivisions: nextNationalDivisions,
       stateDivisions: nextStateDivisions,
       otherLeagues: nextOtherLeagues,

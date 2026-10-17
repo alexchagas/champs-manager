@@ -2,6 +2,7 @@ import type { Club, StandingRow, OtherLeagueStandings, LeagueInfo } from '../typ
 import { generateLeagueCalendar, initializeStandings, sortStandings, sortClubsByMeritocracy } from '../data/calendarGenerator.ts';
 import { getLeaguesByCountry, getClubsByLeague, getAllLeagues } from '../data/teamsDatabase.ts';
 import { getStateDivisionInfo } from '../data/stateLeagueFormulas.ts';
+import { getDivisionConfig, formatGroupLabel } from '../data/leagueConfigurations.ts';
 
 // Países europeus / hemisfério norte com temporada cruzada (Agosto a Maio)
 export const CROSS_SEASON_COUNTRY_IDS = new Set([
@@ -44,20 +45,35 @@ function seededRandom(seed: number) {
 }
 
 /**
- * Pré-simula uma quantidade de rodadas para uma liga fechada (ex: Turno 1 de 19 rodadas).
+ * Pré-simula uma quantidade de rodadas para uma liga fechada (ex: Turno 1 de 19 rodadas)
+ * ou competição dividida em múltiplos grupos regionais (ex: Série D com 8 grupos de 8).
  */
 export function preSimulateLeagueRounds(
   clubs: Club[],
   roundsToPlay: number,
-  seed = 42
+  seed = 42,
+  groupCount = 1
 ): StandingRow[] {
+  const effectiveGroups = groupCount > 1 && clubs.length >= groupCount * 2 ? groupCount : 1;
+  const teamsPerGroup = Math.max(1, Math.ceil(clubs.length / effectiveGroups));
+
   if (clubs.length < 2 || roundsToPlay <= 0) {
-    return sortStandings(initializeStandings(clubs));
+    return sortStandings(
+      initializeStandings(
+        clubs,
+        effectiveGroups > 1
+          ? (_c, idx) => formatGroupLabel(Math.min(effectiveGroups - 1, Math.floor(idx / teamsPerGroup)))
+          : undefined
+      )
+    );
   }
 
   const rand = seededRandom(seed);
   const standingsMap = new Map<number, StandingRow>();
-  for (const c of clubs) {
+  clubs.forEach((c, idx) => {
+    const groupLabel = effectiveGroups > 1
+      ? formatGroupLabel(Math.min(effectiveGroups - 1, Math.floor(idx / teamsPerGroup)))
+      : undefined;
     standingsMap.set(c.id, {
       clubId: c.id,
       clubName: c.name,
@@ -71,11 +87,25 @@ export function preSimulateLeagueRounds(
       goalsAgainst: 0,
       goalDiff: 0,
       form: [],
+      ...(groupLabel ? { group: groupLabel } : {}),
     });
-  }
+  });
 
-  const allFixtures = generateLeagueCalendar(clubs);
-  const targetFixtures = allFixtures.filter((f) => f.round <= roundsToPlay);
+  const targetFixtures = (() => {
+    if (effectiveGroups > 1) {
+      const groupedFixtures = [];
+      for (let gIdx = 0; gIdx < effectiveGroups; gIdx++) {
+        const gClubs = clubs.slice(gIdx * teamsPerGroup, (gIdx + 1) * teamsPerGroup);
+        if (gClubs.length >= 2) {
+          groupedFixtures.push(
+            ...generateLeagueCalendar(gClubs).filter((f) => f.round <= roundsToPlay)
+          );
+        }
+      }
+      return groupedFixtures;
+    }
+    return generateLeagueCalendar(clubs).filter((f) => f.round <= roundsToPlay);
+  })();
 
   for (const fix of targetFixtures) {
     const home = clubs.find((c) => c.id === fix.homeClubId);
@@ -144,7 +174,7 @@ export function buildInitialNationalDivisions(
 ): OtherLeagueStandings[] {
   const sourceCountryId = sourceClub.countryId || 29;
   const sameCountryLeagues = getLeaguesByCountry(sourceCountryId);
-  const userDivision = sourceClub.division ?? 1;
+  const userDivision = sourceClub.division >= 5 && sourceCountryId === 29 ? 4 : (sourceClub.division ?? 1);
   const results: OtherLeagueStandings[] = [];
 
   for (const sLeague of sameCountryLeagues) {
@@ -157,20 +187,27 @@ export function buildInitialNationalDivisions(
     }
     if (sClubs.length < 2) continue;
 
-    const fieldClubs = sClubs.length > 20 ? sClubs.slice(0, 20) : sClubs;
-    const totalTeams = fieldClubs.length;
-    const totalRounds = (totalTeams - 1) * 2;
+    const divConfig = getDivisionConfig(sourceCountryId, sLeague.division, sourceClub.countryName, sClubs.length);
+    const groupCount = Math.max(1, divConfig.groupCount || 1);
+    const targetTeamCount = divConfig.teamCount || 20;
+    const fieldClubs = groupCount > 1
+      ? sClubs.slice(0, targetTeamCount)
+      : (sClubs.length > targetTeamCount ? sClubs.slice(0, targetTeamCount) : sClubs);
+    const teamsPerGroup = Math.max(2, Math.floor(fieldClubs.length / groupCount));
+    const turns = divConfig.rounds === 1 ? 1 : 2;
+    const totalRounds = (teamsPerGroup - 1) * turns;
 
     const standings = preSimulateLeagueRounds(
       fieldClubs,
       0,
-      1000 + sourceCountryId * 13 + sLeague.division * 7
+      1000 + sourceCountryId * 13 + sLeague.division * 7,
+      groupCount
     );
 
     const divLetter = sLeague.division === 1 ? 'A' : sLeague.division === 2 ? 'B' : sLeague.division === 3 ? 'C' : sLeague.division === 4 ? 'D' : '';
     const canonicalName = sourceCountryId === 29 && divLetter
       ? `Brasileirão Série ${divLetter}`
-      : `${sLeague.name} ${sLeague.divisionName}`;
+      : (divConfig.name || `${sLeague.name} ${sLeague.divisionName}`);
 
     results.push({
       id: `league-${sourceCountryId}-div${sLeague.division}`,
@@ -364,16 +401,26 @@ export function advanceOtherLeaguesProgress(
       return entry;
     }
 
-    // Obter clubes da liga
-    const leagueClubIds = new Set(entry.standings.map((s) => s.clubId));
-    const leagueClubs = allClubs.filter((c) => leagueClubIds.has(c.id));
+    // Obter clubes da liga preservando o agrupamento original
+    const clubsById = new Map(allClubs.map((c) => [c.id, c]));
+    const distinctGroups = Array.from(new Set(entry.standings.map((s) => s.group).filter(Boolean)));
+    const groupCount = distinctGroups.length > 1 ? distinctGroups.length : 1;
+
+    const orderedRows = groupCount > 1
+      ? [...entry.standings].sort((a, b) => (a.group || '').localeCompare(b.group || '') || a.clubId - b.clubId)
+      : entry.standings;
+
+    const leagueClubs = orderedRows
+      .map((s) => clubsById.get(s.clubId))
+      .filter((c): c is Club => Boolean(c));
 
     if (leagueClubs.length < 2) return entry;
 
     const newStandings = preSimulateLeagueRounds(
       leagueClubs,
       targetRound,
-      2000 + entry.countryId * 41 + targetRound
+      2000 + entry.countryId * 41 + targetRound,
+      groupCount
     );
 
     return {
