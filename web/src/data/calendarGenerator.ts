@@ -1,6 +1,7 @@
 import type { Club, MatchFixture, StandingRow } from '../types/index.ts';
 import { getContinentalTournamentField } from './continentalRepresentatives.ts';
 import { getStateLeagueRule } from './stateLeagueFormulas.ts';
+import { getCanonicalNationalLeagueName } from './teamsDatabase.ts';
 
 /**
  * Ordenação canônica por mérito esportivo (engenharia reversa do motor h/D.java):
@@ -127,7 +128,7 @@ export function generateTwoSemesterCalendar(
 } {
   const isBrazil = userClub.countryId === 29;
   const estadualName = getStateChampionshipName(userClub.stateCode, userClub.stateId);
-  const nacionalName = userClub.leagueName || 'Brasileirão Série A';
+  const nacionalName = getCanonicalNationalLeagueName(userClub);
 
   const pool = allAvailableClubs && allAvailableClubs.length > 0 ? allAvailableClubs : nationalClubs;
   const sameState = (c: Club) => c.countryId === 29 && (

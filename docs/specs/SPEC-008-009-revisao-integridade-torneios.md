@@ -51,23 +51,53 @@ Com base na investigação do PR #9 e nos requisitos de integridade esportiva de
 
 ---
 
-## 2. Bloqueios Técnicos e Roadmap da Expansão da Libertadores para 32 Clubes (SPEC-008)
+## 2. Slice 2: Fidelidade de Torneios, Nomenclatura Canônica e 2ª Divisão Estadual
 
-Conforme instrução expressa de integridade ("não simular/falsear se a arquitetura atual não suportar com segurança"), a expansão da Copa Libertadores para 32 clubes permanece documentada como bloqueador ativo até que as seguintes dependências estruturais sejam resolvidas:
+Implementada a fatia subsequente de fidelidade e integridade desportiva sobre o PR-14:
 
-### 2.1. Bloqueadores Arquiteturais Identificados:
-1. **Motor de Chaveamento (`qualification.ts`):**
-   - O método `resolvePendingFixtures` está estritamente acoplado a 4 grupos de 4 times (`'ABCD'`) e transiciona diretamente da fase de grupos para as **Quartas de Final** (`quartersFirst.length === 4`).
-   - Um torneio de 32 clubes requer 8 grupos ($A$ a $H$, 16 classificados) e uma fase preliminar de **Oitavas de Final** (8 confrontos em ida e volta = 16 partidas).
-2. **Grade de Datas no Calendário Anual (`calendarGenerator.ts`):**
-   - O segundo semestre possui 12 datas de quarta-feira reservadas para torneios continentais (6 rodadas de grupos + 2 datas para Quartas + 2 datas para Semis + 2 datas para Final).
-   - A inclusão de Oitavas de Final exige 2 datas adicionais de quarta-feira (14 semanas de quartas-feiras), o que colide diretamente com o calendário de datas da Copa do Brasil (quintas-feiras e quartas concorrentes) e com as rodadas de meio de semana das Séries A e B.
-3. **Mapeamento de Grupos no Estado Global (`initialData.ts` / `GameContext.tsx`):**
-   - A lógica de indexação de grupos continentais hardcoda `'ABCD'[Math.floor(idx / 4)] || 'A'`. A expansão exigirá suporte a `'ABCDEFGH'`.
-4. **Visualização em `ClubOverview.tsx`:**
-   - O filtro de grupos continentais e o painel de classificação esperam 4 grupos de 4 times. A UI precisará de paginação ou abas deslizantes para exibir 8 grupos sem quebra de layout mobile.
+### 2.1. Canonicalização Universal de Nomes Nacionais (`Brasileirão Série A/B/C/D`)
+* **Problema:** O nome da competição nacional variava entre `"Brasileirão"`, nomes compostos com grupo regional (`"Brasileirão Série D • Grupo 5"`), ou rótulos genéricos em fixtures e tabelas, gerando inconsistências no cabeçalho e na navegação de divisões.
+* **Solução:**
+  - `getCanonicalNationalLeagueName` implementado em `teamsDatabase.ts` para padronizar canonicamente as quatro divisões brasileiras: `Brasileirão Série A`, `Brasileirão Série B`, `Brasileirão Série C` e `Brasileirão Série D`.
+  - `GameState.nationalLeagueName` e `calendarGenerator.ts` agora gravam estritamente o nome canônico em todas as rodadas (`f.competitionName = 'Brasileirão Série A/B/C/D'`).
+  - `buildInitialNationalDivisions` em `crossSeasonSimulation.ts` garante que as ligas nacionais paralelas recebam nomes canônicos.
+  - `ClubOverview.tsx` exibe o título canônico tanto na visualização da divisão ativa do usuário quanto ao selecionar qualquer divisão nacional paralela na barra de torneios (sem concatenar ano de temporada de forma redundante).
 
-### 2.2. Ações Planejadas para Conclusão do SPEC-008:
-* **Fase 1 (Chaveamento Genérico):** Estender `qualification.ts` para suportar `Oitavas de Final` continental tanto para Libertadores quanto para UEFA Champions League.
-* **Fase 2 (Calendário Harmônico):** Realocar datas da Copa do Brasil e antecipar rodadas da fase de grupos continental para liberar as 2 datas de quarta-feira necessárias para as Oitavas.
-* **Fase 3 (Ativação Segura):** Atualizar o pote de seleção de `getContinentalTournamentField` para 32 clubes após homologação dos testes de regressão de calendário completo.
+### 2.2. Geração Continental Honesta e Remoção do Fallback de Sul-Americana
+* **Problema:** Quando clubes com reputação modesta eram selecionados na América do Sul, `continentalRepresentatives.ts` renomeava o torneio continental de 16 clubes de elite (Palmeiras, River, Boca, etc.) para `"Copa Sul-Americana"`, criando uma falsa ilusão de Sul-Americana como disfarce da Libertadores, enquanto a Sul-Americana real não existia.
+* **Solução:**
+  - O torneio continental sul-americano é explicitamente gerado como `type: 'libertadores'`, `name: 'Copa Libertadores'`.
+  - Sul-Americana não é representada como fallback para a Libertadores.
+  - Clubes de divisões inferiores (Séries B, C, D) sem qualificação explícita não participam do torneio continental (0 partidas agendadas).
+  - Clubes da Série A elegíveis mantêm participação íntegra na Libertadores.
+  - A topologia de 16 clubes é preservada com segurança, mantendo o teste bloqueador de 32 clubes ativo.
+
+### 2.3. Metadados e Visibilidade de 2ª Divisão Estadual (Regra de 8 Clubes Reais)
+* **Problema:** Os campeonatos estaduais não possuíam visibilidade de divisões de acesso e não havia distinção explícita de divisões nos estados com grandes contingentes de clubes reais remanescentes.
+* **Solução:**
+  - `getStateDivisionInfo` em `stateLeagueFormulas.ts` calcula os remanescentes reais após a composição da elite (`totalClubsInState - targetStateCount`).
+  - A 2ª divisão estadual é gerada **apenas onde houver pelo menos 8 clubes reais remanescentes** (ex: SP com 87 clubes remanescentes $\rightarrow$ *Paulistão Série A2*; RJ com 50 remanescentes $\rightarrow$ *Carioca Série A2*; MG com 37 $\rightarrow$ *Mineiro Módulo II*; RS com 26 $\rightarrow$ *Gaúcho Divisão de Acesso*; SC com 16 $\rightarrow$ *Catarinense Série B*, etc.).
+  - Estados com menos de 8 clubes remanescentes (ex: Acre com 4 clubes, Rondônia com 4, Roraima com 2) **não fabricam competições** e permanecem em divisão única.
+  - Em `ClubOverview.tsx`, foram adicionados badges/labels de tier discretos e minimalistas: `1ª Divisão` para o estadual de elite ativo e `2ª Divisão` para divisões estaduais de acesso disponíveis.
+  - A 2ª divisão estadual é simulada paralelamente via `buildInitialStateDivisions` em `crossSeasonSimulation.ts`, avança com `advanceRound` e sobrevive ao rollover de temporada (`stateDivisions`).
+  - A alocação esportiva do clube do usuário permanece intacta na elite (ex: Portuguesa permanece no Paulistão enfrentando Santos, Palmeiras, Corinthians e São Paulo).
+
+---
+
+## 3. Bloqueios Técnicos e Roadmap Remanescente do SPEC-008
+
+Conforme diretriz de fidelidade sem quebra da integridade do WASM, os seguintes itens do SPEC-008 permanecem mapeados para implementação arquitetural subsequente:
+
+### 3.1. Expansão da Copa Libertadores para 32 Clubes
+1. **Motor de Chaveamento (`qualification.ts`):** Suporte a 8 grupos ($A$ a $H$, 16 classificados) e Oitavas de Final em ida e volta antes das Quartas de Final.
+2. **Grade de Datas Anual (`calendarGenerator.ts`):** Necessidade de 2 semanas adicionais de quartas-feiras para acomodar as Oitavas de Final sem colidir com as semanas de Copa do Brasil e Brasileirão.
+3. **Mapeamento de Grupos no Estado:** Indexação de grupos continentais para `ABCDEFGH` e suporte a paginação na visualização mobile de `ClubOverview.tsx`.
+
+### 3.2. Torneios Continentais Secundários Autônomos (Copa Sul-Americana e Europa League)
+* Implementação da Copa Sul-Americana e da UEFA Europa League como torneios paralelos autônomos disputados por clubes de meio de tabela / 3ºs colocados de grupos, com datas de quintas-feiras independentes.
+
+### 3.3. Competições Continentais da Ásia e África
+* Criação de `AFC Champions League` e `CAF Champions League` para os clubes de Japão, Arábia Saudita, Coreia do Sul, Egito e África do Sul, substituindo o fallback direto para o Mundial.
+
+### 3.4. Copa do Brasil Expandida (32 / 64 Clubes)
+* Introdução de fases preliminares (1ª, 2ª e 3ª fases) com entrada gradual dos clubes de Libertadores na 3ª fase / Oitavas de Final.

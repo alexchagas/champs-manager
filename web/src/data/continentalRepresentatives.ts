@@ -122,23 +122,11 @@ export function getContinentalTournamentField(
   let name = 'Copa Libertadores';
 
   if (isSouthAmerica) {
-    if (userParticipates) {
-      const isElite = (userClub.reputation ?? 3) >= 3 || (userClub.division ?? 1) <= 1;
-      type = isElite ? 'libertadores' : 'sulamericana';
-      name = isElite ? 'Copa Libertadores' : 'Copa Sul-Americana';
-    } else {
-      type = 'libertadores';
-      name = 'Copa Libertadores';
-    }
+    type = 'libertadores';
+    name = 'Copa Libertadores';
   } else if (isEurope) {
-    if (userParticipates) {
-      const isElite = (userClub.reputation ?? 3) >= 4 || (userClub.division ?? 1) <= 1;
-      type = isElite ? 'champions' : 'europa_league';
-      name = isElite ? 'UEFA Champions League' : 'UEFA Europa League';
-    } else {
-      type = 'champions';
-      name = 'UEFA Champions League';
-    }
+    type = 'champions';
+    name = 'UEFA Champions League';
   } else if (isConcacaf) {
     type = 'concacaf';
     name = 'CONCACAF Champions Cup';

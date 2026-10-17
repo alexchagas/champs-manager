@@ -44,6 +44,7 @@ function mergeCareerState(current: GameState, parsed: GameState): GameState {
     nationalLeagueName: current.nationalLeagueName,
     continentalCupName: current.continentalCupName,
     nationalDivisions: parsed.nationalDivisions ?? current.nationalDivisions,
+    stateDivisions: parsed.stateDivisions ?? current.stateDivisions,
   };
   merged.transferOffers = (parsed.transferOffers || []).map(o => ({ ...current.transferOffers?.find(old => old.id === o.id), ...o })).filter(o => !validOffer(merged, o));
   return merged;

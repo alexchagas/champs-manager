@@ -82,9 +82,10 @@ export const ClubOverview: React.FC = () => {
   const activeCompetitionTab = selectedCompetitionTab || defaultCompetitionTab;
 
   const allExternalLeagues = useMemo(() => [
+    ...(gameState.stateDivisions || []),
     ...(gameState.nationalDivisions || []),
     ...(gameState.otherLeagues || []),
-  ], [gameState.nationalDivisions, gameState.otherLeagues]);
+  ], [gameState.stateDivisions, gameState.nationalDivisions, gameState.otherLeagues]);
 
   const selectedOtherLeague = allExternalLeagues.find((l) => l.id === activeCompetitionTab);
   const tableIsOtherLeague = !!selectedOtherLeague;
@@ -94,8 +95,13 @@ export const ClubOverview: React.FC = () => {
   const tableIsCopa = !tableIsOtherLeague && activeCompetitionTab === 'copa';
   const tableIsNacional = !tableIsOtherLeague && activeCompetitionTab === 'nacional';
 
+  const isNationalDiv = !!gameState.nationalDivisions?.some((d) => d.id === selectedOtherLeague?.id);
+  const isStateDiv = !!gameState.stateDivisions?.some((d) => d.id === selectedOtherLeague?.id);
+
   const tableTitle = tableIsOtherLeague
-    ? (selectedOtherLeague.countryId === userClub.countryId
+    ? (isNationalDiv || isStateDiv
+        ? selectedOtherLeague.leagueName
+        : selectedOtherLeague.countryId === userClub.countryId
         ? `${selectedOtherLeague.leagueName} (${selectedOtherLeague.seasonLabel})`
         : `${COUNTRY_FLAGS[selectedOtherLeague.countryId] || selectedOtherLeague.countryFlag || '🌐'} ${selectedOtherLeague.leagueName} (${selectedOtherLeague.seasonLabel})`)
     : tableIsEstadual 
@@ -117,12 +123,25 @@ export const ClubOverview: React.FC = () => {
   const standingsList = displayedStandings || gameState.standings;
 
   const availableCompetitionTabs = useMemo(() => {
-    const list: { id: string; label: string; isCurrent: boolean }[] = [];
+    const list: { id: string; label: string; isCurrent: boolean; badge?: string; tier?: number }[] = [];
     if (gameState.standingsEstadual && gameState.standingsEstadual.length > 0) {
       list.push({
         id: 'estadual',
         label: gameState.stateChampionshipName ? gameState.stateChampionshipName.split('(')[0].trim() : 'Estadual',
+        badge: '1ª Divisão',
+        tier: 1,
         isCurrent: currentCompetition === 'estadual',
+      });
+    }
+    if (gameState.stateDivisions && gameState.stateDivisions.length > 0) {
+      gameState.stateDivisions.forEach(sDiv => {
+        list.push({
+          id: sDiv.id,
+          label: sDiv.leagueName,
+          badge: '2ª Divisão',
+          tier: 2,
+          isCurrent: false,
+        });
       });
     }
     if (gameState.standingsNacional && gameState.standingsNacional.length > 0) {
@@ -237,6 +256,17 @@ export const ClubOverview: React.FC = () => {
 
   const competitionZones = useMemo(() => {
     if (selectedOtherLeague) {
+      const isStateDiv = gameState.stateDivisions?.some(d => d.id === selectedOtherLeague.id);
+      if (isStateDiv) {
+        return getCompetitionZones({
+          competitionType: 'estadual',
+          totalTeams: selectedOtherLeague.standings.length,
+          division: 2,
+          countryId: 29,
+          stateCode: userClub.stateCode,
+          stateDivisions: 2,
+        });
+      }
       return getCompetitionZones({
         competitionType: 'nacional',
         totalTeams: selectedOtherLeague.standings.length,
@@ -250,11 +280,11 @@ export const ClubOverview: React.FC = () => {
       division: userClub.division ?? 1,
       countryId: userClub.countryId ?? 29,
       stateCode: userClub.stateCode,
-      stateDivisions: userStateInfo?.divisions,
+      stateDivisions: (gameState.stateDivisions && gameState.stateDivisions.length > 0) ? 2 : (userStateInfo?.divisions ?? 1),
       totalClubsInState: userStateInfo?.clubCount,
       customRelegated: userLeagueInfo?.relegated,
     });
-  }, [selectedOtherLeague, activeCompetitionTab, tableIsEstadual, tableIsContinental, standingsList.length, userClub, userStateInfo, userLeagueInfo]);
+  }, [selectedOtherLeague, activeCompetitionTab, tableIsEstadual, tableIsContinental, standingsList.length, userClub, userStateInfo, userLeagueInfo, gameState.stateDivisions]);
 
   // Sector strengths and availability for user and opponent
   const userStarters = getSquadStarters(userClub);
@@ -479,6 +509,16 @@ export const ClubOverview: React.FC = () => {
             <h2 className="text-xs font-bold text-white uppercase tracking-wider truncate max-w-[240px] sm:max-w-[320px]">
               {tableTitle || gameState.leagueName || 'Campeonato Nacional'}
             </h2>
+            {tableIsEstadual && (
+              <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-amber-950/60 text-amber-300 border border-amber-600/40 uppercase shrink-0">
+                1ª Divisão
+              </span>
+            )}
+            {selectedOtherLeague && gameState.stateDivisions?.some(d => d.id === selectedOtherLeague.id) && (
+              <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-blue-950/60 text-blue-300 border border-blue-600/40 uppercase shrink-0">
+                2ª Divisão
+              </span>
+            )}
           </div>
           <div className="flex items-center space-x-1.5 shrink-0">
             {selectedOtherLeague ? (
@@ -518,6 +558,11 @@ export const ClubOverview: React.FC = () => {
                   }`}
                 >
                   <span>{comp.label}</span>
+                  {comp.badge && (
+                    <span className="text-[8px] sm:text-[9px] px-1 py-0.2 rounded font-semibold bg-slate-800 text-slate-300 border border-slate-700/60 shrink-0">
+                      {comp.badge}
+                    </span>
+                  )}
                   {comp.isCurrent && (
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" title="Competição em andamento na data de hoje" />
                   )}

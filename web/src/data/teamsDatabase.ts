@@ -195,11 +195,16 @@ export function getCompetitionClubs(selectedClubId: number, customPool?: Club[])
       const groupIndex = idx >= 0 ? Math.floor(idx / groupSize) : 0;
       const start = groupIndex * groupSize;
       competitionClubs = allLeagueClubs.slice(start, start + groupSize);
-      leagueName = `Brasileirão Série D • Grupo ${groupIndex + 1}`;
+      leagueName = 'Brasileirão Série D';
       divisionName = `Série D (Grupo ${groupIndex + 1})`;
     } else {
       competitionClubs = allLeagueClubs;
     }
+  }
+
+  // Canonicalize Brazilian national competition name
+  if ((selectedClub.countryId || 29) === 29) {
+    leagueName = getCanonicalNationalLeagueName(selectedClub);
   }
 
   // If division has fewer than 16 clubs (e.g. access pool, incomplete division like Spain Div 7 or England Div 7):
@@ -249,4 +254,24 @@ export function getCompetitionClubs(selectedClubId: number, customPool?: Club[])
     divisionName,
     countryName,
   };
+}
+
+export function getCanonicalNationalLeagueName(club: {
+  countryId?: number;
+  division?: number;
+  leagueName?: string;
+  divisionName?: string;
+}): string {
+  const isBrazil = (club.countryId ?? 29) === 29;
+  if (isBrazil) {
+    const div = club.division;
+    const letter = div === 1 ? 'A' : div === 2 ? 'B' : div === 3 ? 'C' : div === 4 ? 'D' : '';
+    if (letter) return `Brasileirão Série ${letter}`;
+    if (club.divisionName && /^Série [ABCD]/i.test(club.divisionName)) {
+      const match = club.divisionName.match(/Série ([ABCD])/i);
+      if (match) return `Brasileirão Série ${match[1].toUpperCase()}`;
+    }
+    return 'Brasileirão Série A';
+  }
+  return club.leagueName || 'Campeonato Nacional';
 }

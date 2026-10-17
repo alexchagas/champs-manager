@@ -1,7 +1,28 @@
+import type { Club } from '../types/index.ts';
+import { getAllClubs } from './teamsDatabase.ts';
+
 /**
  * Catálogo canônico de Fórmulas dos Campeonatos Estaduais do Brasil
  * Engenharia reversa dos 25 arquivos .ces (conf_estadual/*.ces) e do motor original (best/aq.java e best/w.java).
  */
+
+export interface StateTierInfo {
+  tier: 1 | 2;
+  badge: string;
+  divisionName: string;
+  leagueName: string;
+}
+
+export interface StateDivisionInfo {
+  stateCode: string;
+  stateName: string;
+  hasSecondDivision: boolean;
+  totalClubsInState: number;
+  eliteClubsCount: number;
+  remainingClubsCount: number;
+  tier1: StateTierInfo;
+  tier2?: StateTierInfo;
+}
 
 export interface StateLeagueRule {
   stateCode: string;
@@ -210,5 +231,102 @@ export function getStateLeagueRule(stateCode?: string): StateLeagueRule {
     jogosDentroGrupo: true,
     rebaixados: 2,
     descricao: 'Fórmula Padrão: 12 clubes em turno único + Semifinais e Final.',
+  };
+}
+
+export function getStateDivisionInfo(stateCode?: string, allClubs?: Club[]): StateDivisionInfo {
+  const rule = getStateLeagueRule(stateCode);
+  const code = rule.stateCode.toUpperCase();
+  const pool = allClubs || getAllClubs();
+  const stateClubs = pool.filter((c) => c.countryId === 29 && (c.stateCode || '').toUpperCase() === code);
+  const totalClubsInState = stateClubs.length;
+  const eliteClubsCount = rule.nTimes;
+  const remainingClubsCount = Math.max(0, totalClubsInState - eliteClubsCount);
+  const hasSecondDivision = remainingClubsCount >= 8;
+
+  // Tier 1 naming (Elite)
+  let tier1LeagueName = rule.stateName ? `Campeonato ${rule.stateName}` : 'Campeonato Estadual';
+  let tier1DivName = '1ª Divisão';
+  if (code === 'SP') {
+    tier1LeagueName = 'Campeonato Paulista (Paulistão)';
+    tier1DivName = 'Série A1';
+  } else if (code === 'RJ') {
+    tier1LeagueName = 'Campeonato Carioca';
+    tier1DivName = 'Série A';
+  } else if (code === 'MG') {
+    tier1LeagueName = 'Campeonato Mineiro';
+    tier1DivName = 'Módulo I';
+  } else if (code === 'RS') {
+    tier1LeagueName = 'Campeonato Gaúcho';
+    tier1DivName = 'Série A';
+  } else if (code === 'SC') {
+    tier1LeagueName = 'Campeonato Catarinense';
+    tier1DivName = 'Série A';
+  } else if (code === 'PR') {
+    tier1LeagueName = 'Campeonato Paranaense';
+    tier1DivName = '1ª Divisão';
+  } else if (code === 'BA') {
+    tier1LeagueName = 'Campeonato Baiano';
+    tier1DivName = '1ª Divisão';
+  } else if (code === 'PE') {
+    tier1LeagueName = 'Campeonato Pernambucano';
+    tier1DivName = '1ª Divisão';
+  } else if (code === 'CE') {
+    tier1LeagueName = 'Campeonato Cearense';
+    tier1DivName = '1ª Divisão';
+  } else if (code === 'GO') {
+    tier1LeagueName = 'Campeonato Goiano';
+    tier1DivName = '1ª Divisão';
+  }
+
+  const tier1: StateTierInfo = {
+    tier: 1,
+    badge: '1ª Divisão',
+    divisionName: tier1DivName,
+    leagueName: tier1LeagueName,
+  };
+
+  let tier2: StateTierInfo | undefined = undefined;
+  if (hasSecondDivision) {
+    let tier2LeagueName = `${tier1LeagueName.split('(')[0].trim()} • 2ª Divisão`;
+    let tier2DivName = '2ª Divisão';
+
+    if (code === 'SP') {
+      tier2LeagueName = 'Paulistão Série A2';
+      tier2DivName = 'Série A2';
+    } else if (code === 'RJ') {
+      tier2LeagueName = 'Carioca Série A2';
+      tier2DivName = 'Série A2';
+    } else if (code === 'MG') {
+      tier2LeagueName = 'Mineiro Módulo II';
+      tier2DivName = 'Módulo II';
+    } else if (code === 'RS') {
+      tier2LeagueName = 'Gaúcho Divisão de Acesso';
+      tier2DivName = 'Divisão de Acesso';
+    } else if (code === 'SC') {
+      tier2LeagueName = 'Catarinense Série B';
+      tier2DivName = 'Série B';
+    } else if (code === 'PR') {
+      tier2LeagueName = 'Paranaense 2ª Divisão';
+      tier2DivName = '2ª Divisão';
+    }
+
+    tier2 = {
+      tier: 2,
+      badge: '2ª Divisão',
+      divisionName: tier2DivName,
+      leagueName: tier2LeagueName,
+    };
+  }
+
+  return {
+    stateCode: code,
+    stateName: rule.stateName,
+    hasSecondDivision,
+    totalClubsInState,
+    eliteClubsCount,
+    remainingClubsCount,
+    tier1,
+    tier2,
   };
 }
