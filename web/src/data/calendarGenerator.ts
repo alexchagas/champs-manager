@@ -1,5 +1,25 @@
 import type { Club, MatchFixture, StandingRow } from '../types/index.ts';
 import { getContinentalTournamentField } from './continentalRepresentatives.ts';
+import { getStateLeagueRule } from './stateLeagueFormulas.ts';
+
+/**
+ * Ordenação canônica por mérito esportivo (engenharia reversa do motor h/D.java):
+ * 1. Menor divisão nacional (1 = Série A, 2 = Série B, 3 = Série C, 4 = Série D, 5 = Acesso)
+ * 2. Maior level técnico do time (descendente)
+ * 3. Maior reputação (estrelas, descendente)
+ */
+export function sortClubsByMeritocracy(clubs: Club[]): Club[] {
+  return [...clubs].sort((a, b) => {
+    const divA = a.division ?? 5;
+    const divB = b.division ?? 5;
+    if (divA !== divB) return divA - divB;
+    const levelDiff = (b.level ?? 10) - (a.level ?? 10);
+    if (levelDiff !== 0) return levelDiff;
+    const repDiff = (b.reputation ?? 1) - (a.reputation ?? 1);
+    if (repDiff !== 0) return repDiff;
+    return a.name.localeCompare(b.name);
+  });
+}
 
 // Standard Berger / round-robin scheduling algorithm
 export function generateLeagueCalendar(clubs: Club[]): MatchFixture[] {
@@ -114,8 +134,28 @@ export function generateTwoSemesterCalendar(
     (userClub.stateId != null && c.stateId === userClub.stateId) ||
     (userClub.stateCode != null && c.stateCode === userClub.stateCode)
   );
-  const stateClubs = isBrazil ? [userClub, ...pool.filter(c => c.id !== userClub.id && sameState(c))] : [];
-  const semester1Clubs = stateClubs.slice(0, 12);
+
+  const stateRule = isBrazil ? getStateLeagueRule(userClub.stateCode) : undefined;
+  const targetStateCount = stateRule ? stateRule.nTimes : 12;
+
+  let semester1Clubs: Club[] = [];
+  if (isBrazil) {
+    const rawStateClubs = pool.filter(sameState);
+    const sortedStateClubs = sortClubsByMeritocracy(rawStateClubs);
+
+    // Seleciona a elite do estado (tamanho oficial da regra da federação)
+    const eliteStateClubs = sortedStateClubs.slice(0, targetStateCount);
+
+    // O clube do usuário SEMPRE participa do campeonato estadual principal se for daquele estado,
+    // garantindo que jogue contra os maiores rivais e gigantes do seu estado
+    if (eliteStateClubs.some(c => c.id === userClub.id)) {
+      semester1Clubs = eliteStateClubs;
+    } else {
+      // Substitui o último classificado da elite para garantir o usuário junto com os gigantes
+      semester1Clubs = [userClub, ...eliteStateClubs.slice(0, targetStateCount - 1)];
+    }
+  }
+
   const semester2Clubs = nationalClubs.length >= 2 ? nationalClubs : pool.slice(0, 20);
 
   const continentalInfo = getContinentalTournamentField(userClub, pool);

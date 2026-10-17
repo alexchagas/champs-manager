@@ -81,7 +81,12 @@ export const ClubOverview: React.FC = () => {
 
   const activeCompetitionTab = selectedCompetitionTab || defaultCompetitionTab;
 
-  const selectedOtherLeague = (gameState.otherLeagues || []).find((l) => l.id === activeCompetitionTab);
+  const allExternalLeagues = useMemo(() => [
+    ...(gameState.nationalDivisions || []),
+    ...(gameState.otherLeagues || []),
+  ], [gameState.nationalDivisions, gameState.otherLeagues]);
+
+  const selectedOtherLeague = allExternalLeagues.find((l) => l.id === activeCompetitionTab);
   const tableIsOtherLeague = !!selectedOtherLeague;
 
   const tableIsEstadual = !tableIsOtherLeague && activeCompetitionTab === 'estadual';
@@ -140,11 +145,24 @@ export const ClubOverview: React.FC = () => {
         isCurrent: currentCompetition === 'copa',
       });
     }
+    if (gameState.nationalDivisions && gameState.nationalDivisions.length > 0) {
+      gameState.nationalDivisions.forEach(div => {
+        list.push({
+          id: div.id,
+          label: div.leagueName,
+          isCurrent: false,
+        });
+      });
+    }
     if (gameState.otherLeagues && gameState.otherLeagues.length > 0) {
       gameState.otherLeagues.forEach(other => {
+        const flag = COUNTRY_FLAGS[other.countryId] || other.countryFlag || '🌐';
+        const label = other.countryId === userClub.countryId
+          ? other.leagueName
+          : `${flag} ${other.leagueName}`;
         list.push({
           id: other.id,
-          label: `${COUNTRY_FLAGS[other.countryId] || other.countryFlag || '🌐'} ${other.leagueName}`,
+          label,
           isCurrent: false,
         });
       });
