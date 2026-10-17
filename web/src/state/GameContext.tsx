@@ -55,6 +55,7 @@ import {
   createChampionshipNews,
 } from '../engine/newsEngine';
 import { detectNewlyCompletedCompetitions, isSeasonComplete } from '../engine/tournamentCompletion';
+import { withInitialLineup } from '../engine/initialLineup';
 import {
   initializeNationalTeams,
   isWorldCupYear,
@@ -382,7 +383,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loadedClubs?: Club[]
   ) => {
     if (matchInProgress() && !window.confirm('Abandonar a partida em curso e iniciar outra carreira?')) return;
-    const migrated = migrateCareer(createNewGame(clubId, managerName, customOptions, activeCountryIds, loadedClubs));
+    // Carreira nova já começa com 11 titulares (os dados de origem trazem escalações inválidas)
+    const migrated = withInitialLineup(migrateCareer(createNewGame(clubId, managerName, customOptions, activeCountryIds, loadedClubs)), autoSelectBestLineupWasm);
     const newState = { ...migrated, newsFeed: generateKickoffNews(migrated), activeScreen: 'overview' as const };
     setMatchError('');
     setHasActiveCareer(true);
