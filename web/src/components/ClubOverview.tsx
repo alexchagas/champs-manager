@@ -81,7 +81,12 @@ export const ClubOverview: React.FC = () => {
 
   const activeCompetitionTab = selectedCompetitionTab || defaultCompetitionTab;
 
-  const selectedOtherLeague = (gameState.otherLeagues || []).find((l) => l.id === activeCompetitionTab);
+  const allExternalLeagues = useMemo(() => [
+    ...(gameState.nationalDivisions || []),
+    ...(gameState.otherLeagues || []),
+  ], [gameState.nationalDivisions, gameState.otherLeagues]);
+
+  const selectedOtherLeague = allExternalLeagues.find((l) => l.id === activeCompetitionTab);
   const tableIsOtherLeague = !!selectedOtherLeague;
 
   const tableIsEstadual = !tableIsOtherLeague && activeCompetitionTab === 'estadual';
@@ -90,7 +95,9 @@ export const ClubOverview: React.FC = () => {
   const tableIsNacional = !tableIsOtherLeague && activeCompetitionTab === 'nacional';
 
   const tableTitle = tableIsOtherLeague
-    ? `${COUNTRY_FLAGS[selectedOtherLeague.countryId] || selectedOtherLeague.countryFlag || '🌐'} ${selectedOtherLeague.leagueName} (${selectedOtherLeague.seasonLabel})`
+    ? (selectedOtherLeague.countryId === userClub.countryId
+        ? `${selectedOtherLeague.leagueName} (${selectedOtherLeague.seasonLabel})`
+        : `${COUNTRY_FLAGS[selectedOtherLeague.countryId] || selectedOtherLeague.countryFlag || '🌐'} ${selectedOtherLeague.leagueName} (${selectedOtherLeague.seasonLabel})`)
     : tableIsEstadual 
     ? (gameState.stateChampionshipName || 'Campeonato Estadual') 
     : tableIsContinental 
@@ -119,9 +126,15 @@ export const ClubOverview: React.FC = () => {
       });
     }
     if (gameState.standingsNacional && gameState.standingsNacional.length > 0) {
+      const divisionLetter = userClub.countryId === 29
+        ? (userClub.division === 1 ? 'A' : userClub.division === 2 ? 'B' : userClub.division === 3 ? 'C' : userClub.division === 4 ? 'D' : '')
+        : '';
+      const nationalLabel = divisionLetter
+        ? `Brasileirão Série ${divisionLetter}`
+        : (gameState.nationalLeagueName || gameState.leagueName || 'Brasileirão');
       list.push({
         id: 'nacional',
-        label: gameState.nationalLeagueName || gameState.leagueName || 'Brasileirão',
+        label: nationalLabel,
         isCurrent: currentCompetition === 'nacional',
       });
     }
@@ -140,17 +153,30 @@ export const ClubOverview: React.FC = () => {
         isCurrent: currentCompetition === 'copa',
       });
     }
+    if (gameState.nationalDivisions && gameState.nationalDivisions.length > 0) {
+      gameState.nationalDivisions.forEach(div => {
+        list.push({
+          id: div.id,
+          label: div.leagueName,
+          isCurrent: false,
+        });
+      });
+    }
     if (gameState.otherLeagues && gameState.otherLeagues.length > 0) {
       gameState.otherLeagues.forEach(other => {
+        const flag = COUNTRY_FLAGS[other.countryId] || other.countryFlag || '🌐';
+        const label = other.countryId === userClub.countryId
+          ? other.leagueName
+          : `${flag} ${other.leagueName}`;
         list.push({
           id: other.id,
-          label: `${COUNTRY_FLAGS[other.countryId] || other.countryFlag || '🌐'} ${other.leagueName}`,
+          label,
           isCurrent: false,
         });
       });
     }
     return list;
-  }, [gameState, currentCompetition, userClub.countryId]);
+  }, [gameState, currentCompetition, userClub.countryId, userClub.division]);
 
   const continentalGroups = useMemo(() => {
     if (!tableIsContinental) return [];
@@ -214,7 +240,7 @@ export const ClubOverview: React.FC = () => {
       return getCompetitionZones({
         competitionType: 'nacional',
         totalTeams: selectedOtherLeague.standings.length,
-        division: 1,
+        division: selectedOtherLeague.division ?? 1,
         countryId: selectedOtherLeague.countryId,
       });
     }

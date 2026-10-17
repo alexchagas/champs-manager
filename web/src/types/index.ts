@@ -503,6 +503,7 @@ export interface GameState {
   standingsEstadual?: StandingRow[];
   standingsNacional?: StandingRow[];
   standingsContinental?: StandingRow[];
+  nationalDivisions?: OtherLeagueStandings[];
   otherLeagues?: OtherLeagueStandings[];
   options: GameOptions;
   activeScreen: ActiveScreen;

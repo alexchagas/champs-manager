@@ -186,8 +186,10 @@ export function getCompetitionClubs(selectedClubId: number, customPool?: Club[])
       ? league.clubIds.map((id) => customPool.find((c) => c.id === id) || clubsById.get(id)!).filter(Boolean)
       : getClubsByLeague(league);
 
+    let isSerieDGroup = false;
     // If it's Série D (64 clubs), take the 8-team subgroup containing the chosen club
     if (allLeagueClubs.length > 24) {
+      isSerieDGroup = true;
       const idx = allLeagueClubs.findIndex((c) => c.id === selectedClub.id);
       const groupSize = 8;
       const groupIndex = idx >= 0 ? Math.floor(idx / groupSize) : 0;
@@ -202,7 +204,9 @@ export function getCompetitionClubs(selectedClubId: number, customPool?: Club[])
 
   // If division has fewer than 16 clubs (e.g. access pool, incomplete division like Spain Div 7 or England Div 7):
   // Supplement with peers of similar level/reputation from that same country to build a viable competitive tournament group
-  if (competitionClubs.length < 16) {
+  // (Do NOT pad official 8-club regional groups from Série D with unrelated access clubs)
+  const isSerieD = divisionName.includes('Série D') || (selectedClub.division === 4 && selectedClub.countryId === 29);
+  if (!isSerieD && competitionClubs.length < 16) {
     const pool = customPool || database.clubs;
     const sameCountry = pool.filter((c) => c.countryId === (selectedClub.countryId || 29));
     

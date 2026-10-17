@@ -134,6 +134,55 @@ export function preSimulateLeagueRounds(
 }
 
 /**
+ * Inicializa as outras divisões nacionais simultâneas do mesmo país do clube principal (ex: Séries B, C e D do Brasil)
+ */
+export function buildInitialNationalDivisions(
+  sourceClub: Club,
+  allAvailableClubs: Club[] = [],
+  seasonYear = 2026
+): OtherLeagueStandings[] {
+  const sourceCountryId = sourceClub.countryId || 29;
+  const sameCountryLeagues = getLeaguesByCountry(sourceCountryId);
+  const userDivision = sourceClub.division ?? 1;
+  const results: OtherLeagueStandings[] = [];
+
+  for (const sLeague of sameCountryLeagues) {
+    if (sLeague.division === userDivision) continue;
+    if (sLeague.division > 4) continue;
+
+    let sClubs = getClubsByLeague(sLeague);
+    if (sClubs.length < 4) {
+      sClubs = allAvailableClubs.filter((c) => c.countryId === sourceCountryId && c.division === sLeague.division);
+    }
+    if (sClubs.length < 2) continue;
+
+    const fieldClubs = sClubs.length > 20 ? sClubs.slice(0, 20) : sClubs;
+    const totalTeams = fieldClubs.length;
+    const totalRounds = (totalTeams - 1) * 2;
+
+    const standings = preSimulateLeagueRounds(
+      fieldClubs,
+      0,
+      1000 + sourceCountryId * 13 + sLeague.division * 7
+    );
+
+    results.push({
+      id: `league-${sourceCountryId}-div${sLeague.division}`,
+      countryId: sourceCountryId,
+      countryName: sourceClub.countryName || 'Brasil',
+      leagueName: `${sLeague.name} ${sLeague.divisionName}`,
+      division: sLeague.division,
+      seasonLabel: `${seasonYear}`,
+      currentRound: 0,
+      totalRounds,
+      standings,
+    });
+  }
+
+  return results;
+}
+
+/**
  * Inicializa tabelas e ligas ativas de outros países selecionados.
  * Se o país principal for o Brasil (Janeiro), ligas europeias ativas começam com 19 rodadas já jogadas.
  */

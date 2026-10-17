@@ -1,5 +1,25 @@
 import type { Club, MatchFixture, StandingRow } from '../types/index.ts';
 import { getContinentalTournamentField } from './continentalRepresentatives.ts';
+import { getStateLeagueRule } from './stateLeagueFormulas.ts';
+
+/**
+ * Ordenação canônica por mérito esportivo (engenharia reversa do motor h/D.java):
+ * 1. Menor divisão nacional (1 = Série A, 2 = Série B, 3 = Série C, 4 = Série D, 5 = Acesso)
+ * 2. Maior level técnico do time (descendente)
+ * 3. Maior reputação (estrelas, descendente)
+ */
+export function sortClubsByMeritocracy(clubs: Club[]): Club[] {
+  return [...clubs].sort((a, b) => {
+    const divA = a.division ?? 5;
+    const divB = b.division ?? 5;
+    if (divA !== divB) return divA - divB;
+    const levelDiff = (b.level ?? 10) - (a.level ?? 10);
+    if (levelDiff !== 0) return levelDiff;
+    const repDiff = (b.reputation ?? 1) - (a.reputation ?? 1);
+    if (repDiff !== 0) return repDiff;
+    return a.name.localeCompare(b.name);
+  });
+}
 
 // Standard Berger / round-robin scheduling algorithm
 export function generateLeagueCalendar(clubs: Club[]): MatchFixture[] {
@@ -114,13 +134,33 @@ export function generateTwoSemesterCalendar(
     (userClub.stateId != null && c.stateId === userClub.stateId) ||
     (userClub.stateCode != null && c.stateCode === userClub.stateCode)
   );
-  const stateClubs = isBrazil ? [userClub, ...pool.filter(c => c.id !== userClub.id && sameState(c))] : [];
-  const semester1Clubs = stateClubs.slice(0, 12);
+
+  const stateRule = isBrazil ? getStateLeagueRule(userClub.stateCode) : undefined;
+  const targetStateCount = stateRule ? stateRule.nTimes : 12;
+
+  let semester1Clubs: Club[] = [];
+  if (isBrazil) {
+    const rawStateClubs = pool.filter(sameState);
+    const sortedStateClubs = sortClubsByMeritocracy(rawStateClubs);
+
+    // Seleciona a elite do estado (tamanho oficial da regra da federação)
+    const eliteStateClubs = sortedStateClubs.slice(0, targetStateCount);
+
+    if (eliteStateClubs.some(c => c.id === userClub.id)) {
+      semester1Clubs = eliteStateClubs;
+    } else {
+      // Substitui o último classificado da elite para garantir o usuário junto com os gigantes
+      semester1Clubs = [userClub, ...eliteStateClubs.slice(0, targetStateCount - 1)];
+    }
+  }
+
   const semester2Clubs = nationalClubs.length >= 2 ? nationalClubs : pool.slice(0, 20);
 
   const continentalInfo = getContinentalTournamentField(userClub, pool);
   const continentalName = continentalInfo.name;
   const continentalClubs = continentalInfo.clubs;
+  const userParticipatesInContinental = continentalInfo.userParticipates ?? continentalClubs.some(c => c.id === userClub.id);
+
   const allFixtures: MatchFixture[] = [];
   let nextId = 1;
   const firstSunday = new Date(Date.UTC(seasonYear, 0, 1));
@@ -137,27 +177,82 @@ export function generateTwoSemesterCalendar(
       dayOfWeek: offset === 3 ? 'quarta' : offset === 4 ? 'quinta' : 'domingo',
     });
   };
-  const estadualRaw = generateLeagueCalendar(semester1Clubs);
-  const estadualGroupRounds = Math.min(11, Math.ceil(semester1Clubs.length / 2) * 2 - 1);
-  for (let r = 1; r <= estadualGroupRounds; r++) addRound(estadualRaw, r, r - 1, 'estadual', estadualName, `Rodada ${r}`);
+
+  const isFormula7 = stateRule?.formulaId === 7 && semester1Clubs.length === 16;
+  let estadualGroupRounds = Math.min(11, Math.ceil(semester1Clubs.length / 2) * 2 - 1);
+
+  if (isFormula7) {
+    // Paulistão Fórmula 7: 16 clubes em 4 grupos de 4.
+    // Cada clube joga 12 partidas (contra os clubes dos outros 3 grupos).
+    estadualGroupRounds = 12;
+    const gA = semester1Clubs.slice(0, 4);
+    const gB = semester1Clubs.slice(4, 8);
+    const gC = semester1Clubs.slice(8, 12);
+    const gD = semester1Clubs.slice(12, 16);
+
+    const pairGroups = (group1: Club[], group2: Club[], startRound: number) => {
+      for (let k = 0; k < 4; k++) {
+        const roundNum = startRound + k;
+        const fixtures: MatchFixture[] = [];
+        for (let i = 0; i < 4; i++) {
+          const j = (i + k) % 4;
+          const isHome = (i + k) % 2 === 0;
+          fixtures.push({
+            id: 0,
+            round: roundNum,
+            homeClubId: isHome ? group1[i].id : group2[j].id,
+            awayClubId: isHome ? group2[j].id : group1[i].id,
+            played: false,
+          });
+        }
+        addRound(fixtures, roundNum, roundNum - 1, 'estadual', estadualName, `Rodada ${roundNum}`);
+      }
+    };
+
+    pairGroups(gA, gB, 1);
+    pairGroups(gC, gD, 1);
+    pairGroups(gA, gC, 5);
+    pairGroups(gB, gD, 5);
+    pairGroups(gA, gD, 9);
+    pairGroups(gB, gC, 9);
+  } else {
+    const estadualRaw = generateLeagueCalendar(semester1Clubs);
+    for (let r = 1; r <= estadualGroupRounds; r++) addRound(estadualRaw, r, r - 1, 'estadual', estadualName, `Rodada ${r}`);
+  }
+
   const reserve = (type: MatchFixture['competitionType'], name: string, round: number, week: number,
     label: string, stage: string, dayOfWeek: 'domingo' | 'quarta' | 'quinta', leg?: 1 | 2) => {
     allFixtures.push({ id: nextId++, round, date: dateAt(week, dayOfWeek === 'domingo' ? 0 : dayOfWeek === 'quarta' ? 3 : 4),
       homeClubId: 0, awayClubId: 0, played: false, pendingQualification: true,
       competitionType: type, competitionName: name, competitionRound: label, stage, dayOfWeek, leg });
   };
+
   // Knockout slots have no participants until qualification is decided.
   if (semester1Clubs.length >= 4) {
-    for (let leg = 1; leg <= 2; leg++) for (let tie = 0; tie < 2; tie++) reserve('estadual', estadualName,
-      estadualGroupRounds + leg, estadualGroupRounds + leg - 1,
-      `Semifinal (${leg === 1 ? 'Ida' : 'Volta'})`, 'Semifinal', 'domingo', leg as 1 | 2);
-    reserve('estadual', estadualName, estadualGroupRounds + 3, estadualGroupRounds + 2, 'Final', 'Final', 'domingo');
+    if (isFormula7) {
+      // TODO(SPEC-009/SPEC-008): Formula 7 authentic format features 8-club Quartas de Final.
+      // Currently using 4-club Semifinais until multi-tier state knockout brackets are expanded.
+      for (let tie = 0; tie < 2; tie++) {
+        reserve('estadual', estadualName, 13, 11, 'Semifinal (Ida)', 'Semifinal', 'quarta', 1);
+      }
+      for (let tie = 0; tie < 2; tie++) {
+        reserve('estadual', estadualName, 14, 12, 'Semifinal (Volta)', 'Semifinal', 'domingo', 2);
+      }
+      reserve('estadual', estadualName, 15, 13, 'Final', 'Final', 'domingo');
+    } else {
+      for (let leg = 1; leg <= 2; leg++) for (let tie = 0; tie < 2; tie++) reserve('estadual', estadualName,
+        estadualGroupRounds + leg, estadualGroupRounds + leg - 1,
+        `Semifinal (${leg === 1 ? 'Ida' : 'Volta'})`, 'Semifinal', 'domingo', leg as 1 | 2);
+      reserve('estadual', estadualName, estadualGroupRounds + 3, estadualGroupRounds + 2, 'Final', 'Final', 'domingo');
+    }
   }
+
   const nationalStart = isBrazil ? 14 : 0;
   const nationalRaw = generateLeagueCalendar(semester2Clubs);
   const nationalRounds = nationalRaw.length ? Math.max(...nationalRaw.map(f => f.round)) : 0;
   for (let r = 1; r <= nationalRounds; r++) addRound(nationalRaw, r, nationalStart + r - 1, 'nacional', nacionalName, `Rodada ${r}`);
 
+  // Continental matches are generated for the 16 eligible clubs
   if (continentalClubs.length === 16) {
     const continentalType = continentalInfo.type === 'sulamericana' ? 'sulamericana' : continentalInfo.type === 'libertadores' ? 'libertadores' : 'champions';
     for (let group = 0; group < 4; group++) {
