@@ -27,7 +27,6 @@ import {
 } from '../engine/careerEconomy';
 import { applySavedClubEdits } from '../data/editorPersistence';
 import { sortStandings, generateTwoSemesterCalendar, initializeStandings } from '../data/calendarGenerator';
-import { resolvePendingFixtures } from '../engine/qualification';
 import { advanceOtherLeaguesProgress, buildInitialActiveOtherLeagues, buildInitialNationalDivisions, buildInitialStateDivisions } from '../engine/crossSeasonSimulation';
 import { simulateMatchWasm } from '../engine/wasmBridge';
 import { sound } from '../audio/soundEngine';
