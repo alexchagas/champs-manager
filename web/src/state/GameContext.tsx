@@ -100,6 +100,8 @@ import {
   deleteGameSlotFromStorage, 
   listAllSaveSlots 
 } from './storage';
+import { computeSeasonMobility } from '../engine/sportsMobility';
+import { getCompetitionClubs } from '../data/teamsDatabase';
 import { addBreadcrumb } from '../observability/sentry';
 
 interface GameContextType {
@@ -748,9 +750,53 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }));
       const articles = generateWeeklyNews(managed, fixtures, injuries, dismissals);
       const count = (latest.autoSaveMatchCounter || 0) + 1;
-      const final = resolvePendingFixtures({ ...managed, newsFeed: [...articles, ...(latest.newsFeed || [])].slice(0,40),
+
+      const currentLastSlot = Math.max(...closed.calendar.map(f => f.fixtureDateIndex ?? f.round), 1);
+      const progressRatio = Math.min(1.0, closed.currentRound / currentLastSlot);
+      const isMainBrazil = (closed.clubs.find(c => c.id === closed.userClubId)?.countryId || 29) === 29;
+
+      const updatedNationalDivisions = closed.nationalDivisions && closed.nationalDivisions.length > 0
+        ? advanceOtherLeaguesProgress(closed.nationalDivisions, progressRatio, closed.clubs, isMainBrazil, {
+            currentSemester: closed.currentSemester,
+            currentRound: closed.currentRound,
+            totalRounds: currentLastSlot,
+          })
+        : closed.nationalDivisions;
+
+      const updatedStateDivisions = closed.stateDivisions && closed.stateDivisions.length > 0
+        ? advanceOtherLeaguesProgress(closed.stateDivisions, progressRatio, closed.clubs, true, {
+            currentSemester: closed.currentSemester,
+            currentRound: closed.currentRound,
+            totalRounds: currentLastSlot,
+          })
+        : closed.stateDivisions;
+
+      const updatedContinentalCompetitions = closed.continentalCompetitions && closed.continentalCompetitions.length > 0
+        ? advanceOtherLeaguesProgress(closed.continentalCompetitions, progressRatio, closed.clubs, true, {
+            currentSemester: closed.currentSemester,
+            currentRound: closed.currentRound,
+            totalRounds: currentLastSlot,
+          })
+        : closed.continentalCompetitions;
+
+      const updatedOtherLeagues = closed.otherLeagues && closed.otherLeagues.length > 0
+        ? advanceOtherLeaguesProgress(closed.otherLeagues, progressRatio, closed.clubs, isMainBrazil, {
+            currentSemester: closed.currentSemester,
+            currentRound: closed.currentRound,
+            totalRounds: currentLastSlot,
+          })
+        : closed.otherLeagues;
+
+      const final = resolvePendingFixtures({
+        ...managed,
+        nationalDivisions: updatedNationalDivisions,
+        stateDivisions: updatedStateDivisions,
+        continentalCompetitions: updatedContinentalCompetitions,
+        otherLeagues: updatedOtherLeagues,
+        newsFeed: [...articles, ...(latest.newsFeed || [])].slice(0, 40),
         autoSaveMatchCounter: latest.options.autoSaveMode === 'every_3_matches' && count >= 3 ? 0 : count,
-        activeScreen: 'round_results' });
+        activeScreen: 'round_results',
+      });
       
       const newlyCompleted = detectNewlyCompletedCompetitions(final);
       let stateWithTitles = final;
@@ -927,70 +973,40 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const startNextSeason = () => {
-    const club = gameState.clubs.find(c => c.id === gameState.userClubId) || gameState.clubs[0];
-    const nationalIds = new Set(gameState.standingsNacional?.map(row => row.clubId));
-    const nationalClubs = gameState.clubs.filter(c => nationalIds.has(c.id));
     const nextYear = gameState.seasonYear + 1;
+
+    // 1. Executa a mobilidade desportiva canônica (promoções e rebaixamentos nacionais e estaduais)
+    const mobility = computeSeasonMobility(gameState);
+    let updatedClubs = mobility.updatedClubs;
+    const updatedUserClub = updatedClubs.find(c => c.id === gameState.userClubId) || updatedClubs[0];
+
+    // 2. Determina os clubes da divisão nacional do usuário para a nova temporada
+    const userDivision = updatedUserClub.division ?? 1;
+    let nationalClubs = updatedClubs.filter(
+      c => c.countryId === (updatedUserClub.countryId ?? 29) && c.division === userDivision
+    );
+    if (nationalClubs.length < 2) {
+      nationalClubs = getCompetitionClubs(updatedUserClub.id, updatedClubs).competitionClubs;
+    }
+
+    // 3. Qualificações continentais
     const serieAStandings =
-      (club.countryId ?? 29) === 29 && (club.division ?? 1) === 1
+      (updatedUserClub.countryId ?? 29) === 29 && userDivision === 1
         ? gameState.standingsNacional
         : gameState.nationalDivisions?.find(d => d.countryId === 29 && d.division === 1)?.standings;
     const seasonRecords = (gameState.tournamentHistory || []).filter(r => r.seasonYear === gameState.seasonYear);
-    const qualifiers = computeContinentalQualifiers(gameState.clubs, serieAStandings, seasonRecords);
+    const qualifiers = computeContinentalQualifiers(updatedClubs, serieAStandings, seasonRecords);
 
-    const currentTier = gameState.stateTier ?? 1;
-    let nextPromotedStateClubIds = [...(gameState.promotedStateClubIds || [])];
-    let nextRelegatedStateClubIds = [...(gameState.relegatedStateClubIds || [])];
-    const stateRule = (club.countryId ?? 29) === 29 ? getStateLeagueRule(club.stateCode) : undefined;
-    const divInfo = (club.countryId ?? 29) === 29 ? getStateDivisionInfo(club.stateCode, gameState.clubs) : undefined;
-    const stateNews: NewsArticle[] = [];
-
-    if (divInfo?.hasSecondDivision && gameState.standingsEstadual && gameState.standingsEstadual.length > 0) {
-      const sortedEstadual = [...gameState.standingsEstadual].sort(
-        (a, b) => b.points - a.points || b.goalDiff - a.goalDiff || b.goalsFor - a.goalsFor
-      );
-      const userRank = sortedEstadual.findIndex(r => r.clubId === club.id) + 1;
-      const totalEstadualTeams = sortedEstadual.length;
-
-      if (currentTier === 2) {
-        if (userRank >= 1 && userRank <= 2) {
-          nextPromotedStateClubIds = Array.from(new Set([...nextPromotedStateClubIds, club.id]));
-          nextRelegatedStateClubIds = nextRelegatedStateClubIds.filter(id => id !== club.id);
-          stateNews.push({
-            id: Date.now() + 10,
-            date: `${nextYear}-01-01`,
-            headline: `Histórico! ${club.name} conquista o acesso à elite estadual!`,
-            content: `Após uma campanha memorável na 2ª Divisão, o ${club.name} garantiu sua vaga na elite do ${divInfo.tier1.leagueName} para a temporada de ${nextYear}!`,
-            category: 'geral',
-            isHeadline: true,
-          });
-        }
-      } else if (currentTier === 1) {
-        const rebaixadosCount = stateRule?.rebaixados ?? 2;
-        if (userRank > totalEstadualTeams - rebaixadosCount) {
-          nextRelegatedStateClubIds = Array.from(new Set([...nextRelegatedStateClubIds, club.id]));
-          nextPromotedStateClubIds = nextPromotedStateClubIds.filter(id => id !== club.id);
-          stateNews.push({
-            id: Date.now() + 11,
-            date: `${nextYear}-01-01`,
-            headline: `Pesadelo: ${club.name} é rebaixado no Campeonato Estadual!`,
-            content: `Com o encerramento do estadual, o ${club.name} não escapou do Z2 e disputará a 2ª Divisão (${divInfo.tier2?.leagueName}) em ${nextYear}. A diretoria exige reformulação.`,
-            category: 'geral',
-            isHeadline: true,
-          });
-        }
-      }
-    }
-
+    // 4. State overrides com a mobilidade estadual canônica
     const stateOverrides = {
-      promotedStateClubIds: nextPromotedStateClubIds,
-      relegatedStateClubIds: nextRelegatedStateClubIds,
+      promotedStateClubIds: mobility.nextPromotedStateClubIds,
+      relegatedStateClubIds: mobility.nextRelegatedStateClubIds,
     };
 
     const next = generateTwoSemesterCalendar(
-      club,
+      updatedUserClub,
       nationalClubs,
-      gameState.clubs,
+      updatedClubs,
       nextYear,
       {
         qualifiedLibertadoresIds: qualifiers.libertadoresClubIds,
@@ -1002,10 +1018,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const rolled = rolloverManagers(gameState);
 
     // Apply post-World Cup market value boosts to called-up players
-    let updatedClubs = rolled.clubs;
     if (gameState.nationalCallups && gameState.nationalCallups.length > 0) {
       const callupMap = new Map(gameState.nationalCallups.map(c => [c.playerId, c.boostedMarketValue]));
-      updatedClubs = rolled.clubs.map(c => ({
+      updatedClubs = updatedClubs.map(c => ({
         ...c,
         squad: c.squad.map(p => {
           const boosted = callupMap.get(p.id);
@@ -1021,31 +1036,31 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const intercontinentalCup = isIntercontinentalYear(nextYear) ? createIntercontinentalCup(nextYear, updatedClubs) : undefined;
     const human = rolled.managers?.find(m => m.id === rolled.humanManagerId) || { id: 'human-1', name: gameState.managerName, reputation: 1, titles: [] } as any;
     const nationalTeamOffers = isWorldCupYear(nextYear) ? getAvailableNationalTeamOffers(human, nextYear, nationalTeams) : undefined;
-    const { callups, newsArticles: callupNews } = isWorldCupYear(nextYear) ? evaluateUserSquadCallups(club, nextYear, nationalTeams) : { callups: [], newsArticles: [] };
+    const { callups, newsArticles: callupNews } = isWorldCupYear(nextYear) ? evaluateUserSquadCallups(updatedUserClub, nextYear, nationalTeams) : { callups: [], newsArticles: [] };
 
     const nextNationalDivisions = buildInitialNationalDivisions(
-      club,
+      updatedUserClub,
       updatedClubs,
       nextYear
     );
 
     const nextOtherLeagues = buildInitialActiveOtherLeagues(
-      club,
+      updatedUserClub,
       gameState.activeCountryIds || [],
       updatedClubs,
       nextYear
     );
 
     const nextStateDivisions = buildInitialStateDivisions(
-      club,
+      updatedUserClub,
       updatedClubs,
       nextYear,
-      nextPromotedStateClubIds,
-      nextRelegatedStateClubIds
+      mobility.nextPromotedStateClubIds,
+      mobility.nextRelegatedStateClubIds
     );
 
     const nextContinentalCompetitions = buildInitialContinentalCompetitions(
-      club,
+      updatedUserClub,
       updatedClubs,
       nextYear
     );
@@ -1058,12 +1073,12 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       currentRound: 1,
       currentSemester: 1,
       calendar: next.calendar,
-      stateTier: next.estadualTier ?? 1,
-      promotedStateClubIds: nextPromotedStateClubIds,
-      relegatedStateClubIds: nextRelegatedStateClubIds,
-      standings: sortStandings(initializeEstadualStandings(club, next.semester1Clubs, next.estadualTier)),
-      standingsEstadual: sortStandings(initializeEstadualStandings(club, next.semester1Clubs, next.estadualTier)),
-      standingsNacional: sortStandings(initializeNacionalStandings(club, next.semester2Clubs)),
+      stateTier: next.estadualTier ?? mobility.userNewStateTier ?? 1,
+      promotedStateClubIds: mobility.nextPromotedStateClubIds,
+      relegatedStateClubIds: mobility.nextRelegatedStateClubIds,
+      standings: sortStandings(initializeEstadualStandings(updatedUserClub, next.semester1Clubs, next.estadualTier)),
+      standingsEstadual: sortStandings(initializeEstadualStandings(updatedUserClub, next.semester1Clubs, next.estadualTier)),
+      standingsNacional: sortStandings(initializeNacionalStandings(updatedUserClub, next.semester2Clubs)),
       standingsContinental: sortStandings(initializeContinentalStandings(next.continentalClubs)),
       nationalDivisions: nextNationalDivisions,
       stateDivisions: nextStateDivisions,
@@ -1079,7 +1094,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       intercontinentalCup,
       nationalTeamOffers,
       nationalCallups: callups,
-      newsFeed: [...stateNews, ...callupNews, ...(rolled.newsFeed || [])],
+      newsFeed: [...mobility.newsArticles, ...callupNews, ...(rolled.newsFeed || [])],
     };
     setGameState(nextSeasonState);
     if (
@@ -1103,13 +1118,23 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const currentLastSlot = Math.max(...gameState.calendar.map(f => f.fixtureDateIndex ?? f.round));
     const targetRoundNum = gameState.currentRound + 1;
+    const nextCompetition = gameState.calendar.find(f => (f.fixtureDateIndex ?? f.round) === targetRoundNum)?.competitionType;
+    const nextSemester: 1 | 2 = nextCompetition === 'estadual' ? 1 : 2;
+    const isMainBrazil = (gameState.clubs.find(c => c.id === gameState.userClubId)?.countryId || 29) === 29;
     const progressRatio = Math.min(1.0, targetRoundNum / Math.max(1, currentLastSlot));
+    const advanceContext = {
+      currentSemester: nextSemester,
+      currentRound: targetRoundNum,
+      totalRounds: currentLastSlot,
+    };
+
     const updatedNationalDivisions = gameState.nationalDivisions && gameState.nationalDivisions.length > 0
       ? advanceOtherLeaguesProgress(
           gameState.nationalDivisions,
           progressRatio,
           gameState.clubs,
-          (gameState.clubs.find(c => c.id === gameState.userClubId)?.countryId || 29) === 29
+          isMainBrazil,
+          advanceContext
         )
       : gameState.nationalDivisions;
 
@@ -1118,7 +1143,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           gameState.stateDivisions,
           progressRatio,
           gameState.clubs,
-          true
+          true,
+          advanceContext
         )
       : gameState.stateDivisions;
 
@@ -1127,7 +1153,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           gameState.continentalCompetitions,
           progressRatio,
           gameState.clubs,
-          true
+          true,
+          advanceContext
         )
       : gameState.continentalCompetitions;
 
@@ -1136,7 +1163,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           gameState.otherLeagues,
           progressRatio,
           gameState.clubs,
-          (gameState.clubs.find(c => c.id === gameState.userClubId)?.countryId || 29) === 29
+          isMainBrazil,
+          advanceContext
         )
       : gameState.otherLeagues;
 

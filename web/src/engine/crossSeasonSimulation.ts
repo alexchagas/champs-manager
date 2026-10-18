@@ -103,9 +103,12 @@ export function preSimulateLeagueRounds(
           );
         }
       }
+      groupedFixtures.sort((a, b) => a.round - b.round || (a.id || 0) - (b.id || 0) || a.homeClubId - b.homeClubId);
       return groupedFixtures;
     }
-    return generateLeagueCalendar(clubs).filter((f) => f.round <= roundsToPlay);
+    const fixtures = generateLeagueCalendar(clubs).filter((f) => f.round <= roundsToPlay);
+    fixtures.sort((a, b) => a.round - b.round || (a.id || 0) - (b.id || 0) || a.homeClubId - b.homeClubId);
+    return fixtures;
   })();
 
   for (const fix of targetFixtures) {
@@ -182,9 +185,11 @@ export function buildInitialNationalDivisions(
     if (sLeague.division === userDivision) continue;
     if (sLeague.division > 4) continue;
 
-    let sClubs = getClubsByLeague(sLeague);
+    let sClubs = allAvailableClubs && allAvailableClubs.length > 0
+      ? allAvailableClubs.filter((c) => c.countryId === sourceCountryId && c.division === sLeague.division)
+      : [];
     if (sClubs.length < 4) {
-      sClubs = allAvailableClubs.filter((c) => c.countryId === sourceCountryId && c.division === sLeague.division);
+      sClubs = getClubsByLeague(sLeague);
     }
     if (sClubs.length < 2) continue;
 
@@ -410,6 +415,13 @@ export function buildInitialActiveOtherLeagues(
   return results;
 }
 
+export interface LeagueAdvanceContext {
+  currentSemester?: 1 | 2;
+  currentRound?: number;
+  totalRounds?: number;
+  currentDate?: string;
+}
+
 /**
  * Atualiza o progresso das outras ligas ativas à medida que o save avança.
  */
@@ -417,7 +429,8 @@ export function advanceOtherLeaguesProgress(
   currentOtherLeagues: OtherLeagueStandings[],
   userProgressRatio: number, // 0.0 (início) a 1.0 (fim do ano do usuário)
   allClubs: Club[],
-  isMainBrazil = true
+  isMainBrazil = true,
+  context?: LeagueAdvanceContext
 ): OtherLeagueStandings[] {
   return currentOtherLeagues.map((entry) => {
     const isOtherCrossSeason = isCrossSeasonCountry(entry.countryId);
@@ -425,16 +438,48 @@ export function advanceOtherLeaguesProgress(
 
     let targetRound = entry.currentRound;
 
-    if (isMainBrazil && isOtherCrossSeason) {
-      // No Brasil: de Jan a Mai (ratio 0.0 a 0.4), a Europa joga as rodadas 19 a 38
+    if (context && isMainBrazil) {
+      if (entry.id.startsWith('state-')) {
+        // Estaduais (1º semestre: semanas 0 a 13)
+        if (context.currentSemester === 1) {
+          const stateProgress = Math.min(1.0, Math.max(0.0, (context.currentRound || 1) / 14));
+          targetRound = Math.min(entry.totalRounds, Math.round(entry.totalRounds * stateProgress));
+        } else {
+          // 2º semestre: estaduais já estão 100% finalizados
+          targetRound = entry.totalRounds;
+        }
+      } else if (entry.id.startsWith('league-29-div')) {
+        // Séries nacionais (A, B, C, D) no Brasil (2º semestre: a partir da semana 14)
+        if (context.currentSemester === 1) {
+          targetRound = 0;
+        } else {
+          const natProgress = Math.min(
+            1.0,
+            Math.max(0.0, ((context.currentRound || 14) - 13) / Math.max(1, (context.totalRounds || 38) - 13))
+          );
+          targetRound = Math.min(entry.totalRounds, Math.round(entry.totalRounds * natProgress));
+        }
+      } else if (isOtherCrossSeason) {
+        if (userProgressRatio <= 0.4) {
+          const europeanSpringProgress = userProgressRatio / 0.4;
+          targetRound = Math.min(entry.totalRounds, Math.round(halfRounds + (entry.totalRounds - halfRounds) * europeanSpringProgress));
+        } else if (userProgressRatio > 0.4 && userProgressRatio < 0.6) {
+          targetRound = entry.totalRounds;
+        } else {
+          const autumnProgress = (userProgressRatio - 0.6) / 0.4;
+          targetRound = Math.min(halfRounds, Math.max(1, Math.round(halfRounds * autumnProgress)));
+        }
+      } else {
+        targetRound = Math.min(entry.totalRounds, Math.round(entry.totalRounds * userProgressRatio));
+      }
+    } else if (isMainBrazil && isOtherCrossSeason) {
+      // Sem context explícito (fallback linear / compatibilidade com testes legados)
       if (userProgressRatio <= 0.4) {
-        const europeanSpringProgress = userProgressRatio / 0.4; // 0.0 a 1.0
+        const europeanSpringProgress = userProgressRatio / 0.4;
         targetRound = Math.min(entry.totalRounds, Math.round(halfRounds + (entry.totalRounds - halfRounds) * europeanSpringProgress));
       } else if (userProgressRatio > 0.4 && userProgressRatio < 0.6) {
-        // Junho e Julho: Férias e pré-temporada europeia (campeão definido, 38/38)
         targetRound = entry.totalRounds;
       } else {
-        // Agosto a Dezembro (ratio 0.6 a 1.0): Nova temporada europeia 2026/27 (rodadas 1 a 19)
         const autumnProgress = (userProgressRatio - 0.6) / 0.4;
         targetRound = Math.min(halfRounds, Math.max(1, Math.round(halfRounds * autumnProgress)));
       }
@@ -462,10 +507,13 @@ export function advanceOtherLeaguesProgress(
 
     if (leagueClubs.length < 2) return entry;
 
+    // Semente determinística e estável por liga para garantir integridade e invariância histórica rodada a rodada
+    const stableSeed = 2000 + entry.countryId * 41 + (entry.division || 1) * 31;
+
     const newStandings = preSimulateLeagueRounds(
       leagueClubs,
       targetRound,
-      2000 + entry.countryId * 41 + targetRound,
+      stableSeed,
       groupCount
     );
 
