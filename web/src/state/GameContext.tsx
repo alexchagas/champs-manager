@@ -1123,10 +1123,22 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (matchInProgress()) { setMatchError('Comando bloqueado durante a partida. Volte à escalação da sessão.'); return; }
     const lastSlot = Math.max(...gameState.calendar.map(f => f.fixtureDateIndex ?? f.round));
     if (gameState.currentRound >= lastSlot || isSeasonComplete(gameState)) {
-      setGameState(prev => ({
-        ...prev,
-        activeScreen: 'season_review',
-      }));
+      setGameState(prev => {
+        const newly = detectNewlyCompletedCompetitions(prev);
+        let updatedHistory = prev.championshipHistory || [];
+        if (newly.length > 0) {
+          const existingIds = new Set(updatedHistory.map(h => h.id));
+          const additions = newly.filter(r => !existingIds.has(r.id));
+          if (additions.length > 0) {
+            updatedHistory = [...updatedHistory, ...additions];
+          }
+        }
+        return {
+          ...prev,
+          championshipHistory: updatedHistory,
+          activeScreen: 'season_review',
+        };
+      });
       return;
     }
 

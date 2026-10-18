@@ -300,3 +300,127 @@ test('sanitizePrematureChampionships - removes bogus Copa championship records f
   assert.equal(repaired.pendingTournamentConclusion, undefined, 'Pending conclusion modal should be cleared');
 });
 
+test('tournamentCompletion - detects all 4 divisions (Série A, B, C, D) and parallel continental top scorers when user is in Série D', () => {
+  const clubs = [
+    { id: 401, name: 'América-RN', division: 4, countryId: 29, squad: [{ id: 1, name: 'Souza', position: 'MEI', strength: 65, goals: 0 }] },
+    { id: 402, name: 'Retrô', division: 4, countryId: 29, squad: [{ id: 2, name: 'Fernandinho', position: 'ATA', strength: 63, goals: 0 }] },
+    { id: 101, name: 'Flamengo', division: 1, countryId: 29, squad: [{ id: 3, name: 'Pedro', position: 'ATA', strength: 82, goals: 0 }] },
+    { id: 102, name: 'Palmeiras', division: 1, countryId: 29, squad: [{ id: 4, name: 'Veiga', position: 'MEI', strength: 81, goals: 0 }] },
+    { id: 201, name: 'Santos', division: 2, countryId: 29, squad: [{ id: 5, name: 'Guilherme', position: 'ATA', strength: 74, goals: 0 }] },
+    { id: 202, name: 'Sport', division: 2, countryId: 29, squad: [{ id: 6, name: 'Lucas Lima', position: 'MEI', strength: 73, goals: 0 }] },
+    { id: 301, name: 'Volta Redonda', division: 3, countryId: 29, squad: [{ id: 7, name: 'MV', position: 'ATA', strength: 69, goals: 0 }] },
+    { id: 302, name: 'Athletic Club', division: 3, countryId: 29, squad: [{ id: 8, name: 'Jonathas', position: 'ATA', strength: 68, goals: 0 }] },
+    { id: 501, name: 'LDU Quito', countryId: 30, squad: [{ id: 9, name: 'Arce', position: 'ATA', strength: 75, goals: 0 }] },
+    { id: 502, name: 'Lanús', countryId: 28, squad: [{ id: 10, name: 'Bou', position: 'ATA', strength: 74, goals: 0 }] },
+  ];
+
+  const state = {
+    seasonYear: 2026,
+    userClubId: 401, // User playing in Série D
+    managerName: 'Professor D',
+    clubs,
+    nationalLeagueName: 'Campeonato Brasileiro Série D',
+    standingsNacional: [
+      { clubId: 401, clubName: 'América-RN', points: 30, matchesPlayed: 14, won: 9, drawn: 3, lost: 2, goalsFor: 22, goalsAgainst: 10, goalDiff: 12, form: [] },
+      { clubId: 402, clubName: 'Retrô', points: 26, matchesPlayed: 14, won: 8, drawn: 2, lost: 4, goalsFor: 18, goalsAgainst: 12, goalDiff: 6, form: [] },
+    ],
+    nationalDivisions: [
+      {
+        id: 'league-29-div1',
+        countryId: 29,
+        countryName: 'Brasil',
+        leagueName: 'Brasileirão Série A',
+        division: 1,
+        seasonLabel: '2026',
+        currentRound: 38,
+        totalRounds: 38,
+        standings: [
+          { clubId: 101, clubName: 'Flamengo', points: 80, matchesPlayed: 38, won: 24, drawn: 8, lost: 6, goalsFor: 70, goalsAgainst: 30, goalDiff: 40, form: [] },
+          { clubId: 102, clubName: 'Palmeiras', points: 76, matchesPlayed: 38, won: 23, drawn: 7, lost: 8, goalsFor: 64, goalsAgainst: 32, goalDiff: 32, form: [] },
+        ],
+      },
+      {
+        id: 'league-29-div2',
+        countryId: 29,
+        countryName: 'Brasil',
+        leagueName: 'Brasileirão Série B',
+        division: 2,
+        seasonLabel: '2026',
+        currentRound: 38,
+        totalRounds: 38,
+        standings: [
+          { clubId: 201, clubName: 'Santos', points: 72, matchesPlayed: 38, won: 21, drawn: 9, lost: 8, goalsFor: 58, goalsAgainst: 33, goalDiff: 25, form: [] },
+          { clubId: 202, clubName: 'Sport', points: 68, matchesPlayed: 38, won: 20, drawn: 8, lost: 10, goalsFor: 55, goalsAgainst: 36, goalDiff: 19, form: [] },
+        ],
+      },
+      {
+        id: 'league-29-div3',
+        countryId: 29,
+        countryName: 'Brasil',
+        leagueName: 'Brasileirão Série C',
+        division: 3,
+        seasonLabel: '2026',
+        currentRound: 19,
+        totalRounds: 19,
+        standings: [
+          { clubId: 301, clubName: 'Volta Redonda', points: 38, matchesPlayed: 19, won: 11, drawn: 5, lost: 3, goalsFor: 30, goalsAgainst: 15, goalDiff: 15, form: [] },
+          { clubId: 302, clubName: 'Athletic Club', points: 36, matchesPlayed: 19, won: 10, drawn: 6, lost: 3, goalsFor: 28, goalsAgainst: 17, goalDiff: 11, form: [] },
+        ],
+      },
+    ],
+    continentalCompetitions: [
+      {
+        id: 'continental-sister',
+        countryId: 29,
+        countryName: 'América do Sul',
+        leagueName: 'Copa Sul-Americana',
+        division: 1,
+        seasonLabel: '2026',
+        currentRound: 6,
+        totalRounds: 6,
+        standings: [
+          { clubId: 501, clubName: 'LDU Quito', points: 14, matchesPlayed: 6, won: 4, drawn: 2, lost: 0, goalsFor: 12, goalsAgainst: 4, goalDiff: 8, form: [] },
+          { clubId: 502, clubName: 'Lanús', points: 11, matchesPlayed: 6, won: 3, drawn: 2, lost: 1, goalsFor: 9, goalsAgainst: 5, goalDiff: 4, form: [] },
+        ],
+      },
+    ],
+    calendar: [
+      { id: 1, round: 14, competitionType: 'nacional', homeClubId: 401, awayClubId: 402, played: true },
+    ],
+    championshipHistory: [],
+  };
+
+  const records = detectNewlyCompletedCompetitions(state);
+
+  // Must detect: Série D (active user league), Série A (div 1), Série B (div 2), Série C (div 3), Sul-Americana
+  assert.equal(records.length, 5, 'Should detect all 4 national divisions plus Sul-Americana');
+
+  const serieD = records.find(r => r.id === '2026-nacional-div4');
+  assert.ok(serieD, 'Série D record should exist');
+  assert.equal(serieD.championClubName, 'América-RN');
+  assert.ok(serieD.topScorerName, 'Série D should have a top scorer');
+  assert.ok(serieD.topScorerGoals > 0, 'Série D top scorer should have goals > 0');
+
+  const serieA = records.find(r => r.id === '2026-nacional');
+  assert.ok(serieA, 'Série A record should exist');
+  assert.equal(serieA.championClubName, 'Flamengo');
+  assert.equal(serieA.runnerUpClubName, 'Palmeiras');
+  assert.ok(serieA.topScorerName, 'Série A should have a top scorer');
+  assert.ok(serieA.topScorerGoals >= 15, 'Série A top scorer should have realistic goals >= 15');
+
+  const serieB = records.find(r => r.id === '2026-nacional-div2');
+  assert.ok(serieB, 'Série B record should exist');
+  assert.equal(serieB.championClubName, 'Santos');
+
+  const serieC = records.find(r => r.id === '2026-nacional-div3');
+  assert.ok(serieC, 'Série C record should exist');
+  assert.equal(serieC.championClubName, 'Volta Redonda');
+
+  const sula = records.find(r => r.competitionType === 'sulamericana');
+  assert.ok(sula, 'Sul-Americana record should exist');
+  assert.equal(sula.championClubName, 'LDU Quito');
+  assert.ok(sula.topScorerName, 'Sul-Americana must have top scorer name');
+  assert.ok(sula.topScorerGoals > 0, 'Sul-Americana must have top scorer goals > 0');
+});
+
+

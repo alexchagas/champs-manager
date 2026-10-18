@@ -96,14 +96,17 @@ export function detectNewlyCompletedCompetitions(rawState: GameState): Champions
   const calendar = state.calendar || [];
   const seasonYear = state.seasonYear;
 
-  const isAlreadyRecorded = (type: string, name: string) => {
-    return existingHistory.some(r => r.seasonYear === seasonYear && (r.competitionType === type || r.competitionName === name));
+  const isAlreadyRecorded = (idOrType: string, name: string) => {
+    return existingHistory.some(r =>
+      r.seasonYear === seasonYear &&
+      (r.id === idOrType || r.competitionName.trim().toLowerCase() === name.trim().toLowerCase())
+    );
   };
 
   const getClub = (id: number) => state.clubs.find(c => c.id === id);
 
   // Helper to determine top scorer in a set of clubs
-  const getTopScorer = (clubIds: number[]) => {
+  const getTopScorer = (clubIds: number[], compType?: string, standingsRows?: StandingRow[]) => {
     const clubIdSet = new Set(clubIds);
     let topPlayer: { name: string; clubName: string; goals: number } | undefined;
     for (const club of state.clubs) {
@@ -114,14 +117,60 @@ export function detectNewlyCompletedCompetitions(rawState: GameState): Champions
         }
       }
     }
-    return topPlayer;
+    if (topPlayer) return topPlayer;
+
+    // Fallback: If no player has tracked goals > 0 (e.g. parallel simulated leagues or tournaments),
+    // pick a realistic star forward from the champion or best attacking club in the competition
+    if (clubIds.length > 0) {
+      let bestClubId = clubIds[0];
+      if (standingsRows && standingsRows.length > 0) {
+        const topScoringRow = [...standingsRows]
+          .filter(r => clubIdSet.has(r.clubId))
+          .sort((a, b) => b.goalsFor - a.goalsFor || b.points - a.points)[0];
+        if (topScoringRow) {
+          bestClubId = topScoringRow.clubId;
+        }
+      }
+
+      const club = getClub(bestClubId) || state.clubs.find(c => clubIdSet.has(c.id));
+      if (club && club.squad && club.squad.length > 0) {
+        const forwards = club.squad.filter(p => p.position === 'ATA');
+        const candidateSquad = forwards.length > 0 ? forwards : club.squad.filter(p => p.position === 'MEI');
+        const bestPlayer = (candidateSquad.length > 0 ? candidateSquad : club.squad)
+          .slice()
+          .sort((a, b) => b.strength - a.strength)[0];
+
+        if (bestPlayer) {
+          let simulatedGoals = 12;
+          const seed = (bestPlayer.id * 17 + seasonYear * 31) % 7;
+          if (compType === 'libertadores' || compType === 'sulamericana' || compType === 'champions') {
+            simulatedGoals = 9 + seed; // 9 - 15 goals
+          } else if (compType === 'copa') {
+            simulatedGoals = 6 + (seed % 5); // 6 - 10 goals
+          } else if (compType === 'estadual') {
+            simulatedGoals = 8 + (seed % 6); // 8 - 13 goals
+          } else {
+            simulatedGoals = 17 + seed; // 17 - 23 goals
+          }
+
+          return {
+            name: bestPlayer.name,
+            clubName: club.name,
+            goals: simulatedGoals,
+          };
+        }
+      }
+    }
+
+    return undefined;
   };
 
   // 1. ESTADUAL (Knockout final or all matches played)
   const estadualMatches = calendar.filter(f => f.competitionType === 'estadual');
   if (estadualMatches.length > 0) {
     const estadualName = state.stateChampionshipName || estadualMatches[0].competitionName || 'Campeonato Estadual';
-    if (!isAlreadyRecorded('estadual', estadualName)) {
+    const estadualRecordId = `${seasonYear}-estadual`;
+    if (!isAlreadyRecorded(estadualRecordId, estadualName)) {
       const finalMatch = estadualMatches.find(f => f.stage === 'Final');
       if (finalMatch && finalMatch.played && finalMatch.homeClubId > 0 && finalMatch.awayClubId > 0) {
         const champId = winner(finalMatch);
@@ -135,10 +184,10 @@ export function detectNewlyCompletedCompetitions(rawState: GameState): Champions
         const isUserRunner = runnerId === state.userClubId;
         const userPosition = isUserChamp ? 'Campeão 🏆' : isUserRunner ? 'Vice-campeão 🥈' : 'Participante';
         const prize = getCompetitionPrizeMoney('estadual', isUserChamp, isUserRunner);
-        const topScorer = getTopScorer(estadualMatches.flatMap(m => [m.homeClubId, m.awayClubId]));
+        const topScorer = getTopScorer(estadualMatches.flatMap(m => [m.homeClubId, m.awayClubId]), 'estadual');
 
         records.push({
-          id: `${seasonYear}-estadual`,
+          id: estadualRecordId,
           seasonYear,
           competitionType: 'estadual',
           competitionName: estadualName,
@@ -164,7 +213,8 @@ export function detectNewlyCompletedCompetitions(rawState: GameState): Champions
   const cupMatches = calendar.filter(f => f.competitionType === 'copa');
   if (cupMatches.length > 0) {
     const cupName = cupMatches[0].competitionName || 'Copa do Brasil';
-    if (!isAlreadyRecorded('copa', cupName)) {
+    const copaRecordId = `${seasonYear}-copa`;
+    if (!isAlreadyRecorded(copaRecordId, cupName)) {
       const isTwoLegged = cupMatches.some(f => f.leg === 1);
       const finals = cupMatches.filter(f => f.stage === 'Final' || (!isTwoLegged && f.round === 4));
 
@@ -182,10 +232,10 @@ export function detectNewlyCompletedCompetitions(rawState: GameState): Champions
         const isUserRunner = runnerId === state.userClubId;
         const userPosition = isUserChamp ? 'Campeão 🏆' : isUserRunner ? 'Vice-campeão 🥈' : 'Eliminado';
         const prize = getCompetitionPrizeMoney('copa', isUserChamp, isUserRunner);
-        const topScorer = getTopScorer(cupMatches.flatMap(m => [m.homeClubId, m.awayClubId]));
+        const topScorer = getTopScorer(cupMatches.flatMap(m => [m.homeClubId, m.awayClubId]), 'copa');
 
         records.push({
-          id: `${seasonYear}-copa`,
+          id: copaRecordId,
           seasonYear,
           competitionType: 'copa',
           competitionName: cupName,
@@ -215,10 +265,10 @@ export function detectNewlyCompletedCompetitions(rawState: GameState): Champions
         const isUserRunner = runnerUpId === state.userClubId;
         const userPosition = isUserChamp ? 'Campeão 🏆' : isUserRunner ? 'Vice-campeão 🥈' : 'Eliminado';
         const prize = getCompetitionPrizeMoney('copa', isUserChamp, isUserRunner);
-        const topScorer = getTopScorer(cupMatches.flatMap(m => [m.homeClubId, m.awayClubId]));
+        const topScorer = getTopScorer(cupMatches.flatMap(m => [m.homeClubId, m.awayClubId]), 'copa');
 
         records.push({
-          id: `${seasonYear}-copa`,
+          id: copaRecordId,
           seasonYear,
           competitionType: 'copa',
           competitionName: cupName,
@@ -253,9 +303,10 @@ export function detectNewlyCompletedCompetitions(rawState: GameState): Champions
       });
       if (parallelComp && parallelComp.standings.length >= 2) {
         const allNationalPlayed = calendar.filter(f => f.competitionType === 'nacional').every(f => f.played);
-        if (parallelComp.currentRound >= parallelComp.totalRounds || allNationalPlayed) {
+        if (parallelComp.currentRound >= parallelComp.totalRounds || allNationalPlayed || isSeasonComplete(state)) {
           const cName = parallelComp.leagueName;
-          if (!isAlreadyRecorded(cType, cName)) {
+          const contRecordId = `${seasonYear}-${cType}`;
+          if (!isAlreadyRecorded(contRecordId, cName)) {
             const sorted = [...parallelComp.standings].sort(
               (a, b) => b.points - a.points || b.won - a.won || b.goalDiff - a.goalDiff || b.goalsFor - a.goalsFor
             );
@@ -267,9 +318,10 @@ export function detectNewlyCompletedCompetitions(rawState: GameState): Champions
             const isUserRunner = runnerRow.clubId === state.userClubId;
             const userPosition = isUserChamp ? 'Campeão 🏆' : isUserRunner ? 'Vice-campeão 🥈' : 'Participante';
             const prize = getCompetitionPrizeMoney(cType, isUserChamp, isUserRunner);
+            const topScorer = getTopScorer(parallelComp.standings.map(s => s.clubId), cType, parallelComp.standings);
 
             records.push({
-              id: `${seasonYear}-${cType}`,
+              id: contRecordId,
               seasonYear,
               competitionType: cType,
               competitionName: cName,
@@ -279,6 +331,9 @@ export function detectNewlyCompletedCompetitions(rawState: GameState): Champions
               runnerUpClubId: runnerRow.clubId,
               runnerUpClubName: runner?.name || runnerRow.clubName,
               runnerUpClubCrest: runner?.crestMiniUrl || runner?.crestUrl,
+              topScorerName: topScorer?.name,
+              topScorerClubName: topScorer?.clubName,
+              topScorerGoals: topScorer?.goals,
               finalScoreText: `${champRow.points} pts`,
               userPositionText: userPosition,
               userPrizeMoney: isUserChamp || isUserRunner ? prize : undefined,
@@ -290,7 +345,8 @@ export function detectNewlyCompletedCompetitions(rawState: GameState): Champions
       continue;
     }
     const cName = state.continentalCupName || cMatches[0].competitionName || (cType === 'champions' ? 'UEFA Champions League' : 'Copa Libertadores');
-    if (isAlreadyRecorded(cType, cName)) continue;
+    const contRecordId = `${seasonYear}-${cType}`;
+    if (isAlreadyRecorded(contRecordId, cName)) continue;
 
     const finals = cMatches.filter(f => f.stage === 'Final');
     if (finals.length === 1 && finals[0].played) {
@@ -307,10 +363,10 @@ export function detectNewlyCompletedCompetitions(rawState: GameState): Champions
       const isUserRunner = runnerId === state.userClubId;
       const userPosition = isUserChamp ? 'Campeão 🏆' : isUserRunner ? 'Vice-campeão 🥈' : 'Participante';
       const prize = getCompetitionPrizeMoney(cType, isUserChamp, isUserRunner);
-      const topScorer = getTopScorer(cMatches.flatMap(m => [m.homeClubId, m.awayClubId]));
+      const topScorer = getTopScorer(cMatches.flatMap(m => [m.homeClubId, m.awayClubId]), cType);
 
       records.push({
-        id: `${seasonYear}-${cType}`,
+        id: contRecordId,
         seasonYear,
         competitionType: cType,
         competitionName: cName,
@@ -340,10 +396,10 @@ export function detectNewlyCompletedCompetitions(rawState: GameState): Champions
       const isUserRunner = runnerUpId === state.userClubId;
       const userPosition = isUserChamp ? 'Campeão 🏆' : isUserRunner ? 'Vice-campeão 🥈' : 'Participante';
       const prize = getCompetitionPrizeMoney(cType, isUserChamp, isUserRunner);
-      const topScorer = getTopScorer(cMatches.flatMap(m => [m.homeClubId, m.awayClubId]));
+      const topScorer = getTopScorer(cMatches.flatMap(m => [m.homeClubId, m.awayClubId]), cType);
 
       records.push({
-        id: `${seasonYear}-${cType}`,
+        id: contRecordId,
         seasonYear,
         competitionType: cType,
         competitionName: cName,
@@ -364,11 +420,15 @@ export function detectNewlyCompletedCompetitions(rawState: GameState): Champions
     }
   }
 
-  // 4. CAMPEONATO NACIONAL (League / Points or Groups + Playoffs)
+  // 4. CAMPEONATO NACIONAL (Ativo no Calendário do Usuário)
   const nationalMatches = calendar.filter(f => f.competitionType === 'nacional');
+  const userClub = state.clubs.find(c => c.id === state.userClubId) || state.clubs[0];
+  const userDiv = userClub ? (userClub.division >= 5 && (userClub.countryId || 29) === 29 ? 4 : (userClub.division ?? 1)) : 1;
+  const userNationalRecordId = userDiv === 1 ? `${seasonYear}-nacional` : `${seasonYear}-nacional-div${userDiv}`;
+
   if (nationalMatches.length > 0) {
-    const nationalName = state.nationalLeagueName || state.leagueName || 'Campeonato Nacional';
-    if (!isAlreadyRecorded('nacional', nationalName)) {
+    const nationalName = state.nationalLeagueName || state.leagueName || (userDiv > 1 ? `Brasileirão Série ${userDiv === 2 ? 'B' : userDiv === 3 ? 'C' : 'D'}` : 'Campeonato Nacional');
+    if (!isAlreadyRecorded(userNationalRecordId, nationalName)) {
       const natFinals = nationalMatches.filter(f => f.stage === 'Final');
       const allNationalPlayed = nationalMatches.every(f => f.played);
       if (natFinals.length >= 2 && natFinals.every(f => f.played && f.homeClubId > 0 && f.awayClubId > 0)) {
@@ -381,10 +441,10 @@ export function detectNewlyCompletedCompetitions(rawState: GameState): Champions
         const isUserRunner = runnerUpId === state.userClubId;
         const userPosition = isUserChamp ? 'Campeão 🏆' : isUserRunner ? 'Vice-campeão 🥈' : 'Participante';
         const prize = getCompetitionPrizeMoney('nacional', isUserChamp, isUserRunner);
-        const topScorer = getTopScorer(nationalMatches.flatMap(m => [m.homeClubId, m.awayClubId]));
+        const topScorer = getTopScorer(nationalMatches.flatMap(m => [m.homeClubId, m.awayClubId]), 'nacional');
 
         records.push({
-          id: `${seasonYear}-nacional`,
+          id: userNationalRecordId,
           seasonYear,
           competitionType: 'nacional',
           competitionName: nationalName,
@@ -402,7 +462,7 @@ export function detectNewlyCompletedCompetitions(rawState: GameState): Champions
           userPrizeMoney: isUserChamp || isUserRunner ? prize : undefined,
           managerName: isUserChamp ? state.managerName : undefined,
         });
-      } else if (natFinals.length === 0 && allNationalPlayed) {
+      } else if (natFinals.length === 0 && (allNationalPlayed || isSeasonComplete(state))) {
         const standings = state.standingsNacional || state.standings || [];
         if (standings.length >= 2) {
           const champRow = standings[0];
@@ -415,10 +475,10 @@ export function detectNewlyCompletedCompetitions(rawState: GameState): Champions
           const isUserRunner = runnerRow.clubId === state.userClubId;
           const userPosition = isUserChamp ? 'Campeão 🏆' : `${userRank}º Lugar`;
           const prize = getCompetitionPrizeMoney('nacional', isUserChamp, isUserRunner);
-          const topScorer = getTopScorer(standings.map(s => s.clubId));
+          const topScorer = getTopScorer(standings.map(s => s.clubId), 'nacional', standings);
 
           records.push({
-            id: `${seasonYear}-nacional`,
+            id: userNationalRecordId,
             seasonYear,
             competitionType: 'nacional',
             competitionName: nationalName,
@@ -438,6 +498,107 @@ export function detectNewlyCompletedCompetitions(rawState: GameState): Champions
           });
         }
       }
+    }
+  }
+
+  // 5. DIVISÕES NACIONAIS PARALELAS (Séries A, B, C, D simuladas)
+  if (state.nationalDivisions && state.nationalDivisions.length > 0) {
+    const allNationalPlayed = calendar.filter(f => f.competitionType === 'nacional').every(f => f.played);
+    const seasonEnded = isSeasonComplete(state) || allNationalPlayed;
+
+    for (const d of state.nationalDivisions) {
+      if (!d.standings || d.standings.length < 2) continue;
+      const isComplete = d.currentRound >= d.totalRounds || seasonEnded;
+      if (!isComplete) continue;
+
+      const divRecordId = d.division === 1 ? `${seasonYear}-nacional` : `${seasonYear}-nacional-div${d.division}`;
+      const divLetter = d.division === 1 ? 'A' : d.division === 2 ? 'B' : d.division === 3 ? 'C' : d.division === 4 ? 'D' : '';
+      const compName = d.leagueName || (divLetter ? `Brasileirão Série ${divLetter}` : `Divisão ${d.division}`);
+
+      if (isAlreadyRecorded(divRecordId, compName)) continue;
+
+      const sorted = [...d.standings].sort(
+        (a, b) => b.points - a.points || b.won - a.won || b.goalDiff - a.goalDiff || b.goalsFor - a.goalsFor
+      );
+      const champRow = sorted[0];
+      const runnerRow = sorted[1];
+      const champ = getClub(champRow.clubId);
+      const runner = getClub(runnerRow.clubId);
+      const isUserChamp = champRow.clubId === state.userClubId;
+      const isUserRunner = runnerRow.clubId === state.userClubId;
+      const userPosition = isUserChamp ? 'Campeão 🏆' : isUserRunner ? 'Vice-campeão 🥈' : 'Participante';
+      const prize = getCompetitionPrizeMoney('nacional', isUserChamp, isUserRunner);
+      const topScorer = getTopScorer(d.standings.map(s => s.clubId), 'nacional', d.standings);
+
+      records.push({
+        id: divRecordId,
+        seasonYear,
+        competitionType: 'nacional',
+        competitionName: compName,
+        championClubId: champRow.clubId,
+        championClubName: champ?.name || champRow.clubName,
+        championClubCrest: champ?.crestMiniUrl || champ?.crestUrl,
+        runnerUpClubId: runnerRow.clubId,
+        runnerUpClubName: runner?.name || runnerRow.clubName,
+        runnerUpClubCrest: runner?.crestMiniUrl || runner?.crestUrl,
+        topScorerName: topScorer?.name,
+        topScorerClubName: topScorer?.clubName,
+        topScorerGoals: topScorer?.goals,
+        finalScoreText: `${champRow.points} pts`,
+        userPositionText: userPosition,
+        userPrizeMoney: isUserChamp || isUserRunner ? prize : undefined,
+        managerName: isUserChamp ? state.managerName : undefined,
+      });
+    }
+  }
+
+  // 6. DIVISÕES ESTADUAIS PARALELAS (ex: Série A2 / Segunda Divisão Estadual)
+  if (state.stateDivisions && state.stateDivisions.length > 0) {
+    const allEstadualPlayed = calendar.filter(f => f.competitionType === 'estadual').every(f => f.played);
+    const seasonEnded = isSeasonComplete(state) || allEstadualPlayed;
+
+    for (const d of state.stateDivisions) {
+      if (!d.standings || d.standings.length < 2) continue;
+      const isComplete = d.currentRound >= d.totalRounds || seasonEnded;
+      if (!isComplete) continue;
+
+      const divRecordId = `${seasonYear}-estadual-div${d.division}`;
+      const compName = d.leagueName;
+
+      if (isAlreadyRecorded(divRecordId, compName)) continue;
+
+      const sorted = [...d.standings].sort(
+        (a, b) => b.points - a.points || b.won - a.won || b.goalDiff - a.goalDiff || b.goalsFor - a.goalsFor
+      );
+      const champRow = sorted[0];
+      const runnerRow = sorted[1];
+      const champ = getClub(champRow.clubId);
+      const runner = getClub(runnerRow.clubId);
+      const isUserChamp = champRow.clubId === state.userClubId;
+      const isUserRunner = runnerRow.clubId === state.userClubId;
+      const userPosition = isUserChamp ? 'Campeão 🏆' : isUserRunner ? 'Vice-campeão 🥈' : 'Participante';
+      const prize = getCompetitionPrizeMoney('estadual', isUserChamp, isUserRunner);
+      const topScorer = getTopScorer(d.standings.map(s => s.clubId), 'estadual', d.standings);
+
+      records.push({
+        id: divRecordId,
+        seasonYear,
+        competitionType: 'estadual',
+        competitionName: compName,
+        championClubId: champRow.clubId,
+        championClubName: champ?.name || champRow.clubName,
+        championClubCrest: champ?.crestMiniUrl || champ?.crestUrl,
+        runnerUpClubId: runnerRow.clubId,
+        runnerUpClubName: runner?.name || runnerRow.clubName,
+        runnerUpClubCrest: runner?.crestMiniUrl || runner?.crestUrl,
+        topScorerName: topScorer?.name,
+        topScorerClubName: topScorer?.clubName,
+        topScorerGoals: topScorer?.goals,
+        finalScoreText: `${champRow.points} pts`,
+        userPositionText: userPosition,
+        userPrizeMoney: isUserChamp || isUserRunner ? prize : undefined,
+        managerName: isUserChamp ? state.managerName : undefined,
+      });
     }
   }
 
