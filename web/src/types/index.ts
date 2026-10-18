@@ -505,7 +505,11 @@ export interface GameState {
   standingsContinental?: StandingRow[];
   nationalDivisions?: OtherLeagueStandings[];
   stateDivisions?: OtherLeagueStandings[];
+  continentalCompetitions?: OtherLeagueStandings[];
   otherLeagues?: OtherLeagueStandings[];
+  stateTier?: 1 | 2;
+  promotedStateClubIds?: number[];
+  relegatedStateClubIds?: number[];
   options: GameOptions;
   activeScreen: ActiveScreen;
   activeMatchFixtureId?: number;

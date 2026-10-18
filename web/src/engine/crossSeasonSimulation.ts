@@ -1,8 +1,9 @@
 import type { Club, StandingRow, OtherLeagueStandings, LeagueInfo } from '../types/index.ts';
 import { generateLeagueCalendar, initializeStandings, sortStandings, sortClubsByMeritocracy } from '../data/calendarGenerator.ts';
 import { getLeaguesByCountry, getClubsByLeague, getAllLeagues } from '../data/teamsDatabase.ts';
-import { getStateDivisionInfo } from '../data/stateLeagueFormulas.ts';
+import { getStateDivisionInfo, getUserStateDivision, getStateLeagueRule } from '../data/stateLeagueFormulas.ts';
 import { getDivisionConfig, formatGroupLabel } from '../data/leagueConfigurations.ts';
+import { getContinentalTournamentField, SOUTH_AMERICA_COUNTRY_IDS } from '../data/continentalRepresentatives.ts';
 
 // Países europeus / hemisfério norte com temporada cruzada (Agosto a Maio)
 export const CROSS_SEASON_COUNTRY_IDS = new Set([
@@ -226,63 +227,108 @@ export function buildInitialNationalDivisions(
 }
 
 /**
- * Constrói a 2ª Divisão Estadual de forma segura apenas onde restarem pelo menos 8 clubes reais
- * após a seleção do elenco de elite do estadual.
+ * Constrói a divisão estadual paralela (ex: 2ª Divisão se o usuário estiver na Série A1,
+ * ou 1ª Divisão com todos os gigantes se o usuário estiver na Série A2).
  * Não fabrica torneios nem clubes inexistentes.
  */
 export function buildInitialStateDivisions(
   sourceClub: Club,
   allAvailableClubs: Club[] = [],
-  seasonYear = 2026
+  seasonYear = 2026,
+  promotedStateClubIds?: number[],
+  relegatedStateClubIds?: number[]
 ): OtherLeagueStandings[] {
   const sourceCountryId = sourceClub.countryId || 29;
   if (sourceCountryId !== 29) return [];
   const stateCode = sourceClub.stateCode;
   if (!stateCode) return [];
 
-  const divInfo = getStateDivisionInfo(stateCode, allAvailableClubs);
-  if (!divInfo.hasSecondDivision || !divInfo.tier2) return [];
-
-  const sameState = (c: Club) => c.countryId === 29 && (
-    (sourceClub.stateId != null && c.stateId === sourceClub.stateId) ||
-    (sourceClub.stateCode != null && c.stateCode === sourceClub.stateCode)
+  const userStateDiv = getUserStateDivision(
+    sourceClub,
+    allAvailableClubs,
+    seasonYear,
+    promotedStateClubIds,
+    relegatedStateClubIds
   );
 
-  const rawStateClubs = allAvailableClubs.filter(sameState);
-  const sortedStateClubs = sortClubsByMeritocracy(rawStateClubs);
-  const eliteCount = divInfo.eliteClubsCount;
+  if (!userStateDiv.parallelTier) return [];
 
-  // Os clubes de elite ocupam as primeiras vagas
-  const eliteClubs = sortedStateClubs.slice(0, eliteCount);
-  const eliteIds = new Set(eliteClubs.map((c) => c.id));
-  eliteIds.add(sourceClub.id);
-
-  // Clubes reais remanescentes no estado
-  const remainingClubs = sortedStateClubs.filter((c) => !eliteIds.has(c.id));
-  if (remainingClubs.length < 8) return [];
-
-  const targetSize = Math.min(remainingClubs.length, 16);
-  const fieldClubs = remainingClubs.slice(0, targetSize);
+  const parallel = userStateDiv.parallelTier;
+  const fieldClubs = parallel.fieldClubs;
   const totalTeams = fieldClubs.length;
-  const totalRounds = (totalTeams - 1) * 2;
+  if (totalTeams < 4) return [];
+
+  const stateRule = getStateLeagueRule(stateCode);
+  const isFormula7 = parallel.tier === 1 && stateRule?.formulaId === 7 && totalTeams === 16;
+  const groupCount = isFormula7 ? 4 : 1;
+  const totalRounds = isFormula7 ? 12 : (totalTeams - 1) * 2;
 
   const standings = preSimulateLeagueRounds(
     fieldClubs,
     0,
-    2000 + (sourceClub.stateId || 1) * 17
+    2000 + (sourceClub.stateId || 1) * 17 + parallel.tier * 31,
+    groupCount
   );
 
   return [{
-    id: `state-${stateCode.toLowerCase()}-div2`,
+    id: `state-${stateCode.toLowerCase()}-div${parallel.tier}`,
     countryId: 29,
     countryName: 'Brasil',
-    leagueName: divInfo.tier2.leagueName,
-    division: 2,
+    leagueName: parallel.leagueName,
+    division: parallel.tier,
     seasonLabel: `${seasonYear}`,
     currentRound: 0,
     totalRounds,
     standings,
   }];
+}
+
+/**
+ * Inicializa a competição continental irmã na América do Sul (ex: Copa Sul-Americana com 32 clubes em 8 grupos A-H
+ * quando o torneio principal é a Copa Libertadores, ou vice-versa), garantindo que ambas apareçam simultaneamente nas abas.
+ */
+export function buildInitialContinentalCompetitions(
+  sourceClub: Club,
+  allAvailableClubs: Club[] = [],
+  seasonYear = 2026
+): OtherLeagueStandings[] {
+  const sourceCountryId = sourceClub.countryId || 29;
+  if (!SOUTH_AMERICA_COUNTRY_IDS.has(sourceCountryId)) return [];
+
+  const primaryContinental = getContinentalTournamentField(sourceClub, allAvailableClubs, undefined, {
+    teamCount: 32,
+    seed: seasonYear,
+  });
+  const sisterType = primaryContinental.type === 'sulamericana' ? 'libertadores' : 'sulamericana';
+  const primaryIds = new Set(primaryContinental.clubs.map((c) => c.id));
+  const sisterContinental = getContinentalTournamentField(sourceClub, allAvailableClubs, undefined, {
+    forceType: sisterType,
+    userParticipates: false,
+    teamCount: 32,
+    seed: seasonYear + 100,
+    excludeClubIds: primaryIds,
+  });
+  if (sisterContinental.clubs.length < 16) return [];
+
+  const sisterGroupCount = Math.max(1, Math.ceil(sisterContinental.clubs.length / 4));
+  return [
+    {
+      id: 'continental-sister',
+      countryId: sourceCountryId,
+      countryName: sourceClub.countryName || 'América do Sul',
+      leagueName: sisterContinental.name,
+      division: 1,
+      seasonLabel: `${seasonYear}`,
+      currentRound: 0,
+      totalRounds: 6,
+      standings: preSimulateLeagueRounds(
+        sisterContinental.clubs,
+        0,
+        3000 + seasonYear,
+        sisterGroupCount
+      ),
+    },
+  ];
 }
 
 /**

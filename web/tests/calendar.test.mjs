@@ -65,12 +65,20 @@ test('WASM advances every date and keeps competition tables independent', () => 
   assert.equal(first.standingsNacional.reduce((sum, row) => sum + row.played, 0), 0);
   let state = first;
   const lastSlot = Math.max(...initial.calendar.map(f => f.fixtureDateIndex));
+  let checkedSemis = false;
   for (let slot = 2; slot <= lastSlot; slot++) {
     const current = state.calendar.filter(f => f.fixtureDateIndex === slot);
-    const cupMatch = current.find(f => f.competitionType === 'copa' && (f.round === 1 || f.round === 2) && (f.homeClubId === 255 || f.awayClubId === 255));
+    const cupMatch = current.find(
+      f =>
+        f.competitionType === 'copa' &&
+        f.stage === 'Oitavas de Final' &&
+        (f.homeClubId === 255 || f.awayClubId === 255)
+    );
     const score = cupMatch ? (cupMatch.homeClubId === 255 ? [0, 9] : [9, 0]) : null;
     state = play(state, slot, score);
-    if (slot === 11) {
+    const estGroupMatches = state.calendar.filter(f => f.competitionType === 'estadual' && f.stage?.startsWith('Rodada'));
+    if (!checkedSemis && estGroupMatches.every(f => f.played)) {
+      checkedSemis = true;
       const topFour = state.standingsEstadual.slice(0, 4).map(row => row.clubId);
       const semifinals = state.calendar.filter(f => f.competitionType === 'estadual' && f.stage === 'Semifinal' && f.leg === 1);
       assert.deepEqual(semifinals.map(f => [f.homeClubId, f.awayClubId]),
@@ -78,33 +86,50 @@ test('WASM advances every date and keeps competition tables independent', () => 
       assert.ok(state.calendar.find(f => f.competitionType === 'estadual' && f.stage === 'Final').pendingQualification);
     }
   }
+  assert.ok(checkedSemis, 'Estadual semifinals must be paired right after group rounds finish');
   assert.equal(state.currentRound, lastSlot);
   assert.equal(state.calendar.filter(f => f.competitionType === 'nacional' && f.played).length, 380);
   assert.equal(state.standingsNacional.reduce((sum, row) => sum + row.played, 0), 760);
   assert.equal(state.standingsEstadual.reduce((sum, row) => sum + row.played, 0), 142);
   const pending = state.calendar.filter(f => f.pendingQualification);
-  assert.ok(pending.every(f => (f.competitionType === 'copa' && f.round > 2) || f.stage?.includes('Quartas') || f.stage?.includes('Semifinal') || f.stage?.includes('Final')));
+  assert.equal(pending.length, 0, 'All knockout stages must be resolved by the end of the season');
   assert.ok(state.calendar.filter(f => f.competitionRound?.startsWith('Grupo ')).every(f => f.played || f.pendingQualification));
-  assert.equal(state.calendar.filter(f => f.competitionType === 'copa' && f.round > 2 && (f.homeClubId === 255 || f.awayClubId === 255)).length, 0);
+  assert.equal(state.calendar.filter(f => f.competitionType === 'copa' && f.round > 6 && (f.homeClubId === 255 || f.awayClubId === 255)).length, 0);
   // Verify that Leg 1 NEVER has penalty scores
   assert.ok(state.calendar.filter(f => f.competitionType === 'copa' && f.leg === 1).every(f => !f.penaltyScore));
 });
 
 test('Copa do Brasil two-legged ties never shoot out in Leg 1 and resolve aggregate in Leg 2', () => {
   const initial = createNewGame(255);
-  const cupLeg1 = initial.calendar.find(f => f.competitionType === 'copa' && f.stage === 'Oitavas de Final' && f.leg === 1);
-  const cupLeg2 = initial.calendar.find(f => f.competitionType === 'copa' && f.stage === 'Oitavas de Final' && f.leg === 2 && f.homeClubId === cupLeg1.awayClubId);
-  assert.ok(cupLeg1);
-  assert.ok(cupLeg2);
+  // Resolve Primeira Fase and Segunda Fase so Terceira Fase (two-legged) has concrete clubs
+  let cal = initial.calendar.map(f => {
+    if (f.competitionType === 'copa' && f.stage === 'Primeira Fase') {
+      return { ...f, played: true, homeScore: 2, awayScore: 0 };
+    }
+    return f;
+  });
+  let state = resolvePendingFixtures({ ...initial, calendar: cal });
+  cal = state.calendar.map(f => {
+    if (f.competitionType === 'copa' && f.stage === 'Segunda Fase') {
+      return { ...f, played: true, homeScore: 1, awayScore: 0 };
+    }
+    return f;
+  });
+  state = resolvePendingFixtures({ ...state, calendar: cal });
+
+  const cupLeg1 = state.calendar.find(f => f.competitionType === 'copa' && f.stage === 'Terceira Fase' && f.leg === 1);
+  const cupLeg2 = state.calendar.find(f => f.competitionType === 'copa' && f.stage === 'Terceira Fase' && f.leg === 2 && f.homeClubId === cupLeg1.awayClubId);
+  assert.ok(cupLeg1 && !cupLeg1.pendingQualification);
+  assert.ok(cupLeg2 && !cupLeg2.pendingQualification);
   assert.equal(cupLeg1.leg, 1);
   assert.equal(cupLeg2.leg, 2);
 
   // Leg 1 played with a draw: 1x1
-  let updatedCalendar = initial.calendar.map(f => {
+  let updatedCalendar = state.calendar.map(f => {
     if (f.id === cupLeg1.id) return { ...f, played: true, homeScore: 1, awayScore: 1 };
     return f;
   });
-  let state = resolvePendingFixtures({ ...initial, calendar: updatedCalendar });
+  state = resolvePendingFixtures({ ...state, calendar: updatedCalendar });
   let resolvedLeg1 = state.calendar.find(f => f.id === cupLeg1.id);
   // Assert Leg 1 DRAW NEVER HAS PENALTIES
   assert.equal(resolvedLeg1.penaltyScore, undefined);

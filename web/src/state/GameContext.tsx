@@ -34,7 +34,15 @@ import {
   initializeNacionalStandings,
   initializeContinentalStandings,
 } from '../data/calendarGenerator';
-import { advanceOtherLeaguesProgress, buildInitialActiveOtherLeagues, buildInitialNationalDivisions, buildInitialStateDivisions } from '../engine/crossSeasonSimulation';
+import {
+  advanceOtherLeaguesProgress,
+  buildInitialActiveOtherLeagues,
+  buildInitialContinentalCompetitions,
+  buildInitialNationalDivisions,
+  buildInitialStateDivisions,
+} from '../engine/crossSeasonSimulation';
+import { computeContinentalQualifiers } from '../data/continentalRepresentatives';
+import { getStateDivisionInfo, getStateLeagueRule } from '../data/stateLeagueFormulas';
 import { simulateMatchWasm } from '../engine/wasmBridge';
 import { sound } from '../audio/soundEngine';
 import { 
@@ -771,20 +779,6 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) { setMatchError(String(error instanceof Error ? error.message : error)); }
   };
 
-  function simulateBackgroundCompetitionFixtures(state: GameState): GameState {
-    const slot = state.currentRound;
-    let calendar = state.calendar;
-    for (const fixture of calendar.filter(f => (f.fixtureDateIndex ?? f.round) === slot && !f.played && !f.pendingQualification && f.competitionType && f.competitionType !== 'copa' && f.competitionType !== 'estadual' && f.competitionType !== 'nacional')) {
-      const home = state.clubs.find(c => c.id === fixture.homeClubId);
-      const away = state.clubs.find(c => c.id === fixture.awayClubId);
-      if (!home || !away) continue;
-      const result = simulateMatchWasm(home, away, fixture.id + slot);
-      if (!result) continue;
-      calendar = calendar.map(f => f.id === fixture.id ? { ...f, played: true, homeScore: result.homeScore, awayScore: result.awayScore, events: result.events } : f);
-    }
-    return calendar === state.calendar ? state : { ...state, calendar };
-  }
-
   const acceptManagerJob = (clubId: number) => { if (!matchInProgress()) setGameState(prev => appointHuman(prev, clubId)); };
 
   const acceptNationalTeamOffer = (offerId: number) => {
@@ -927,7 +921,74 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const nationalIds = new Set(gameState.standingsNacional?.map(row => row.clubId));
     const nationalClubs = gameState.clubs.filter(c => nationalIds.has(c.id));
     const nextYear = gameState.seasonYear + 1;
-    const next = generateTwoSemesterCalendar(club, nationalClubs, gameState.clubs, nextYear);
+    const serieAStandings =
+      (club.countryId ?? 29) === 29 && (club.division ?? 1) === 1
+        ? gameState.standingsNacional
+        : gameState.nationalDivisions?.find(d => d.countryId === 29 && d.division === 1)?.standings;
+    const seasonRecords = (gameState.tournamentHistory || []).filter(r => r.seasonYear === gameState.seasonYear);
+    const qualifiers = computeContinentalQualifiers(gameState.clubs, serieAStandings, seasonRecords);
+
+    const currentTier = gameState.stateTier ?? 1;
+    let nextPromotedStateClubIds = [...(gameState.promotedStateClubIds || [])];
+    let nextRelegatedStateClubIds = [...(gameState.relegatedStateClubIds || [])];
+    const stateRule = (club.countryId ?? 29) === 29 ? getStateLeagueRule(club.stateCode) : undefined;
+    const divInfo = (club.countryId ?? 29) === 29 ? getStateDivisionInfo(club.stateCode, gameState.clubs) : undefined;
+    const stateNews: NewsArticle[] = [];
+
+    if (divInfo?.hasSecondDivision && gameState.standingsEstadual && gameState.standingsEstadual.length > 0) {
+      const sortedEstadual = [...gameState.standingsEstadual].sort(
+        (a, b) => b.points - a.points || b.goalDiff - a.goalDiff || b.goalsFor - a.goalsFor
+      );
+      const userRank = sortedEstadual.findIndex(r => r.clubId === club.id) + 1;
+      const totalEstadualTeams = sortedEstadual.length;
+
+      if (currentTier === 2) {
+        if (userRank >= 1 && userRank <= 2) {
+          nextPromotedStateClubIds = Array.from(new Set([...nextPromotedStateClubIds, club.id]));
+          nextRelegatedStateClubIds = nextRelegatedStateClubIds.filter(id => id !== club.id);
+          stateNews.push({
+            id: Date.now() + 10,
+            date: `${nextYear}-01-01`,
+            headline: `Histórico! ${club.name} conquista o acesso à elite estadual!`,
+            content: `Após uma campanha memorável na 2ª Divisão, o ${club.name} garantiu sua vaga na elite do ${divInfo.tier1.leagueName} para a temporada de ${nextYear}!`,
+            category: 'geral',
+            isHeadline: true,
+          });
+        }
+      } else if (currentTier === 1) {
+        const rebaixadosCount = stateRule?.rebaixados ?? 2;
+        if (userRank > totalEstadualTeams - rebaixadosCount) {
+          nextRelegatedStateClubIds = Array.from(new Set([...nextRelegatedStateClubIds, club.id]));
+          nextPromotedStateClubIds = nextPromotedStateClubIds.filter(id => id !== club.id);
+          stateNews.push({
+            id: Date.now() + 11,
+            date: `${nextYear}-01-01`,
+            headline: `Pesadelo: ${club.name} é rebaixado no Campeonato Estadual!`,
+            content: `Com o encerramento do estadual, o ${club.name} não escapou do Z2 e disputará a 2ª Divisão (${divInfo.tier2?.leagueName}) em ${nextYear}. A diretoria exige reformulação.`,
+            category: 'geral',
+            isHeadline: true,
+          });
+        }
+      }
+    }
+
+    const stateOverrides = {
+      promotedStateClubIds: nextPromotedStateClubIds,
+      relegatedStateClubIds: nextRelegatedStateClubIds,
+    };
+
+    const next = generateTwoSemesterCalendar(
+      club,
+      nationalClubs,
+      gameState.clubs,
+      nextYear,
+      {
+        qualifiedLibertadoresIds: qualifiers.libertadoresClubIds,
+        qualifiedPreLibertadoresIds: qualifiers.preLibertadoresClubIds,
+        qualifiedSulAmericanaIds: qualifiers.sulAmericanaClubIds,
+      },
+      stateOverrides
+    );
     const rolled = rolloverManagers(gameState);
 
     // Apply post-World Cup market value boosts to called-up players
@@ -968,6 +1029,14 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const nextStateDivisions = buildInitialStateDivisions(
       club,
       updatedClubs,
+      nextYear,
+      nextPromotedStateClubIds,
+      nextRelegatedStateClubIds
+    );
+
+    const nextContinentalCompetitions = buildInitialContinentalCompetitions(
+      club,
+      updatedClubs,
       nextYear
     );
 
@@ -979,12 +1048,16 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       currentRound: 1,
       currentSemester: 1,
       calendar: next.calendar,
-      standings: sortStandings(initializeEstadualStandings(club, next.semester1Clubs)),
-      standingsEstadual: sortStandings(initializeEstadualStandings(club, next.semester1Clubs)),
+      stateTier: next.estadualTier ?? 1,
+      promotedStateClubIds: nextPromotedStateClubIds,
+      relegatedStateClubIds: nextRelegatedStateClubIds,
+      standings: sortStandings(initializeEstadualStandings(club, next.semester1Clubs, next.estadualTier)),
+      standingsEstadual: sortStandings(initializeEstadualStandings(club, next.semester1Clubs, next.estadualTier)),
       standingsNacional: sortStandings(initializeNacionalStandings(club, next.semester2Clubs)),
       standingsContinental: sortStandings(initializeContinentalStandings(next.continentalClubs)),
       nationalDivisions: nextNationalDivisions,
       stateDivisions: nextStateDivisions,
+      continentalCompetitions: nextContinentalCompetitions,
       otherLeagues: nextOtherLeagues,
       stateChampionshipName: next.estadualName,
       nationalLeagueName: next.nacionalName,
@@ -996,7 +1069,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       intercontinentalCup,
       nationalTeamOffers,
       nationalCallups: callups,
-      newsFeed: [...callupNews, ...(rolled.newsFeed || [])],
+      newsFeed: [...stateNews, ...callupNews, ...(rolled.newsFeed || [])],
     };
     setGameState(nextSeasonState);
     if (
@@ -1039,6 +1112,15 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         )
       : gameState.stateDivisions;
 
+    const updatedContinentalCompetitions = gameState.continentalCompetitions && gameState.continentalCompetitions.length > 0
+      ? advanceOtherLeaguesProgress(
+          gameState.continentalCompetitions,
+          progressRatio,
+          gameState.clubs,
+          true
+        )
+      : gameState.continentalCompetitions;
+
     const updatedOtherLeagues = gameState.otherLeagues && gameState.otherLeagues.length > 0
       ? advanceOtherLeaguesProgress(
           gameState.otherLeagues,
@@ -1056,15 +1138,15 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const currentSemester = nextCompetition === 'estadual' ? 1 : 2;
         const standings = nextCompetition === 'estadual' ? wasmUpdated.standingsEstadual || wasmUpdated.standings :
           nextCompetition === 'nacional' ? wasmUpdated.standingsNacional || wasmUpdated.standings : wasmUpdated.standings;
-        const synchronized = simulateBackgroundCompetitionFixtures({ ...wasmUpdated, otherLeagues: updatedOtherLeagues });
         setGameState(runAiMarket({ 
-          ...synchronized,
+          ...wasmUpdated,
           activeMatch: undefined, 
           activeMatchFixtureId: undefined, 
           currentSemester, 
           standings, 
           nationalDivisions: updatedNationalDivisions,
           stateDivisions: updatedStateDivisions,
+          continentalCompetitions: updatedContinentalCompetitions,
           otherLeagues: updatedOtherLeagues,
           activeScreen: 'overview' 
         }));
@@ -1077,7 +1159,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const currentSemester = nextCompetition === 'estadual' ? 1 : 2;
       const standings = nextCompetition === 'estadual' ? prev.standingsEstadual || prev.standings :
         nextCompetition === 'nacional' ? prev.standingsNacional || prev.standings : prev.standings;
-      return runAiMarket(simulateBackgroundCompetitionFixtures({
+      return runAiMarket({
         ...prev,
         activeMatch: undefined, activeMatchFixtureId: undefined,
         currentRound: nextRound,
@@ -1085,9 +1167,10 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         standings,
         nationalDivisions: updatedNationalDivisions,
         stateDivisions: updatedStateDivisions,
+        continentalCompetitions: updatedContinentalCompetitions,
         otherLeagues: updatedOtherLeagues,
         activeScreen: 'overview',
-      }));
+      });
     });
   };
 

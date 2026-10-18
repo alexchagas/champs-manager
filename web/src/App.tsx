@@ -112,7 +112,15 @@ const MainAppContent: React.FC = () => {
             sound.playClick();
             setScreen('tactics');
           } else {
-            completeRound();
+            const hasUnplayed = gameState.calendar.some(
+              f => (f.fixtureDateIndex ?? f.round) === gameState.currentRound && !f.played && !f.pendingQualification
+            );
+            if (hasUnplayed) {
+              completeRound();
+            } else {
+              sound.playClick();
+              advanceRound();
+            }
           }
         } else if (activeScreen === 'tactics') {
           if (userFixture) {

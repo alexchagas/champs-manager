@@ -187,35 +187,80 @@ export function resolvePendingFixtures(state: GameState): GameState {
   }
 
   const cup = calendar.filter(f => f.competitionType === 'copa');
-  if (cup.some(f => f.leg === 1)) {
-    for (const [sourceStage, targetStage] of [
-      ['Oitavas de Final', 'Quartas de Final'],
-      ['Quartas de Final', 'Semifinal'],
-      ['Semifinal', 'Final'],
-    ] as const) {
-      const first = cup.filter(f => f.stage === sourceStage && f.leg === 1).sort(byId);
-      const second = cup.filter(f => f.stage === sourceStage && f.leg === 2).sort(byId);
-      const nextFirst = cup.filter(f => f.stage === targetStage && f.leg === 1).sort(byId);
-      const nextSecond = cup.filter(f => f.stage === targetStage && f.leg === 2).sort(byId);
-      second.forEach(s => {
+  const cupStageOrder = [
+    'Primeira Fase',
+    'Segunda Fase',
+    'Terceira Fase',
+    'Oitavas de Final',
+    'Quartas de Final',
+    'Semifinal',
+    'Final',
+  ] as const;
+  const activeCupStages = cupStageOrder.filter(st => cup.some(f => f.stage === st));
+
+  if (activeCupStages.length >= 2) {
+    // Record aggregate ties on any played two-legged cup stage
+    for (const st of activeCupStages) {
+      const first = cup.filter(f => f.stage === st && f.leg === 1).sort(byId);
+      const second = cup.filter(f => f.stage === st && f.leg === 2).sort(byId);
+      second.forEach((s, idx) => {
         if (s.played) {
-          const matchingFirst = first.find(f => f.homeClubId === s.awayClubId && f.awayClubId === s.homeClubId);
+          const matchingFirst =
+            first.find(f => f.homeClubId === s.awayClubId && f.awayClubId === s.homeClubId) || first[idx];
           if (matchingFirst && matchingFirst.played) {
             recordAggregateTie(matchingFirst, s);
           }
         }
       });
-      if (first.length === nextFirst.length * 2 && second.length === first.length && second.every(f => f.played)) {
-        const winners = first.map((f, i) => aggregateWinner(f, calendar.find(x => x.id === second[i].id)!));
-        const pairs: [number, number][] = nextFirst.map((_, i) => [winners[2 * i], winners[2 * i + 1]]);
-        updatePairs(nextFirst, pairs);
-        updatePairs(nextSecond, pairs.map(([home, away]) => [away, home]));
-      }
     }
-    const cupFinalFirst = cup.find(f => f.stage === 'Final' && f.leg === 1);
-    const cupFinalSecond = cup.find(f => f.stage === 'Final' && f.leg === 2);
-    if (cupFinalFirst && cupFinalSecond && cupFinalSecond.played) {
-      recordAggregateTie(cupFinalFirst, cupFinalSecond);
+
+    for (let sIdx = 0; sIdx + 1 < activeCupStages.length; sIdx++) {
+      const sourceStage = activeCupStages[sIdx];
+      const targetStage = activeCupStages[sIdx + 1];
+
+      const sourceFirst = cup.filter(f => f.stage === sourceStage && f.leg === 1).sort(byId);
+      const sourceSecond = cup.filter(f => f.stage === sourceStage && f.leg === 2).sort(byId);
+      const isSourceTwoLegged = sourceFirst.length > 0 && sourceSecond.length === sourceFirst.length;
+      const sourceSingle = !isSourceTwoLegged ? cup.filter(f => f.stage === sourceStage).sort(byId) : [];
+
+      let winners: number[] = [];
+      if (isSourceTwoLegged) {
+        if (sourceSecond.every(f => f.played)) {
+          winners = sourceFirst.map((f, i) => aggregateWinner(f, calendar.find(x => x.id === sourceSecond[i].id)!));
+        }
+      } else if (sourceSingle.length > 0 && sourceSingle.every(f => f.played)) {
+        sourceSingle.filter(f => f.homeScore === f.awayScore).forEach(f => recordPenalties(f.id, [5, 4]));
+        winners = sourceSingle.map(f => winner(calendar.find(x => x.id === f.id)!));
+      }
+
+      if (winners.length === 0) continue;
+
+      const nextFirst = cup.filter(f => f.stage === targetStage && f.leg === 1).sort(byId);
+      const nextSecond = cup.filter(f => f.stage === targetStage && f.leg === 2).sort(byId);
+      const isTargetTwoLegged = nextFirst.length > 0 && nextSecond.length === nextFirst.length;
+      const nextSingle = !isTargetTwoLegged ? cup.filter(f => f.stage === targetStage).sort(byId) : [];
+
+      if (isTargetTwoLegged) {
+        if (winners.length === nextFirst.length * 2) {
+          const pairs: [number, number][] = nextFirst.map((_, i) => [winners[2 * i], winners[2 * i + 1]]);
+          updatePairs(nextFirst, pairs);
+          updatePairs(nextSecond, pairs.map(([home, away]) => [away, home]));
+        } else if (
+          winners.length === nextFirst.length &&
+          nextFirst.every(f => f.pendingQualification && (f.homeClubId > 0 || f.awayClubId > 0))
+        ) {
+          // 8 classificados da Terceira Fase enfrentam os 8 pré-classificados da Libertadores/Elite nas Oitavas!
+          const pairs: [number, number][] = nextFirst.map((f, i) => {
+            const directClubId = f.homeClubId > 0 ? f.homeClubId : f.awayClubId;
+            return [directClubId, winners[i]];
+          });
+          updatePairs(nextFirst, pairs);
+          updatePairs(nextSecond, pairs.map(([home, away]) => [away, home]));
+        }
+      } else if (nextSingle.length > 0 && winners.length === nextSingle.length * 2) {
+        const pairs: [number, number][] = nextSingle.map((_, i) => [winners[2 * i], winners[2 * i + 1]]);
+        updatePairs(nextSingle, pairs);
+      }
     }
   } else {
     for (let round = 1; round <= 3; round++) {
@@ -230,13 +275,174 @@ export function resolvePendingFixtures(state: GameState): GameState {
       .forEach(f => recordPenalties(f.id, [5, 4]));
   }
 
+  let standingsContinental = state.standingsContinental;
+  let continentalCompetitions = state.continentalCompetitions;
+
   const continental = calendar.filter(f => ['libertadores', 'sulamericana', 'champions'].includes(f.competitionType || ''));
-  const quartersFirst = continental.filter(f => f.stage === 'Quartas de Final' && f.leg === 1).sort(byId);
-  if (quartersFirst.length >= 2 && quartersFirst.every(f => f.pendingQualification)) {
-    const groupLabels = [...new Set(continental.map(f => f.competitionRound?.match(/^Grupo ([A-Z]+) •/)?.[1]).filter(Boolean))] as string[];
-    const groups = groupLabels.map(letter => continental.filter(f => f.competitionRound?.startsWith(`Grupo ${letter} •`)));
+
+  // Fase Preliminar: Pré-Libertadores (2ª Fase -> 3ª Fase -> Fase de Grupos Pote 4 dos Grupos E, F, G e H)
+  const preLib2First = continental.filter(f => f.stage === 'Pré-Libertadores (2ª Fase)' && f.leg === 1).sort(byId);
+  const preLib2Second = continental.filter(f => f.stage === 'Pré-Libertadores (2ª Fase)' && f.leg === 2).sort(byId);
+  const preLib3First = continental.filter(f => f.stage === 'Pré-Libertadores (3ª Fase)' && f.leg === 1).sort(byId);
+  const preLib3Second = continental.filter(f => f.stage === 'Pré-Libertadores (3ª Fase)' && f.leg === 2).sort(byId);
+
+  if (
+    preLib2First.length === 8 &&
+    preLib2Second.length === 8 &&
+    preLib3First.length === 4 &&
+    preLib3First.every(f => f.pendingQualification) &&
+    preLib2Second.every(f => f.played)
+  ) {
+    preLib2First.forEach((f, i) => recordAggregateTie(f, preLib2Second[i]));
+    const winners2 = preLib2First.map((f, i) => aggregateWinner(f, calendar.find(x => x.id === preLib2Second[i].id)!));
+    const pairs3: [number, number][] = preLib3First.map((_, i) => [winners2[2 * i], winners2[2 * i + 1]]);
+    updatePairs(preLib3First, pairs3);
+    updatePairs(preLib3Second, pairs3.map(([home, away]) => [away, home]));
+  }
+
+  const contGroupMatches = continental.filter(f => f.competitionRound?.startsWith('Grupo '));
+  const anyContGroupPlayed = contGroupMatches.some(f => f.played);
+
+  if (
+    preLib3First.length === 4 &&
+    preLib3Second.length === 4 &&
+    !preLib3First.some(f => f.pendingQualification) &&
+    preLib3Second.every(f => f.played) &&
+    !anyContGroupPlayed
+  ) {
+    preLib3First.forEach((f, i) => recordAggregateTie(f, preLib3Second[i]));
+    const winners3 = preLib3First.map((f, i) => aggregateWinner(f, calendar.find(x => x.id === preLib3Second[i].id)!));
+    const losers3 = preLib3First.map((f, i) => {
+      const w = winners3[i];
+      return f.homeClubId === w ? f.awayClubId : f.homeClubId;
+    });
+
+    const targetGroupLetters = ['E', 'F', 'G', 'H'];
+    const placeholderIds = [990001, 990002, 990003, 990004];
+    const replacements = new Map<number, number>();
+
+    for (let b = 0; b < 4; b++) {
+      const grpLetter = targetGroupLetters[b];
+      const bracketClubIds = new Set<number>();
+      if (preLib2First.length === 8) {
+        bracketClubIds.add(preLib2First[2 * b].homeClubId);
+        bracketClubIds.add(preLib2First[2 * b].awayClubId);
+        bracketClubIds.add(preLib2First[2 * b + 1].homeClubId);
+        bracketClubIds.add(preLib2First[2 * b + 1].awayClubId);
+      }
+      bracketClubIds.add(preLib3First[b].homeClubId);
+      bracketClubIds.add(preLib3First[b].awayClubId);
+
+      const grpFixtures = calendar.filter(f => f.competitionRound?.startsWith(`Grupo ${grpLetter} •`));
+      const grpClubIds = [...new Set(grpFixtures.flatMap(f => [f.homeClubId, f.awayClubId]))];
+      const placeholderId = placeholderIds[b];
+      const currentPreSlotId = grpClubIds.find(id => id === placeholderId || bracketClubIds.has(id)) || placeholderId;
+      const winnerId = winners3[b];
+
+      if (currentPreSlotId && currentPreSlotId !== winnerId) {
+        replacements.set(currentPreSlotId, winnerId);
+      }
+      replacements.set(placeholderId, winnerId);
+    }
+
+    if (replacements.size > 0) {
+      calendar = calendar.map(f => {
+        if (!f.competitionRound?.startsWith('Grupo ')) return f;
+        const newHome = replacements.get(f.homeClubId) ?? f.homeClubId;
+        const newAway = replacements.get(f.awayClubId) ?? f.awayClubId;
+        if (newHome === f.homeClubId && newAway === f.awayClubId) return f;
+        const isStillPending = (newHome >= 990001 && newHome <= 990004) || (newAway >= 990001 && newAway <= 990004);
+        return { ...f, homeClubId: newHome, awayClubId: newAway, pendingQualification: isStillPending };
+      });
+
+      if (standingsContinental && standingsContinental.length > 0) {
+        const clubsById = new Map(state.clubs.map(c => [c.id, c]));
+        standingsContinental = standingsContinental.map(row => {
+          const newClubId = replacements.get(row.clubId);
+          if (!newClubId) return row;
+          const newClub = clubsById.get(newClubId);
+          return {
+            ...row,
+            clubId: newClubId,
+            clubName: newClub?.name || `Clube ${newClubId}`,
+            primaryColor: newClub?.primaryColor || row.primaryColor,
+            points: 0,
+            played: 0,
+            won: 0,
+            drawn: 0,
+            lost: 0,
+            goalsFor: 0,
+            goalsAgainst: 0,
+            goalDiff: 0,
+            form: [],
+          };
+        });
+      }
+    }
+
+    // Regra CONMEBOL: Os 4 eliminados na 3ª Fase da Pré-Libertadores transferem-se para a Fase de Grupos da Copa Sul-Americana
+    if (continentalCompetitions && continentalCompetitions.length > 0 && losers3.length === 4) {
+      const clubsById = new Map(state.clubs.map(c => [c.id, c]));
+      continentalCompetitions = continentalCompetitions.map(comp => {
+        if (comp.id !== 'continental-sister' || comp.standings.length < 32) return comp;
+        const existingIds = new Set(comp.standings.map(r => r.clubId));
+        const updatedRows = [...comp.standings];
+        const targetGroups = ['E', 'F', 'G', 'H'];
+        losers3.forEach((loserId, idx) => {
+          if (existingIds.has(loserId)) return;
+          const loserClub = clubsById.get(loserId);
+          if (!loserClub) return;
+          const g = targetGroups[idx];
+          const groupRowIndices = updatedRows
+            .map((r, rIdx) => (r.group === g ? rIdx : -1))
+            .filter(rIdx => rIdx !== -1);
+          const replaceIdx = groupRowIndices[groupRowIndices.length - 1];
+          if (replaceIdx !== undefined) {
+            updatedRows[replaceIdx] = {
+              ...updatedRows[replaceIdx],
+              clubId: loserClub.id,
+              clubName: loserClub.name,
+              primaryColor: loserClub.primaryColor || '#10b981',
+            };
+          }
+        });
+        return { ...comp, standings: updatedRows };
+      });
+    }
+  }
+
+  // Enquanto nenhum jogo da Fase de Grupos continental foi disputado, garante que jogos da Pré-Libertadores não somem pontos na tabela de grupos
+  if (
+    !anyContGroupPlayed &&
+    standingsContinental &&
+    standingsContinental.some(r => r.played > 0 || r.points > 0)
+  ) {
+    standingsContinental = standingsContinental.map(r => ({
+      ...r,
+      points: 0,
+      played: 0,
+      won: 0,
+      drawn: 0,
+      lost: 0,
+      goalsFor: 0,
+      goalsAgainst: 0,
+      goalDiff: 0,
+      form: [],
+    }));
+  }
+
+  const updatedContinental = calendar.filter(f => ['libertadores', 'sulamericana', 'champions'].includes(f.competitionType || ''));
+  const firstContKnockoutStage = updatedContinental.some(f => f.stage === 'Oitavas de Final')
+    ? 'Oitavas de Final'
+    : 'Quartas de Final';
+  const firstContLeg1 = updatedContinental.filter(f => f.stage === firstContKnockoutStage && f.leg === 1).sort(byId);
+  const firstContLeg2 = updatedContinental.filter(f => f.stage === firstContKnockoutStage && f.leg === 2).sort(byId);
+
+  if (firstContLeg1.length >= 2 && firstContLeg1.every(f => f.pendingQualification)) {
+    const groupLabels = [...new Set(updatedContinental.map(f => f.competitionRound?.match(/^Grupo ([A-Z]+) •/)?.[1]).filter(Boolean))] as string[];
+    const groups = groupLabels.map(letter => updatedContinental.filter(f => f.competitionRound?.startsWith(`Grupo ${letter} •`)));
     if (groups.length >= 2 && groups.every(group => group.length > 0 && group.every(f => f.played))) {
-      const standings = new Map((state.standingsContinental || []).map(row => [row.clubId, row]));
+      const standings = new Map((standingsContinental || []).map(row => [row.clubId, row]));
       const qualified = groups.map(group => {
         const ids = [...new Set(group.flatMap(f => [f.homeClubId, f.awayClubId]))];
         return ids.map(id => standings.get(id)!).filter(Boolean).sort(ranking).slice(0, 2).map(row => row.clubId);
@@ -246,19 +452,23 @@ export function resolvePendingFixtures(state: GameState): GameState {
         for (let i = 0; i + 1 < qualified.length; i += 2) {
           pairs.push([qualified[i][0], qualified[i + 1][1]], [qualified[i + 1][0], qualified[i][1]]);
         }
-        if (pairs.length !== quartersFirst.length) return calendar === state.calendar ? state : { ...state, calendar };
-        updatePairs(quartersFirst, pairs);
-        updatePairs(continental.filter(f => f.stage === 'Quartas de Final' && f.leg === 2).sort(byId),
-          pairs.map(([home, away]) => [away, home]));
+        if (pairs.length === firstContLeg1.length) {
+          updatePairs(firstContLeg1, pairs);
+          updatePairs(firstContLeg2, pairs.map(([home, away]) => [away, home]));
+        }
       }
     }
   }
-  for (const [sourceStage, targetStage] of [['Quartas de Final', 'Semifinal'], ['Semifinal', 'Final']] as const) {
-    const first = continental.filter(f => f.stage === sourceStage && f.leg === 1).sort(byId);
-    const second = continental.filter(f => f.stage === sourceStage && f.leg === 2).sort(byId);
-    const nextFirst = continental.filter(f => f.stage === targetStage && f.leg === 1).sort(byId);
-    const nextSecond = continental.filter(f => f.stage === targetStage && f.leg === 2).sort(byId);
-    if (first.length === nextFirst.length * 2 && second.every(f => f.played)) {
+  for (const [sourceStage, targetStage] of [
+    ['Oitavas de Final', 'Quartas de Final'],
+    ['Quartas de Final', 'Semifinal'],
+    ['Semifinal', 'Final'],
+  ] as const) {
+    const first = updatedContinental.filter(f => f.stage === sourceStage && f.leg === 1).sort(byId);
+    const second = updatedContinental.filter(f => f.stage === sourceStage && f.leg === 2).sort(byId);
+    const nextFirst = updatedContinental.filter(f => f.stage === targetStage && f.leg === 1).sort(byId);
+    const nextSecond = updatedContinental.filter(f => f.stage === targetStage && f.leg === 2).sort(byId);
+    if (first.length > 0 && nextFirst.length > 0 && first.length === nextFirst.length * 2 && second.every(f => f.played)) {
       first.forEach((f, i) => recordAggregateTie(f, second[i]));
       const winners = first.map((f, i) => aggregateWinner(f, calendar.find(x => x.id === second[i].id)!));
       const pairs: [number, number][] = nextFirst.map((_, i) => [winners[2 * i], winners[2 * i + 1]]);
@@ -266,8 +476,8 @@ export function resolvePendingFixtures(state: GameState): GameState {
       updatePairs(nextSecond, pairs.map(([home, away]) => [away, home]));
     }
   }
-  const continentalFinalFirst = continental.find(f => f.stage === 'Final' && f.leg === 1);
-  const continentalFinalSecond = continental.find(f => f.stage === 'Final' && f.leg === 2);
+  const continentalFinalFirst = updatedContinental.find(f => f.stage === 'Final' && f.leg === 1);
+  const continentalFinalSecond = updatedContinental.find(f => f.stage === 'Final' && f.leg === 2);
   if (continentalFinalFirst?.played && continentalFinalSecond?.played) recordAggregateTie(continentalFinalFirst, continentalFinalSecond);
 
   // Single-leg World Cup Knockout
@@ -306,5 +516,17 @@ export function resolvePendingFixtures(state: GameState): GameState {
   }
   icFinal.filter(f => f.played && f.homeScore === f.awayScore).forEach(f => recordPenalties(f.id, [5, 4]));
 
-  return calendar === state.calendar ? state : { ...state, calendar };
+  if (
+    calendar === state.calendar &&
+    standingsContinental === state.standingsContinental &&
+    continentalCompetitions === state.continentalCompetitions
+  ) {
+    return state;
+  }
+  return {
+    ...state,
+    calendar,
+    standingsContinental,
+    continentalCompetitions,
+  };
 }

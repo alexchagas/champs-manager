@@ -67,6 +67,33 @@ export function getCompetitionZones(params: CompetitionZoneParams): CompetitionZ
   if (competitionType === 'estadual') {
     const zones: CompetitionZone[] = [];
 
+    // Se for 2ª Divisão Estadual (Módulo II / Série A2):
+    // G2 de acesso à elite e, em SP, Z2 de rebaixamento para a Série A3.
+    if (division === 2) {
+      const promoSpots = Math.min(2, totalTeams);
+      if (promoSpots > 0) {
+        zones.push({
+          minPos: 1,
+          maxPos: promoSpots,
+          label: 'Acesso à 1ª Divisão',
+          colorClass: 'text-emerald-400 font-bold',
+          bgHoverClass: 'hover:bg-emerald-950/20',
+          dotColor: 'bg-emerald-400',
+        });
+      }
+      if (params.stateCode?.toUpperCase() === 'SP' && totalTeams >= 12) {
+        zones.push({
+          minPos: totalTeams - 1,
+          maxPos: totalTeams,
+          label: 'Rebaixamento (Série A3)',
+          colorClass: 'text-rose-400 font-bold',
+          bgHoverClass: 'hover:bg-rose-950/20',
+          dotColor: 'bg-rose-500',
+        });
+      }
+      return zones;
+    }
+
     // Playoff spots: 2 per group when grouped in 4-team groups (e.g. Paulistão), 4 for single-table Semifinals
     const playoffSpots = totalTeams >= 6 ? 4 : Math.min(2, totalTeams);
     if (playoffSpots > 0) {

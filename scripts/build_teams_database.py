@@ -261,19 +261,19 @@ def main():
 
     # Load previous club metadata to preserve stable IDs and balances (e.g. Flamengo ID 255, Palmeiras balance)
     prev_meta = {}
-    try:
-        import subprocess
-        prev_raw = subprocess.check_output(["git", "show", "HEAD:web/src/data/teamsDatabase.json"], stderr=subprocess.DEVNULL)
-        prev_json = json.loads(prev_raw)
-        for pc in prev_json.get("clubs", []):
-            prev_meta[pc["name"]] = {
-                "id": pc["id"],
-                "balance": pc.get("balance"),
-                "ticketPrice": pc.get("ticketPrice")
-            }
-        print(f"Preserving stable metadata for {len(prev_meta)} clubs from repository.")
-    except Exception as e:
-        print(f"Could not load previous metadata: {e}")
+    if os.path.exists(out_path):
+        try:
+            with open(out_path, "r", encoding="utf-8") as pf:
+                prev_json = json.load(pf)
+            for pc in prev_json.get("clubs", []):
+                prev_meta[pc["name"]] = {
+                    "id": pc["id"],
+                    "balance": pc.get("balance"),
+                    "ticketPrice": pc.get("ticketPrice")
+                }
+            print(f"Preserving stable metadata for {len(prev_meta)} clubs from repository.")
+        except Exception as e:
+            print(f"Could not load previous metadata: {e}")
     club_by_orig_id = {c["id"]: c for c in clubs}
     selected = set()
 
@@ -340,55 +340,90 @@ def main():
         for mid in club_ids:
             club_league_info[mid] = (div, div_name, l_name, "Brasil")
 
-    bra_total = len([c for c in clubs if c["country_id"] == 29])
     countries_map[29] = {
         "id": 29,
         "name": "Brasil",
-        "clubCount": bra_total,
+        "clubCount": 0,
         "divisionCount": 5
     }
 
-    # International leagues
+    # International leagues (capped at 4 main divisions per Brasfoot Z.java, plus Divisão de Acesso for remaining clubs)
+    intl_leagues_by_c = defaultdict(list)
     for l in leagues:
         c_id = l["country_id"]
-        if c_id == 29:
-            continue
+        if c_id != 29:
+            intl_leagues_by_c[c_id].append(l)
+
+    all_clubs_by_c = defaultdict(list)
+    for c in clubs:
+        if c["id"] in selected:
+            all_clubs_by_c[c["country_id"]].append(id_map[c["id"]])
+
+    for c_id, c_leagues in intl_leagues_by_c.items():
         c_name = COUNTRY_NAMES.get(c_id, f"País {c_id}")
-        div = l["division"]
-        div_name = l["division_name"]
-        l_name = l["name"]
-        filtered_ids = [id_map[cid] for cid in l["club_ids"] if cid in selected]
+        c_leagues.sort(key=lambda x: x.get("division", 1))
+        assigned_in_c = set()
+        access_ids = []
+        max_main_div = 0
 
-        if not filtered_ids:
-            continue
+        for l in c_leagues:
+            div = l["division"]
+            div_name = l["division_name"]
+            l_name = l["name"]
+            filtered_ids = [id_map[cid] for cid in l["club_ids"] if cid in selected and id_map[cid] not in assigned_in_c]
+            if not filtered_ids:
+                continue
 
-        if len(filtered_ids) < 16 and div > 1:
-            div_name = "Divisão de Acesso"
-            l_name = f"{c_name} • Divisão de Acesso"
+            if div <= 4 and (len(filtered_ids) >= 16 or div == 1):
+                max_main_div = max(max_main_div, div)
+                leagues_out.append({
+                    "countryId": c_id,
+                    "countryName": c_name,
+                    "name": l_name,
+                    "division": div,
+                    "divisionName": div_name,
+                    "teamCount": len(filtered_ids),
+                    "clubIds": filtered_ids,
+                    "relegated": l.get("relegated", 4)
+                })
+                for mapped_id in filtered_ids:
+                    assigned_in_c.add(mapped_id)
+                    club_league_info[mapped_id] = (div, div_name, l_name, c_name)
+            else:
+                for mapped_id in filtered_ids:
+                    assigned_in_c.add(mapped_id)
+                    access_ids.append(mapped_id)
 
-        leagues_out.append({
-            "countryId": c_id,
-            "countryName": c_name,
-            "name": l_name,
-            "division": div,
-            "divisionName": div_name,
-            "teamCount": len(filtered_ids),
-            "clubIds": filtered_ids,
-            "relegated": l.get("relegated", 4)
-        })
+        # Any remaining clubs of this country not listed in its main divisions go to Divisão de Acesso
+        for mapped_id in all_clubs_by_c[c_id]:
+            if mapped_id not in assigned_in_c:
+                assigned_in_c.add(mapped_id)
+                access_ids.append(mapped_id)
 
-        if c_id not in countries_map:
-            countries_map[c_id] = {
-                "id": c_id,
-                "name": c_name,
-                "clubCount": 0,
-                "divisionCount": 0
-            }
-        countries_map[c_id]["divisionCount"] = max(countries_map[c_id]["divisionCount"], div)
+        if access_ids:
+            acc_div = max_main_div + 1 if max_main_div > 0 else 1
+            acc_div_name = "Divisão de Acesso" if max_main_div > 0 else "1ª Divisão"
+            acc_l_name = f"{c_name} • Divisão de Acesso" if max_main_div > 0 else f"Liga {c_name}"
+            leagues_out.append({
+                "countryId": c_id,
+                "countryName": c_name,
+                "name": acc_l_name,
+                "division": acc_div,
+                "divisionName": acc_div_name,
+                "teamCount": len(access_ids),
+                "clubIds": access_ids,
+                "relegated": 4 if max_main_div > 0 else 0
+            })
+            for mapped_id in access_ids:
+                club_league_info[mapped_id] = (acc_div, acc_div_name, acc_l_name, c_name)
+            max_main_div = max(max_main_div, acc_div)
 
-        for mapped_id in filtered_ids:
-            if mapped_id not in club_league_info:
-                club_league_info[mapped_id] = (div, div_name, l_name, c_name)
+        countries_map[c_id] = {
+            "id": c_id,
+            "name": c_name,
+            "clubCount": 0,
+            "divisionCount": max(1, max_main_div)
+        }
 
     # Process clubs
     clubs_out = []
@@ -417,7 +452,7 @@ def main():
         else:
             division = 1
             division_name = "1ª Divisão"
-            league_name = "Liga Nacional"
+            league_name = f"Liga {COUNTRY_NAMES.get(c_id, f'País {c_id}')}"
             country_name = COUNTRY_NAMES.get(c_id, f"País {c_id}")
 
         state_id = c.get("state_id", 0)

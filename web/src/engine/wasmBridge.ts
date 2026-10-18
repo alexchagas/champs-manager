@@ -9,11 +9,11 @@ import initWasm, {
   wasm_auto_select_best_lineup,
 } from '../wasm_pkg/champs_core.js';
 import wasmUrl from '../wasm_pkg/champs_core_bg.wasm?url';
-import { Club, GameState, MatchEvent, ClubTactics, Player, MarketFilter, MarketSearchResult, TransferOffer, StandingRow, MatchFixture } from '../types';
-import { SimulatedMatchResult } from './simulationEngine';
-import { canSell, validOffer, post, canFundTransfer, runAiMarket } from './careerEconomy';
-import { sortStandings } from '../data/calendarGenerator';
-import { addBreadcrumb, captureError } from '../observability/sentry';
+import { Club, GameState, MatchEvent, ClubTactics, Player, MarketFilter, MarketSearchResult, TransferOffer, StandingRow, MatchFixture } from '../types/index.ts';
+import { SimulatedMatchResult } from './simulationEngine.ts';
+import { canSell, validOffer, post, canFundTransfer, runAiMarket } from './careerEconomy.ts';
+import { sortStandings } from '../data/calendarGenerator.ts';
+import { addBreadcrumb, captureError } from '../observability/sentry.ts';
 
 let wasmInitialized = false;
 let wasmInitPromise: Promise<boolean> | null = null;
@@ -92,6 +92,7 @@ function mergeCareerState(current: GameState, parsed: GameState): GameState {
     continentalCupName: current.continentalCupName,
     nationalDivisions: parsed.nationalDivisions ?? current.nationalDivisions,
     stateDivisions: parsed.stateDivisions ?? current.stateDivisions,
+    continentalCompetitions: parsed.continentalCompetitions ?? current.continentalCompetitions,
   };
   merged.transferOffers = (parsed.transferOffers || []).map(o => ({ ...current.transferOffers?.find(old => old.id === o.id), ...o })).filter(o => !validOffer(merged, o));
   return merged;
@@ -850,7 +851,7 @@ export function renewContractWasm(
 
 
 /** The live match requires Rust; a second simulator would break save/replay semantics. */
-export function commandMatchWasm(state: GameState, command: import('../types').MatchCommand): GameState {
+export function commandMatchWasm(state: GameState, command: import('../types/index.ts').MatchCommand): GameState {
   if (!wasmInitialized) throw new Error('O motor Rust ainda não está disponível. Aguarde o carregamento ou recarregue o aplicativo.');
   const parsed = JSON.parse(wasm_match_command(JSON.stringify(state), JSON.stringify(command))) as GameState;
   return { ...mergeCareerState(state, parsed), options: { ...state.options, ...parsed.options } };

@@ -1,5 +1,5 @@
 import type { Club, CountryInfo, LeagueInfo, StateInfo } from '../types/index.ts';
-import { getAllClubs, registerClubs } from './teamsDatabase.ts';
+import { getAllClubs, getAllCountries, getAllLeagues, getAllStates, getClubById, registerClubs } from './teamsDatabase.ts';
 
 export interface ClubIndexItem {
   id: number;
@@ -34,6 +34,43 @@ export interface LeaguesMeta {
 const loadedBundles = new Map<string, Club[]>();
 let cachedMeta: LeaguesMeta | null = null;
 
+function normalizeMetaWithCanonicalDb(meta: LeaguesMeta): LeaguesMeta {
+  const canonicalLeagues = getAllLeagues();
+  const canonicalCountries = getAllCountries();
+  const canonicalStates = getAllStates();
+  const bundleKeyByCountry = new Map<number, string>();
+  for (const c of meta.countries || []) {
+    if (c.bundleKey) bundleKeyByCountry.set(c.id, c.bundleKey);
+  }
+
+  const normalizedIndex = (meta.clubsIndex || []).map((item) => {
+    const canonical = getClubById(item.id);
+    if (!canonical) return item;
+    return {
+      ...item,
+      division: canonical.division ?? item.division,
+      divisionName: canonical.divisionName || item.divisionName,
+      leagueName: canonical.leagueName || item.leagueName,
+      stateCode: canonical.stateCode ?? item.stateCode,
+      stateId: canonical.stateId ?? item.stateId,
+    };
+  });
+
+  return {
+    ...meta,
+    countries:
+      canonicalCountries.length > 0
+        ? canonicalCountries.map((c) => ({
+            ...c,
+            bundleKey: bundleKeyByCountry.get(c.id) || (c.id === 29 ? 'brazil' : 'world_rest'),
+          }))
+        : meta.countries,
+    leagues: canonicalLeagues.length > 0 ? canonicalLeagues : meta.leagues,
+    states: canonicalStates.length > 0 ? canonicalStates : meta.states,
+    clubsIndex: normalizedIndex,
+  };
+}
+
 /**
  * Loads the lightweight leagues metadata index.
  * In browser: fetches `/data/leagues/leagues_meta.json`.
@@ -46,7 +83,8 @@ export async function getLeaguesMeta(): Promise<LeaguesMeta> {
     if (typeof fetch !== 'undefined') {
       const res = await fetch('/data/leagues/leagues_meta.json');
       if (res.ok) {
-        cachedMeta = (await res.json()) as LeaguesMeta;
+        const rawMeta = (await res.json()) as LeaguesMeta;
+        cachedMeta = normalizeMetaWithCanonicalDb(rawMeta);
         return cachedMeta;
       }
     }
@@ -80,9 +118,9 @@ export async function getLeaguesMeta(): Promise<LeaguesMeta> {
   cachedMeta = {
     version: 2026,
     totalClubs: clubs.length,
-    countries: [],
-    leagues: [],
-    states: [],
+    countries: getAllCountries(),
+    leagues: getAllLeagues(),
+    states: getAllStates(),
     clubsIndex: index,
   };
   return cachedMeta;
@@ -100,7 +138,17 @@ export async function loadLeagueBundle(bundleKey: string): Promise<Club[]> {
     if (typeof fetch !== 'undefined') {
       const res = await fetch(`/data/leagues/${bundleKey}.json`);
       if (res.ok) {
-        const clubs = (await res.json()) as Club[];
+        const rawClubs = (await res.json()) as Club[];
+        const clubs = rawClubs.map((c) => {
+          const canonical = getClubById(c.id);
+          if (!canonical) return c;
+          return {
+            ...c,
+            division: canonical.division ?? c.division,
+            divisionName: canonical.divisionName || c.divisionName,
+            leagueName: canonical.leagueName || c.leagueName,
+          };
+        });
         loadedBundles.set(bundleKey, clubs);
         registerClubs(clubs);
         return clubs;

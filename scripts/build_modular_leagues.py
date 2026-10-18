@@ -194,285 +194,102 @@ def calculate_salary(market_value, strength, division):
 
 def main():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    raw_path = os.path.join(root, "data/teams.json")
+    db_path = os.path.join(root, "web/src/data/teamsDatabase.json")
     out_dir = os.path.join(root, "web/public/data/leagues")
     os.makedirs(out_dir, exist_ok=True)
 
-    print(f"Loading {raw_path}...")
-    with open(raw_path, "r", encoding="utf-8") as f:
-        raw = json.load(f)
+    print(f"Loading authoritative database from {db_path}...")
+    with open(db_path, "r", encoding="utf-8") as f:
+        db = json.load(f)
 
-    clubs = raw["clubs"]
-    leagues = raw["leagues"]
-    states_data = raw.get("states", [])
+    clubs = db["clubs"]
+    leagues = db["leagues"]
+    states_out = db["states"]
+    countries = db["countries"]
 
-    # Load existing web teamsDatabase to guarantee 100% stable IDs for existing clubs
-    prev_meta = {}
-    prev_db_path = os.path.join(root, "web/src/data/teamsDatabase.json")
-    if os.path.exists(prev_db_path):
-        with open(prev_db_path, "r", encoding="utf-8") as f:
-            prev_json = json.load(f)
-            for pc in prev_json.get("clubs", []):
-                prev_meta[pc["name"]] = {
-                    "id": pc["id"],
-                    "balance": pc.get("balance"),
-                    "ticketPrice": pc.get("ticketPrice")
-                }
-    print(f"Found {len(prev_meta)} clubs with existing stable IDs.")
+    country_names = {c["id"]: c["name"] for c in countries}
 
-    db_by_ref = {pc.get("fileRef"): pc["id"] for pc in prev_json.get("clubs", []) if pc.get("fileRef")}
-    db_by_name_c = {(pc["name"], pc["countryId"]): pc["id"] for pc in prev_json.get("clubs", [])}
-
-    id_map = {} # orig_id -> mapped_id
-    for c in clubs:
-        ref = c.get("file_ref", "")
-        if ref and ref in db_by_ref:
-            id_map[c["id"]] = db_by_ref[ref]
-        elif (c["name"], c["country_id"]) in db_by_name_c:
-            id_map[c["id"]] = db_by_name_c[(c["name"], c["country_id"])]
-        else:
-            id_map[c["id"]] = c["id"]
-
-    print(f"Mapped {len(id_map)} clubs directly to teamsDatabase.json IDs.")
-
-    # Map leagues
     leagues_out = []
-    club_league_info = {} # mapped_id -> (division, division_name, league_name, country_name)
-    countries_map = {}
-
-    for l in leagues:
-        c_id = l["country_id"]
-        c_name = COUNTRY_NAMES.get(c_id, f"País {c_id}")
-        div = l.get("division", 1)
-        div_name = l.get("division_name", f"{div}ª Divisão")
-        l_name = l.get("name", f"Campeonato {c_name}")
-        mapped_ids = [id_map[cid] for cid in l.get("club_ids", []) if cid in id_map]
-
-        if not mapped_ids:
-            continue
-
-        if len(mapped_ids) < 16 and div > 1:
-            div_name = "Divisão de Acesso"
-            l_name = f"{c_name} • Divisão de Acesso"
-
+    for idx, l in enumerate(leagues, 1):
         leagues_out.append({
-            "id": len(leagues_out) + 1,
-            "countryId": c_id,
-            "countryName": c_name,
-            "name": l_name,
-            "division": div,
-            "divisionName": div_name,
-            "teamCount": len(mapped_ids),
-            "clubIds": mapped_ids,
-            "relegated": l.get("relegated", 4)
+            "id": idx,
+            "countryId": l["countryId"],
+            "countryName": l.get("countryName") or country_names.get(l["countryId"], f"País {l['countryId']}"),
+            "name": l["name"],
+            "division": l["division"],
+            "divisionName": l["divisionName"],
+            "teamCount": l["teamCount"],
+            "clubIds": l["clubIds"],
+            "relegated": l.get("relegated", 4),
         })
 
-        if c_id not in countries_map:
-            countries_map[c_id] = {
-                "id": c_id,
-                "name": c_name,
-                "clubCount": 0,
-                "divisionCount": 0,
-                "bundleKey": COUNTRY_BUNDLE_MAP.get(c_id, "world_rest")
-            }
-        countries_map[c_id]["divisionCount"] = max(countries_map[c_id]["divisionCount"], div)
+    countries_out = []
+    for c in countries:
+        cid = c["id"]
+        countries_out.append({
+            "id": cid,
+            "name": c["name"],
+            "clubCount": c["clubCount"],
+            "divisionCount": c["divisionCount"],
+            "bundleKey": COUNTRY_BUNDLE_MAP.get(cid, "world_rest"),
+        })
+    countries_out.sort(key=lambda x: (-(x["clubCount"]), x["name"]))
 
-        for mid in mapped_ids:
-            if mid not in club_league_info:
-                club_league_info[mid] = (div, div_name, l_name, c_name)
-
-    # Process all 3,216 clubs
-    processed_clubs = []
     clubs_index = []
     bundles_dict = defaultdict(list)
 
     for c in clubs:
-        cid = id_map[c["id"]]
-        c_id = c.get("country_id", 29)
-        c_name = COUNTRY_NAMES.get(c_id, f"País {c_id}")
+        cid = c["id"]
+        c_id = c.get("countryId", 29)
+        c_name = c.get("countryName") or country_names.get(c_id, f"País {c_id}")
+        bkey = COUNTRY_BUNDLE_MAP.get(c_id, "world_rest")
 
-        if c_id in countries_map:
-            countries_map[c_id]["clubCount"] += 1
-
-        div_info = club_league_info.get(cid)
-        if div_info:
-            division, division_name, league_name, _ = div_info
-        else:
-            division = 5
-            division_name = "Divisão de Acesso"
-            league_name = f"{c_name} • Divisão de Acesso"
-
-        state_id = c.get("state_id", 0) if c_id == 29 else None
-        state_code = STATE_NAMES.get(state_id, ("", ""))[0] if (c_id == 29 and state_id in STATE_NAMES) else None
-        state_name = STATE_NAMES.get(state_id, ("", ""))[1] if (c_id == 29 and state_id in STATE_NAMES) else None
-
-        rep = c.get("reputation", 3)
-        lvl = c.get("level", 10)
-        cname = c["name"]
-
-        if cname in prev_meta:
-            base_bal = prev_meta[cname].get("balance") or ((rep * 4000000) + (lvl * 1500000))
-            ticket = prev_meta[cname].get("ticketPrice") or (25 + (rep * 10) + (lvl * 2))
-        else:
-            base_bal = (rep * 4000000) + (lvl * 1500000)
-            ticket = 25 + (rep * 10) + (lvl * 2)
-
-        file_ref = c.get("file_ref", "")
-        crest_url = f"/escudos/{file_ref}.png"
-        crest_mini_url = f"/escudosMini/{file_ref}.png"
-
-        # Squad
         squad_out = []
         for p in c.get("squad", []):
-            pos_code = p.get("position_code", 3)
-            pos_name = POSITIONS[pos_code] if 0 <= pos_code < len(POSITIONS) else "MEI"
-            is_starter = p.get("starter", False)
-            is_star = p.get("star", False)
-            is_world_top = p.get("world_top", False)
-            is_attacker = pos_name == "ATA"
+            p_copy = dict(p)
+            if "contractYears" not in p_copy:
+                p_copy["contractYears"] = 1 + ((p_copy["id"] + cid) % 3)
+            squad_out.append(p_copy)
 
-            strength = calculate_player_strength(
-                club_level=lvl,
-                division=division,
-                reputation=rep,
-                country_id=c_id,
-                is_starter=is_starter,
-                is_star=is_star,
-                is_world_top=is_world_top,
-                is_junior=p.get("age", 25) < 21,
-                player_id=p["id"],
-                hash_val=p.get("hash", 0)
-            )
+        club_obj = dict(c)
+        club_obj["countryName"] = c_name
+        club_obj["squad"] = squad_out
+        if c_id != 29:
+            club_obj["stateId"] = None
+            club_obj["stateCode"] = None
+            club_obj["stateName"] = None
 
-            m_val = calculate_market_value(
-                strength=strength,
-                age=p.get("age", 25),
-                is_starter=is_starter,
-                is_star=is_star,
-                is_attacker=is_attacker,
-                club_level=lvl
-            )
-
-            salary = calculate_salary(m_val, strength, division)
-            t1 = p.get("trait1", 0)
-            t2 = p.get("trait2", 1)
-            skill1 = SKILLS[t1] if 0 <= t1 < len(SKILLS) else "Passe"
-            skill2 = SKILLS[t2] if 0 <= t2 < len(SKILLS) else "Desarme"
-
-            foot_code = p.get("foot", "right")
-            foot = "E" if foot_code == "left" else ("A" if foot_code == "both" else "D")
-
-            squad_out.append({
-                "id": p["id"],
-                "name": p["name"],
-                "age": p.get("age", 25),
-                "position": pos_name,
-                "foot": foot,
-                "strength": strength,
-                "energy": 96 + (p["id"] % 5),
-                "salary": salary,
-                "marketValue": m_val,
-                "isStarter": is_starter,
-                "isStar": is_star,
-                "isWorldTop": is_world_top,
-                "skill1": skill1,
-                "skill2": skill2,
-                "goals": 0,
-                "assists": 0,
-                "yellowCards": 0,
-                "redCards": 0,
-                "injured": False,
-                "suspended": False,
-                "contractYears": 1 + ((p["id"] + cid) % 3)
-            })
-
-        squad_ids = [sp["id"] for sp in squad_out]
-        captain_id = squad_ids[0] if squad_ids else 0
-        penalty_id = squad_ids[-1] if squad_ids else 0
-        freekick_id = squad_ids[min(len(squad_ids)-1, 10)] if squad_ids else 0
-        corner_id = squad_ids[min(len(squad_ids)-1, 7)] if squad_ids else 0
-
-        club_obj = {
-            "id": cid,
-            "name": cname,
-            "fileRef": file_ref,
-            "countryId": c_id,
-            "countryName": c_name,
-            "stateId": state_id,
-            "stateCode": state_code,
-            "stateName": state_name,
-            "reputation": rep,
-            "level": lvl,
-            "stadium": c.get("stadium", "Estádio Municipal"),
-            "capacity": c.get("stadium_capacity", 20000),
-            "coach": c.get("coach", "Técnico"),
-            "primaryColor": c.get("primary_color", "#000000"),
-            "secondaryColor": c.get("secondary_color", "#ffffff"),
-            "balance": base_bal,
-            "ticketPrice": ticket,
-            "crestUrl": crest_url,
-            "crestMiniUrl": crest_mini_url,
-            "division": division,
-            "divisionName": division_name,
-            "leagueName": league_name,
-            "tactics": {
-                "formation": "4-4-2",
-                "mentality": "Equilibrada",
-                "penaltyTakerId": penalty_id,
-                "freeKickTakerId": freekick_id,
-                "cornerTakerId": corner_id,
-                "captainId": captain_id
-            },
-            "squad": squad_out
-        }
-
-        # Lightweight club index entry for snappy menus
         club_index_entry = {
             "id": cid,
-            "name": cname,
-            "fileRef": file_ref,
+            "name": c["name"],
+            "fileRef": c.get("fileRef", ""),
             "countryId": c_id,
             "countryName": c_name,
-            "stateId": state_id,
-            "stateCode": state_code,
-            "division": division,
-            "divisionName": division_name,
-            "leagueName": league_name,
-            "reputation": rep,
-            "level": lvl,
+            "stateId": club_obj.get("stateId"),
+            "stateCode": club_obj.get("stateCode"),
+            "division": c.get("division", 1),
+            "divisionName": c.get("divisionName", "1ª Divisão"),
+            "leagueName": c.get("leagueName", f"Liga {c_name}"),
+            "reputation": c.get("reputation", 3),
+            "level": c.get("level", 10),
             "stadium": c.get("stadium", "Estádio Municipal"),
-            "capacity": c.get("stadium_capacity", 20000),
+            "capacity": c.get("capacity", 20000),
             "coach": c.get("coach", "Técnico"),
-            "primaryColor": c.get("primary_color", "#000000"),
-            "secondaryColor": c.get("secondary_color", "#ffffff"),
-            "bundleKey": COUNTRY_BUNDLE_MAP.get(c_id, "world_rest")
+            "primaryColor": c.get("primaryColor", "#000000"),
+            "secondaryColor": c.get("secondaryColor", "#ffffff"),
+            "bundleKey": bkey,
         }
 
         clubs_index.append(club_index_entry)
-        bundle_key = COUNTRY_BUNDLE_MAP.get(c_id, "world_rest")
-        bundles_dict[bundle_key].append(club_obj)
-        processed_clubs.append(club_obj)
-
-    states_out = []
-    for s_id, (code, name) in STATE_NAMES.items():
-        bra_clubs = [c["id"] for c in processed_clubs if c.get("stateId") == s_id and c.get("countryId") == 29]
-        states_out.append({
-            "id": s_id,
-            "code": code,
-            "name": name,
-            "clubCount": len(bra_clubs),
-            "clubIds": bra_clubs
-        })
-
-    countries_out = sorted(list(countries_map.values()), key=lambda x: (-(x["clubCount"]), x["name"]))
+        bundles_dict[bkey].append(club_obj)
 
     meta_doc = {
         "version": 2026,
-        "totalClubs": len(processed_clubs),
+        "totalClubs": len(clubs),
         "countries": countries_out,
         "leagues": leagues_out,
         "states": states_out,
-        "clubsIndex": sorted(clubs_index, key=lambda x: (-x["reputation"], x["name"]))
+        "clubsIndex": sorted(clubs_index, key=lambda x: (-x["reputation"], x["name"])),
     }
 
     meta_path = os.path.join(out_dir, "leagues_meta.json")
@@ -486,7 +303,8 @@ def main():
         with open(bundle_path, "w", encoding="utf-8") as f:
             json.dump(bclubs, f, ensure_ascii=False)
 
-    print("Success! All modular league bundles generated.")
+    print("Success! All modular league bundles generated from teamsDatabase.json.")
 
 if __name__ == "__main__":
     main()
+

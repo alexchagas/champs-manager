@@ -19,6 +19,70 @@ for (const club of database.clubs) {
   clubsById.set(club.id, club);
 }
 
+export const PRE_LIB_PLACEHOLDER_IDS = [990001, 990002, 990003, 990004];
+
+export function isPreLibPlaceholderId(id?: number): boolean {
+  return typeof id === 'number' && id >= 990001 && id <= 990004;
+}
+
+function makePlaceholderSquad(startId: number) {
+  const positions: ('GOL' | 'ZAG' | 'LAT' | 'VOL' | 'MEI' | 'ATA')[] = [
+    'GOL', 'GOL',
+    'ZAG', 'ZAG', 'ZAG', 'LAT', 'LAT',
+    'VOL', 'VOL', 'MEI', 'MEI', 'MEI',
+    'ATA', 'ATA', 'ATA', 'ATA',
+  ];
+  return positions.map((pos, idx) => ({
+    id: startId + idx,
+    name: `Atleta ${idx + 1}`,
+    age: 23,
+    position: pos,
+    foot: 'D' as const,
+    strength: 65,
+    energy: 100,
+    salary: 15000,
+    marketValue: 800000,
+    isStarter: idx < 11,
+    isStar: false,
+    isWorldTop: false,
+    skill1: 'Passe',
+    skill2: 'Desarme',
+    goals: 0,
+    assists: 0,
+    yellowCards: 0,
+    redCards: 0,
+    injured: false,
+    suspended: false,
+    contractYears: 3,
+  }));
+}
+
+export const PRE_LIB_PLACEHOLDER_CLUBS: Club[] = [1, 2, 3, 4].map((num) => ({
+  id: 990000 + num,
+  name: `Vencedor Pré-Lib G${num}`,
+  shortName: `Pré-Lib G${num}`,
+  countryId: 0,
+  division: 1,
+  reputation: 3,
+  level: 10,
+  primaryColor: '#f59e0b',
+  secondaryColor: '#1e293b',
+  stadium: 'A definir',
+  capacity: 25000,
+  coach: 'Técnico a definir',
+  balance: 50000000,
+  ticketPrice: 40,
+  crestUrl: '',
+  crestMiniUrl: '',
+  tactics: { formation: '4-4-2', mentality: 'Equilibrada', penaltyTakerId: 0, freeKickTakerId: 0, cornerTakerId: 0, captainId: 0 },
+  squad: makePlaceholderSquad(991000 + num * 50),
+}));
+
+for (const ph of PRE_LIB_PLACEHOLDER_CLUBS) {
+  clubsById.set(ph.id, ph);
+  database.clubs.push(ph);
+}
+
 export function applyClubEdits(edits: Club[]): void {
   for (const club of edits) {
     const previous = clubsById.get(club.id);
