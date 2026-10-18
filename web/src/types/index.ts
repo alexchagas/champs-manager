@@ -400,6 +400,10 @@ export interface ChampionshipRecord {
   finalScoreText?: string;
   userPositionText?: string;
   userPrizeMoney?: number;
+  promotedClubNames?: string[];
+  relegatedClubNames?: string[];
+  promotedClubIds?: number[];
+  relegatedClubIds?: number[];
 }
 
 export interface TransferOffer {

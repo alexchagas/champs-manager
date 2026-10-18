@@ -101,6 +101,7 @@ import {
   listAllSaveSlots 
 } from './storage';
 import { computeSeasonMobility } from '../engine/sportsMobility';
+import { prunePreviousSeasonData } from '../engine/dataPruning';
 import { getCompetitionClubs } from '../data/teamsDatabase';
 import { addBreadcrumb } from '../observability/sentry';
 
@@ -1106,12 +1107,13 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       nationalCallups: callups,
       newsFeed: [...mobility.newsArticles, ...callupNews, ...(rolled.newsFeed || [])],
     };
-    setGameState(nextSeasonState);
+    const prunedState = prunePreviousSeasonData(nextSeasonState, mobility);
+    setGameState(prunedState);
     if (
       gameState.options.autoSaveMode === 'start_of_year' ||
       gameState.options.autoSaveMode === 'legacy_continuous'
     ) {
-      performAutoSave(nextSeasonState);
+      performAutoSave(prunedState);
     }
   };
 

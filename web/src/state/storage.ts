@@ -32,22 +32,53 @@ function openIndexedDB(): Promise<IDBDatabase> {
 }
 
 let activeWriteQueue: Promise<void> = Promise.resolve();
+
+/**
+ * Persiste o estado do jogo ativo desacoplando a escrita do localStorage.
+ * Quando o IndexedDB está disponível, ele atua como armazenamento primário e assíncrono.
+ * A escrita no localStorage ocorre de forma não bloqueante (queueMicrotask) e tolerante a quota.
+ */
 export async function saveActiveGameToStorage(state: GameState): Promise<void> {
-  // Mirror immediately so a reload cannot read an older asynchronous IndexedDB write.
-  let mirrored = false;
-  try { localStorage.setItem(LOCAL_STORAGE_CURRENT_KEY, JSON.stringify(state)); mirrored = true; } catch { try { localStorage.removeItem(LOCAL_STORAGE_CURRENT_KEY); } catch {} }
-  const write = activeWriteQueue.catch(() => {}).then(async () => {
-    const db = await openIndexedDB();
+  const isIndexedDBSupported = typeof window !== 'undefined' && !!window.indexedDB;
+
+  if (!isIndexedDBSupported) {
     try {
-      await new Promise<void>((resolve,reject) => {
-        const tx = db.transaction(ACTIVE_STORE,'readwrite');
-        tx.objectStore(ACTIVE_STORE).put({key:'current',state});
-        tx.oncomplete = () => resolve();
-        tx.onerror = tx.onabort = () => reject(tx.error || new Error('Falha na transação do save.'));
-      });
-    } finally { db.close(); }
+      localStorage.setItem(LOCAL_STORAGE_CURRENT_KEY, JSON.stringify(state));
+    } catch {}
+  }
+
+  const write = activeWriteQueue.catch(() => {}).then(async () => {
+    if (isIndexedDBSupported) {
+      const db = await openIndexedDB();
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const tx = db.transaction(ACTIVE_STORE, 'readwrite');
+          tx.objectStore(ACTIVE_STORE).put({ key: 'current', state });
+          tx.oncomplete = () => resolve();
+          tx.onerror = tx.onabort = () => reject(tx.error || new Error('Falha na transação do save.'));
+        });
+      } finally {
+        db.close();
+      }
+    }
   });
+
   activeWriteQueue = write;
+
+  // Espelhamento não bloqueante no localStorage (executado fora da thread principal crítica)
+  if (isIndexedDBSupported) {
+    if (typeof queueMicrotask === 'function') {
+      queueMicrotask(() => {
+        try {
+          localStorage.setItem(LOCAL_STORAGE_CURRENT_KEY, JSON.stringify(state));
+        } catch {
+          // Se atingir cota de 5MB do localStorage, limpa a chave para não corromper o armazenamento
+          try { localStorage.removeItem(LOCAL_STORAGE_CURRENT_KEY); } catch {}
+        }
+      });
+    }
+  }
+
   try {
     await write;
     addBreadcrumb('Saved active game to storage', 'storage', {
@@ -55,19 +86,13 @@ export async function saveActiveGameToStorage(state: GameState): Promise<void> {
       season: state.seasonYear,
     });
   } catch (error) {
-    if (!mirrored) {
-      captureError(error, { context: 'saveActiveGameToStorage' });
-      throw error;
-    }
+    captureError(error, { context: 'saveActiveGameToStorage' });
+    throw error;
   }
 }
 
 export async function loadActiveGameFromStorage(): Promise<GameState | null> {
-  try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_CURRENT_KEY);
-    if (raw) return JSON.parse(raw) as GameState;
-  } catch { /* Fall back to the last completed IndexedDB transaction. */ }
-  // Try IndexedDB
+  // 1. Tenta IndexedDB como armazenamento primário
   try {
     const db = await openIndexedDB();
     const tx = db.transaction(ACTIVE_STORE, 'readonly');
@@ -77,14 +102,16 @@ export async function loadActiveGameFromStorage(): Promise<GameState | null> {
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });
+    db.close();
 
     if (result && result.state) {
       return result.state as GameState;
     }
-  } catch (e) {
+  } catch {
     // Fall back to LocalStorage
   }
 
+  // 2. Fall back to LocalStorage
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_CURRENT_KEY);
     if (raw) {
@@ -101,7 +128,7 @@ export async function saveGameSlotToStorage(slot: SaveGameSlot, state: GameState
   let saved = false;
   let lastError: any = null;
 
-  // 1. IndexedDB
+  // 1. IndexedDB (Armazenamento primário, assíncrono e de grande capacidade)
   try {
     const db = await openIndexedDB();
     const tx = db.transaction(SAVES_STORE, 'readwrite');
@@ -119,14 +146,30 @@ export async function saveGameSlotToStorage(slot: SaveGameSlot, state: GameState
     }
   }
 
-  // 2. LocalStorage mirror
+  // 2. Metadados do slot no LocalStorage (sempre leve, < 10KB)
   try {
     const rawSlots = localStorage.getItem(LOCAL_STORAGE_SAVES_KEY);
     const slots: SaveGameSlot[] = rawSlots ? JSON.parse(rawSlots) : [];
     const updated = [slot, ...slots.filter((s) => s.id !== slot.id)];
     localStorage.setItem(LOCAL_STORAGE_SAVES_KEY, JSON.stringify(updated));
-    localStorage.setItem(`champs_save_data_${slot.id}`, JSON.stringify(state));
-    saved = true;
+
+    // Se o IndexedDB não salvou (ex: ambiente Node de teste), salva no localStorage
+    if (!saved) {
+      localStorage.setItem(`champs_save_data_${slot.id}`, JSON.stringify(state));
+      saved = true;
+    } else {
+      // Espelhamento assíncrono desacoplado para não travar a UI
+      if (typeof queueMicrotask === 'function') {
+        queueMicrotask(() => {
+          try {
+            localStorage.setItem(`champs_save_data_${slot.id}`, JSON.stringify(state));
+          } catch {
+            // Silencioso se cota estourar no LocalStorage pois o IndexedDB já garantiu a persistência
+            try { localStorage.removeItem(`champs_save_data_${slot.id}`); } catch {}
+          }
+        });
+      }
+    }
   } catch (e) {
     lastError = e;
     console.warn('LocalStorage slot save error:', e);
