@@ -244,6 +244,59 @@ def calculate_salary(market_value: int, strength: int, division: int) -> int:
         salary = max(2500, min(12000, salary))
     return int(salary)
 
+def calculate_initial_balance(division: int, reputation: int, country_id: int) -> int:
+    """
+    Classical Brasfoot balance based on decompiled aq.sC:
+    Div 1: R$ 15,000,000
+    Div 2: R$ 12,000,000
+    Div 3: R$ 10,000,000
+    Div 4: R$ 3,500,000
+    Other / Access: R$ 3,500,000
+    Foreign elite clubs (Europe rep >= 4) scaled proportionally.
+    """
+    if country_id == 29: # Brasil
+        if division == 1:
+            return 15_000_000
+        elif division == 2:
+            return 12_000_000
+        elif division == 3:
+            return 10_000_000
+        elif division == 4:
+            return 3_500_000
+        else:
+            return 3_500_000
+    else:
+        if division == 1:
+            if reputation >= 5:
+                return 30_000_000
+            elif reputation == 4:
+                return 20_000_000
+            else:
+                return 15_000_000
+        elif division == 2:
+            return 12_000_000
+        elif division == 3:
+            return 10_000_000
+        else:
+            return 3_500_000
+
+def calculate_ticket_price(division: int, reputation: int) -> int:
+    """
+    Classical Brasfoot ticket price based on decompiled aq.sB:
+    Div 1: 25 - 30
+    Div 2: 20
+    Div 3: 15
+    Div 4: 10
+    """
+    if division == 1:
+        return 30 if reputation >= 4 else 25
+    elif division == 2:
+        return 20
+    elif division == 3:
+        return 15
+    else:
+        return 10
+
 def main():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     raw_path = os.path.join(root, "data/teams.json")
@@ -552,12 +605,8 @@ def main():
         rep = c.get("reputation", 3)
         lvl = c.get("level", 10)
         cname = c["name"]
-        if cname in prev_meta:
-            base_bal = prev_meta[cname].get("balance") or ((rep * 4000000) + (lvl * 1500000))
-            ticket = prev_meta[cname].get("ticketPrice") or (25 + (rep * 10) + (lvl * 2))
-        else:
-            base_bal = (rep * 4000000) + (lvl * 1500000)
-            ticket = 25 + (rep * 10) + (lvl * 2)
+        base_bal = calculate_initial_balance(division, rep, c_id)
+        ticket = calculate_ticket_price(division, rep)
 
         file_ref = c.get("file_ref", "")
         crest_url = f"/escudos/{file_ref}.png"

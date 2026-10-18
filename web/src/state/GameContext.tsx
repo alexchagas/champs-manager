@@ -45,6 +45,11 @@ import { computeContinentalQualifiers } from '../data/continentalRepresentatives
 import { getStateDivisionInfo, getStateLeagueRule } from '../data/stateLeagueFormulas';
 import { simulateMatchWasm } from '../engine/wasmBridge';
 import { sound } from '../audio/soundEngine';
+import {
+  runInstantPlayerAuction,
+  bidOnRoundAuctionItem,
+  concludeRoundAuctionItem,
+} from '../engine/careerEconomy';
 import { 
   commandMatchWasm,
   initWasmEngine, 
@@ -134,7 +139,12 @@ interface GameContextType {
   releasePlayer: (playerId: number) => { success: boolean; error?: string };
   acceptAiOffer: (offerId: number) => { success: boolean; error?: string };
   rejectAiOffer: (offerId: number) => { success: boolean; error?: string };
-  renewContract: (playerId: number, years: number, salary: number) => { success: boolean; error?: string };
+  renewContract: (playerId: number, years: number, salary: number) => { success: boolean; counterOffer?: number; error?: string };
+  sellPlayerAuction: (playerId: number, startingBid: number) => { success: boolean; finalBid?: number; penalty?: number; buyerName?: string; error?: string };
+  listPlayerForSale: (playerId: number, price: number) => { success: boolean; error?: string };
+  delistPlayerForSale: (playerId: number) => { success: boolean; error?: string };
+  bidOnRoundAuction: (auctionId: number, bidAmount: number) => { success: boolean; error?: string };
+  concludeRoundAuction: (auctionId: number) => { success: boolean; error?: string };
   generateAiOffers: () => void;
   searchPlayers: (filter: MarketFilter) => MarketSearchResult[];
   expandStadium: (seats: 2000 | 5000 | 10000) => { success: boolean; error?: string };
@@ -1283,7 +1293,76 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setGameState(res.state);
       return { success: true };
     }
-    return { success: false, error: res.error || 'Erro ao renovar contrato.' };
+    return { success: false, counterOffer: res.counterOffer, error: res.error || 'Erro ao renovar contrato.' };
+  };
+
+  const sellPlayerAuction = (playerId: number, startingBid: number) => {
+    if (matchInProgress()) return { success: false, error: 'Comando bloqueado durante a partida.' };
+    const res = runInstantPlayerAuction(gameState, playerId, startingBid);
+    if (res.sold && res.newState) {
+      sound.playCash();
+      setGameState(res.newState);
+      return {
+        success: true,
+        finalBid: res.finalBid,
+        penalty: res.penalty,
+        buyerName: res.buyerClubName,
+      };
+    }
+    return { success: false, error: res.error || 'Falha ao leiloar jogador.' };
+  };
+
+  const listPlayerForSale = (playerId: number, price: number) => {
+    if (matchInProgress()) return { success: false, error: 'Comando bloqueado durante a partida.' };
+    sound.playClick();
+    setGameState((prev) => {
+      const updatedClubs = prev.clubs.map((c) => {
+        if (c.id !== prev.userClubId) return c;
+        return {
+          ...c,
+          squad: c.squad.map((p) => (p.id === playerId ? { ...p, listedForSale: true, listedPrice: price } : p)),
+        };
+      });
+      return { ...prev, clubs: updatedClubs };
+    });
+    return { success: true };
+  };
+
+  const delistPlayerForSale = (playerId: number) => {
+    sound.playClick();
+    setGameState((prev) => {
+      const updatedClubs = prev.clubs.map((c) => {
+        if (c.id !== prev.userClubId) return c;
+        return {
+          ...c,
+          squad: c.squad.map((p) => (p.id === playerId ? { ...p, listedForSale: false, listedPrice: undefined } : p)),
+        };
+      });
+      return { ...prev, clubs: updatedClubs };
+    });
+    return { success: true };
+  };
+
+  const bidOnRoundAuction = (auctionId: number, bidAmount: number) => {
+    if (matchInProgress()) return { success: false, error: 'Comando bloqueado durante a partida.' };
+    const res = bidOnRoundAuctionItem(gameState, auctionId, bidAmount);
+    if (res.success && res.newState) {
+      sound.playCash();
+      setGameState(res.newState);
+      return { success: true };
+    }
+    return { success: false, error: res.error || 'Falha ao enviar lance.' };
+  };
+
+  const concludeRoundAuction = (auctionId: number) => {
+    if (matchInProgress()) return { success: false, error: 'Comando bloqueado durante a partida.' };
+    const res = concludeRoundAuctionItem(gameState, auctionId);
+    if (res.success && res.newState) {
+      sound.playCash();
+      setGameState(res.newState);
+      return { success: true };
+    }
+    return { success: false, error: res.error || 'Falha ao concluir leilão.' };
   };
 
   const generateAiOffers = () => {
@@ -1614,6 +1693,11 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         acceptAiOffer,
         rejectAiOffer,
         renewContract,
+        sellPlayerAuction,
+        listPlayerForSale,
+        delistPlayerForSale,
+        bidOnRoundAuction,
+        concludeRoundAuction,
         generateAiOffers,
         searchPlayers,
         expandStadium,

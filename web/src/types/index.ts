@@ -24,6 +24,8 @@ export interface Player {
   injured: boolean;
   suspended: boolean;
   contractYears?: number;
+  listedForSale?: boolean;
+  listedPrice?: number;
 }
 
 export type FormationType = '4-4-2' | '4-3-3' | '3-5-2' | '4-5-1' | '5-3-2';
@@ -413,6 +415,20 @@ export interface TransferOffer {
   expiresRound?: number;
 }
 
+export interface RoundAuctionPlayer {
+  id: number;
+  player: Player;
+  sellerClubId: number;
+  sellerClubName: string;
+  sellerClubCrest?: string;
+  startingPrice: number;
+  currentBid: number;
+  highestBidderClubId?: number;
+  highestBidderName?: string;
+  minNextBid: number;
+  completed?: boolean;
+}
+
 export interface ManagerJob {
   clubId: number;
   clubName: string;
@@ -516,6 +532,7 @@ export interface GameState {
   activeMatch?: ActiveMatchSession;
   freeAgents?: Player[];
   transferOffers?: TransferOffer[];
+  roundAuctions?: RoundAuctionPlayer[];
   newsFeed?: NewsArticle[];
   nationalJob?: { nationalTeamId: number; nationalTeamName: string; countryId: number; code: string };
   isWorldCupMode?: boolean;

@@ -58,11 +58,11 @@ export function generateInitialFreeAgents(): import('../types/index.ts').Player[
   pool.forEach((group, gIdx) => {
     group.names.forEach((name, nIdx) => {
       const idx = gIdx * 6 + nIdx;
-      const age = 19 + ((idx * 7) % 17);
-      const strength = 48 + ((idx * 11) % 32);
-      const baseVal = strength * strength * 800;
-      const marketValue = age <= 23 ? Math.floor(baseVal * 1.25) : age >= 32 ? Math.floor(baseVal * 0.75) : baseVal;
-      const salary = Math.max(3000, Math.min(45000, Math.floor(marketValue / 95)));
+      const age = 27 + ((idx * 3) % 9); // veterans / experienced (27 - 35)
+      const strength = 32 + ((idx * 5) % 13); // modest strength 32 - 44
+      const baseVal = strength * strength * 320;
+      const marketValue = age >= 33 ? Math.floor(baseVal * 0.7) : baseVal;
+      const salary = Math.max(2500, Math.min(8000, Math.floor(marketValue / 70)));
 
       freeAgents.push({
         id: idCounter++,
@@ -75,8 +75,8 @@ export function generateInitialFreeAgents(): import('../types/index.ts').Player[
         salary,
         marketValue,
         isStarter: false,
-        isStar: strength >= 75,
-        isWorldTop: strength >= 85,
+        isStar: false,
+        isWorldTop: false,
         skill1: skills[(idx * 2) % skills.length],
         skill2: skills[(idx * 2 + 1) % skills.length],
         goals: 0,
