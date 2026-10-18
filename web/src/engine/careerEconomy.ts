@@ -1,4 +1,4 @@
-import type { Club, FinancialEntry, GameState, Manager, MatchFixture, Player, TransferOffer, WeeklyFinancialStatement } from '../types';
+import type { Club, FinancialEntry, GameState, Manager, MatchFixture, Player, TransferOffer, WeeklyFinancialStatement, RoundAuctionPlayer } from '../types';
 import { sanitizePrematureChampionships } from './tournamentCompletion.ts';
 
 const wage = (players: Player[]) => Math.round(players.reduce((n, p) => n + p.salary, 0) / 4);
@@ -10,6 +10,88 @@ export function canSell(c: Club, p: Player): boolean {
   const rest = c.squad.filter(x => x.id !== p.id);
   const available = rest.filter(x => !x.injured && !x.suspended);
   return rest.length >= 16 && available.length >= 11 && available.some(x => x.position === 'GOL');
+}
+
+/**
+ * Classical Brasfoot contract rescission fine (f_0.java:2573, jc_0.java:87):
+ * Deducts penalty from sales of players with remaining contracts:
+ * - <= 0 years / expired: 0%
+ * - 1 year: 15%
+ * - 2 years: 25%
+ * - >= 3 years: 35%
+ */
+export function calculateRescissionPenalty(contractYears: number = 0, fee: number = 0): number {
+  if (contractYears <= 0 || fee <= 0) return 0;
+  const rate = contractYears === 1 ? 0.15 : contractYears === 2 ? 0.25 : 0.35;
+  return Math.round(fee * rate);
+}
+
+/**
+ * Classical Brasfoot asking price calculation based on squad depth and position scarcity (best/l.java:574-600).
+ */
+export function calculateClubAskingPrice(seller: Club, player: Player): number {
+  const squad = seller.squad || [];
+  const samePos = squad.filter(p => p.position === player.position);
+  const posCount = samePos.length;
+  const standardLimit = player.position === 'GOL' ? 3 : 4;
+
+  if (posCount >= standardLimit) {
+    if (player.strength < 35 || player.age > 33) {
+      return Math.max(10_000, Math.round(player.marketValue * 0.85));
+    }
+    const markup = player.position === 'ATA' ? 1.5 : 1.25;
+    return Math.round(player.marketValue * markup);
+  } else if (posCount <= 1) {
+    const markup = player.position === 'ATA' ? 2.0 : 1.6;
+    return Math.round(player.marketValue * markup);
+  } else {
+    const markup = player.position === 'ATA' ? 1.4 : 1.2;
+    return Math.round(player.marketValue * markup);
+  }
+}
+
+/**
+ * Classical Brasfoot transfer refusal checks (best/l.java:622-645).
+ */
+export function evaluatePlayerTransferAcceptance(
+  buyer: Club,
+  seller: Club,
+  player: Player
+): { accepted: boolean; reason?: string } {
+  const sellerCountry = seller.countryId || 29;
+  const buyerCountry = buyer.countryId || 29;
+  const sellerRep = seller.reputation ?? (seller.division === 1 ? 4 : 2);
+  const buyerRep = buyer.reputation ?? (buyer.division === 1 ? 4 : 1);
+  const isEuropean = sellerCountry !== 29 && sellerRep >= 4;
+
+  if (isEuropean && buyerCountry === 29) {
+    if (buyerRep < 4 && (buyer.division || 1) > 1) {
+      return {
+        accepted: false,
+        reason: 'O atleta recusou a proposta pois prefere continuar atuando no futebol europeu.',
+      };
+    }
+  }
+
+  if (sellerRep >= 4 && player.strength >= 55) {
+    if (buyerRep <= 2 || (buyer.division || 1) >= 3) {
+      return {
+        accepted: false,
+        reason: 'O atleta recusou a proposta por considerar o clube sem prestígio esportivo compatível com sua carreira.',
+      };
+    }
+  }
+
+  if (sellerRep >= 3 && player.strength >= 65) {
+    if (buyerRep <= 1 || (buyer.division || 1) >= 4) {
+      return {
+        accepted: false,
+        reason: 'O atleta não aceitou se transferir para uma divisão inferior.',
+      };
+    }
+  }
+
+  return { accepted: true };
 }
 
 export function validOffer(state: GameState, offer: TransferOffer): string | null {
@@ -49,7 +131,7 @@ export function closeRoundFinances(clubs: Club[], fixtures: MatchFixture[], roun
     const home = fixtures.find(f => f.homeClubId === c.id && f.played);
     let gate = 0;
     if (home) {
-      const price = c.ticketPrice || 40;
+      const price = c.ticketPrice || (c.division === 1 ? 30 : c.division === 2 ? 20 : c.division === 3 ? 15 : 10);
       const attendance = Math.min(c.capacity, Math.max(0, Math.round(c.capacity * Math.max(0.25, Math.min(0.9, 1.05 - price / 180)))));
       gate = attendance * price;
       const history = [...(c.attendanceHistory || []), attendance];
@@ -121,10 +203,17 @@ export function migrateCareer(state: GameState): GameState {
     }
     return state;
   }
-  // Imported database contracts were far above gate receipts across four divisions.
-  // Apply the same one-time scale to old careers and new careers; retain cash and debt.
-  const scaledClubs = state.clubs.map(c => ({ ...c, squad: c.squad.map(p => ({ ...p, salary: Math.max(1_000, Math.round(p.salary / 35)), marketValue: Math.max(10_000, Math.round(p.marketValue / 10)) })) }));
-  state = { ...state, clubs: scaledClubs, transferOffers: (state.transferOffers || []).map(o => ({ ...o, fee: Math.round(o.fee / 10), expiresRound: o.expiresRound ?? state.currentRound + 2 })) };
+  // Retain canonical Brasfoot contracts and calibrate transfer offers
+  state = {
+    ...state,
+    transferOffers: (state.transferOffers || []).map(o => ({
+      ...o,
+      expiresRound: o.expiresRound ?? state.currentRound + 2
+    }))
+  };
+  const roundAuctions = state.roundAuctions && state.roundAuctions.length > 0
+    ? state.roundAuctions
+    : generateRoundAuctions(state.clubs, state.currentRound);
   const managers: Manager[] = [];
   const clubs = state.clubs.map(c => {
     const human = c.id === state.userClubId;
@@ -143,6 +232,7 @@ export function migrateCareer(state: GameState): GameState {
     options: optionsWithAutoSave,
     clubs,
     managers,
+    roundAuctions,
     humanManagerId: 'manager-human-1',
     schemaVersion: 2
   };
@@ -293,13 +383,70 @@ export function runAiMarket(state: GameState): GameState {
     }
   }
   const user = clubs.find(c => c.id === state.userClubId);
-  if (user && offers.length < 3) {
-    const candidate = user.squad.find(p => canSell(user, p) && !offers.some(o => o.playerId === p.id));
-    const fee = candidate ? Math.round(candidate.marketValue * 1.1) : 0;
-    const buyer = clubs.find(c => c.id !== user.id && c.squad.length < 30 && candidate && canFundTransfer(c, fee, Math.round(candidate.salary / 4)));
-    if (candidate && buyer) offers.push({ id: Math.max(0, ...offers.map(o => o.id)) + 1, fromClubId: buyer.id, fromClubName: buyer.name, toClubId: user.id, playerId: candidate.id, playerName: candidate.name, playerPosition: candidate.position, playerStrength: candidate.strength, fee, expiresRound: state.currentRound + 2 });
+  if (user) {
+    // Prioritize players listed for sale by the user
+    const listed = user.squad.filter(p => p.listedForSale && canSell(user, p));
+    for (const lp of listed) {
+      if (offers.some(o => o.playerId === lp.id)) continue;
+      const targetFee = lp.listedPrice || Math.round(lp.marketValue * 0.95);
+      const buyer = clubs.find(c => c.id !== user.id && c.squad.length < 30 && canFundTransfer(c, targetFee, Math.round(lp.salary / 4)));
+      if (buyer) {
+        offers.push({
+          id: Math.max(0, ...offers.map(o => o.id)) + 1,
+          fromClubId: buyer.id,
+          fromClubName: buyer.name,
+          toClubId: user.id,
+          playerId: lp.id,
+          playerName: lp.name,
+          playerPosition: lp.position,
+          playerStrength: lp.strength,
+          fee: targetFee,
+          expiresRound: state.currentRound + 2
+        });
+      }
+    }
+
+    if (offers.length < 3) {
+      const candidate = user.squad.find(p => canSell(user, p) && !offers.some(o => o.playerId === p.id));
+      const fee = candidate ? Math.round(candidate.marketValue * 1.1) : 0;
+      const buyer = clubs.find(c => c.id !== user.id && c.squad.length < 30 && candidate && canFundTransfer(c, fee, Math.round(candidate.salary / 4)));
+      if (candidate && buyer) offers.push({ id: Math.max(0, ...offers.map(o => o.id)) + 1, fromClubId: buyer.id, fromClubName: buyer.name, toClubId: user.id, playerId: candidate.id, playerName: candidate.name, playerPosition: candidate.position, playerStrength: candidate.strength, fee, expiresRound: state.currentRound + 2 });
+    }
   }
-  return { ...state, clubs, freeAgents, transferOffers: offers, newsFeed: [...transferNews, ...(state.newsFeed || [])].slice(0, 40) };
+
+  // Manage 5 round auction players (best/N.java)
+  let roundAuctions = state.roundAuctions || [];
+  if (roundAuctions.length === 0 || roundAuctions.every(a => a.completed)) {
+    roundAuctions = generateRoundAuctions(clubs, state.currentRound);
+  } else {
+    // CPU clubs bid on active auctions
+    roundAuctions = roundAuctions.map(item => {
+      if (item.completed) return item;
+      const variation = (item.id * 7919 + state.currentRound * 104729) % 100;
+      if (variation < 35 && item.currentBid < Math.round(item.player.marketValue * 1.1)) {
+        const potentialBidders = clubs.filter(c => 
+          c.id !== item.sellerClubId && 
+          c.id !== state.userClubId &&
+          c.squad.length < 30 &&
+          c.balance > item.minNextBid + weeklyObligations(c)
+        );
+        if (potentialBidders.length > 0) {
+          const bidder = potentialBidders[variation % potentialBidders.length];
+          const newBid = Math.min(item.minNextBid + 25_000, Math.round(item.player.marketValue * 1.15));
+          return {
+            ...item,
+            currentBid: newBid,
+            highestBidderClubId: bidder.id,
+            highestBidderName: bidder.name,
+            minNextBid: Math.round(newBid * 1.05)
+          };
+        }
+      }
+      return item;
+    });
+  }
+
+  return { ...state, clubs, freeAgents, transferOffers: offers, roundAuctions, newsFeed: [...transferNews, ...(state.newsFeed || [])].slice(0, 40) };
 }
 
 export function rolloverManagers(state: GameState): GameState {
@@ -318,11 +465,30 @@ export function rolloverManagers(state: GameState): GameState {
     const boardRating = Math.max(0, Math.min(100, Math.round(m.boardRating ?? 60)));
     return { ...m, jobs: [...m.jobs.slice(0, -1), old, next], titles: title ? [...m.titles, title] : m.titles, careerScore, seasonScore: 0, scoreComponents: { results: 0, competitions: 0, squad: 0, finances: 0 }, reputation, boardRating };
   });
-  return { ...state, managers };
+
+  // Roll contracts: player ages + 1, contractYears - 1
+  const clubs = state.clubs.map(c => ({
+    ...c,
+    squad: c.squad.map(p => ({
+      ...p,
+      age: p.age + 1,
+      contractYears: Math.max(0, (p.contractYears ?? 3) - 1),
+    })),
+    youth: (c.youth || []).map(p => ({
+      ...p,
+      age: p.age + 1,
+      contractYears: Math.max(0, (p.contractYears ?? 3) - 1),
+    })),
+  }));
+
+  // Fresh round auctions for the new season
+  const roundAuctions = generateRoundAuctions(clubs, 1);
+
+  return { ...state, clubs, managers, roundAuctions };
 }
 
 export function automaticMatchBench(club: Club): number[] {
-  return club.squad.filter(p => !p.isStarter && !p.injured && !p.suspended)
+  return club.squad.filter(p => !p.isStarter && !p.injured && !p.suspended && (p.contractYears === undefined || p.contractYears > 0))
     .sort((a,b) => Number(b.position === 'GOL') - Number(a.position === 'GOL') || b.strength*b.energy-a.strength*a.energy || a.id-b.id)
     .slice(0,11).map(p => p.id);
 }
@@ -338,5 +504,323 @@ export function migrateMatchState(state: GameState): GameState {
     clubs: state.clubs.map(club => ({ ...club, namedSubstituteIds: club.namedSubstituteIds === undefined
       ? automaticMatchBench(club)
       : club.namedSubstituteIds.filter((id,i,all) => all.indexOf(id) === i && club.squad.some(p => p.id === id && !p.isStarter && !p.injured && !p.suspended)).slice(0,11) })),
+  };
+}
+
+/**
+ * Generates 5 surplus players from CPU clubs with >= 21 players for round auction (best/N.java, dz_0.java).
+ */
+export function generateRoundAuctions(clubs: Club[], round: number): RoundAuctionPlayer[] {
+  const eligibleClubs = clubs.filter(c => c.squad && c.squad.length >= 21);
+  if (eligibleClubs.length === 0) return [];
+
+  const shuffled = [...eligibleClubs].sort((a, b) => {
+    const ha = (a.id * 17 + round * 31) % 97;
+    const hb = (b.id * 17 + round * 31) % 97;
+    return ha - hb;
+  });
+
+  const selectedClubs = shuffled.slice(0, 5);
+  const items: RoundAuctionPlayer[] = [];
+
+  for (let i = 0; i < selectedClubs.length; i++) {
+    const club = selectedClubs[i];
+    const candidates = club.squad.filter(p => !p.isStarter && !p.injured && !p.suspended);
+    const pool = candidates.length > 0 ? candidates : club.squad;
+    const p = pool[(round * 3 + i * 7) % pool.length];
+    if (!p) continue;
+
+    const startBid = Math.max(10_000, Math.round(p.marketValue * 0.5));
+    items.push({
+      id: round * 100 + i + 1,
+      player: { ...p },
+      sellerClubId: club.id,
+      sellerClubName: club.name,
+      sellerClubCrest: club.crestMiniUrl || club.crestUrl,
+      startingPrice: startBid,
+      currentBid: startBid,
+      minNextBid: Math.round(startBid * 1.05),
+      completed: false,
+    });
+  }
+
+  return items;
+}
+
+export interface AuctionSaleResult {
+  sold: boolean;
+  buyerClubId?: number;
+  buyerClubName?: string;
+  finalBid?: number;
+  penalty?: number;
+  netProceeds?: number;
+  error?: string;
+  newState?: GameState;
+}
+
+/**
+ * Conducts an instant auction for a player from the user's squad (components/an.java, ix_0.java).
+ */
+export function runInstantPlayerAuction(
+  state: GameState,
+  playerId: number,
+  startingBid: number
+): AuctionSaleResult {
+  const seller = state.clubs.find(c => c.id === state.userClubId);
+  if (!seller) return { sold: false, error: 'Clube do usuário não encontrado.' };
+
+  const player = seller.squad.find(p => p.id === playerId);
+  if (!player) return { sold: false, error: 'Jogador não encontrado no elenco.' };
+
+  if (!canSell(seller, player)) {
+    return { sold: false, error: 'A venda deixaria o elenco com menos de 16 atletas ou sem goleiro.' };
+  }
+
+  const candidateBuyers = state.clubs.filter(c =>
+    c.id !== seller.id &&
+    c.squad.length < 30 &&
+    c.balance >= startingBid
+  );
+
+  if (candidateBuyers.length === 0) {
+    return {
+      sold: false,
+      error: 'Não há clubes com orçamento disponível para cobrir o lance inicial.',
+    };
+  }
+
+  const interested = candidateBuyers.map(c => {
+    const posCount = c.squad.filter(p => p.position === player.position).length;
+    const need = posCount < 3 ? 3 : posCount < 4 ? 2 : 1;
+    const maxAffordable = Math.min(c.balance - weeklyObligations(c), Math.round(player.marketValue * 1.3));
+    return { club: c, need, maxAffordable };
+  }).filter(item => item.maxAffordable >= startingBid);
+
+  if (interested.length === 0) {
+    return {
+      sold: false,
+      error: 'Nenhum clube se interessou pelo jogador por este preço. Tente um lance inicial menor.',
+    };
+  }
+
+  interested.sort((a, b) => b.maxAffordable - a.maxAffordable);
+  const winner = interested[0];
+  const second = interested[1];
+
+  let winningBid = startingBid;
+  if (second) {
+    winningBid = Math.min(winner.maxAffordable, Math.max(startingBid, second.maxAffordable + 10_000));
+  } else {
+    winningBid = startingBid;
+  }
+
+  const penalty = calculateRescissionPenalty(player.contractYears ?? 0, winningBid);
+  const netProceeds = winningBid - penalty;
+
+  let updatedSeller = post(seller, state.currentRound, 'income', 'vendas_atletas', `Venda em leilão de ${player.name} para o ${winner.club.name}`, winningBid, `auction-sale-${player.id}`);
+  if (penalty > 0) {
+    updatedSeller = post(updatedSeller, state.currentRound, 'expense', 'outros', `Multa rescisória na venda de ${player.name} (${Math.round((penalty / winningBid) * 100)}%)`, penalty, `rescission-${player.id}`);
+  }
+  updatedSeller = {
+    ...updatedSeller,
+    squad: updatedSeller.squad.filter(p => p.id !== player.id),
+  };
+
+  const updatedBuyer = post(winner.club, state.currentRound, 'expense', 'compras_atletas', `Compra em leilão de ${player.name}`, winningBid, `auction-buy-${player.id}`);
+  const buyerAfter = {
+    ...updatedBuyer,
+    squad: [...updatedBuyer.squad, { ...player, isStarter: false, contractYears: 3, listedForSale: false, listedPrice: undefined }],
+  };
+
+  const updatedClubs = state.clubs.map(c =>
+    c.id === seller.id ? updatedSeller : c.id === winner.club.id ? buyerAfter : c
+  );
+
+  const newsArticle = {
+    id: `news-auction-${state.seasonYear}-${state.currentRound}-${player.id}`,
+    round: state.currentRound,
+    category: 'transferencia' as const,
+    title: `LEILÃO: ${player.name.toUpperCase()} VENDIDO AO ${winner.club.name.toUpperCase()}`,
+    subtitle: `Arrematado por R$ ${winningBid.toLocaleString('pt-BR')}`,
+    content: `${seller.name} concluiu o leilão do atleta ${player.name} (${player.position}, força ${player.strength}). O ${winner.club.name} cobriu a maior oferta de R$ ${winningBid.toLocaleString('pt-BR')}.${penalty > 0 ? ` Multa rescisória de R$ ${penalty.toLocaleString('pt-BR')} foi deduzida.` : ''}`,
+    clubId: winner.club.id,
+    clubName: winner.club.name,
+    secondaryClubName: seller.name,
+    relatedPlayerName: player.name,
+    relatedPlayerPosition: player.position,
+    date: `Rodada ${state.currentRound}`,
+  };
+
+  return {
+    sold: true,
+    buyerClubId: winner.club.id,
+    buyerClubName: winner.club.name,
+    finalBid: winningBid,
+    penalty,
+    netProceeds,
+    newState: {
+      ...state,
+      clubs: updatedClubs,
+      newsFeed: [newsArticle, ...(state.newsFeed || [])].slice(0, 40),
+    },
+  };
+}
+
+export interface RenewalProposalResult {
+  success: boolean;
+  counterOffer?: number;
+  expiredAuction?: boolean;
+  error?: string;
+  newState?: GameState;
+}
+
+/**
+ * Evaluates contract renewal with authentic Brasfoot counter-demands (a/fy_0.java).
+ */
+export function evaluateContractRenewal(
+  state: GameState,
+  playerId: number,
+  years: number,
+  offeredSalary: number
+): RenewalProposalResult {
+  const club = state.clubs.find(c => c.id === state.userClubId);
+  if (!club) return { success: false, error: 'Clube não encontrado.' };
+
+  const player = club.squad.find(p => p.id === playerId);
+  if (!player) return { success: false, error: 'Jogador não encontrado no elenco.' };
+
+  if (years < 1 || years > 5) return { success: false, error: 'Duração deve ser de 1 a 5 anos.' };
+
+  const minBase = Math.max(player.salary, Math.floor(player.marketValue / 75));
+  let demanded = minBase;
+  if ((player.contractYears ?? 3) <= 1) {
+    demanded = Math.max(player.salary, Math.floor(player.marketValue / 85));
+  } else {
+    demanded = Math.round(player.salary * 1.15);
+  }
+  if (years >= 3) {
+    demanded = Math.round(demanded * 1.1);
+  }
+
+  if (offeredSalary >= demanded) {
+    const updatedClubs = state.clubs.map(c => {
+      if (c.id === club.id) {
+        return {
+          ...c,
+          squad: c.squad.map(p => p.id === playerId ? { ...p, salary: offeredSalary, contractYears: years } : p),
+        };
+      }
+      return c;
+    });
+
+    return {
+      success: true,
+      newState: { ...state, clubs: updatedClubs },
+    };
+  }
+
+  return {
+    success: false,
+    counterOffer: demanded,
+    error: `O atleta recusou a proposta inicial e contra-propôs um salário de R$ ${demanded.toLocaleString('pt-BR')}/mês.`,
+  };
+}
+
+/**
+ * Place bid on a Round Auction item (dz_0.java).
+ */
+export function bidOnRoundAuctionItem(
+  state: GameState,
+  auctionId: number,
+  bidAmount: number
+): { success: boolean; error?: string; newState?: GameState } {
+  const user = state.clubs.find(c => c.id === state.userClubId);
+  if (!user) return { success: false, error: 'Clube do usuário não encontrado.' };
+
+  const auction = (state.roundAuctions || []).find(a => a.id === auctionId);
+  if (!auction) return { success: false, error: 'Leilão não encontrado.' };
+  if (auction.completed) return { success: false, error: 'Este leilão já foi finalizado.' };
+
+  if (user.squad.length >= 30) return { success: false, error: 'Elenco cheio (limite de 30 atletas).' };
+  if (bidAmount < auction.minNextBid) {
+    return { success: false, error: `Lance mínimo é de R$ ${auction.minNextBid.toLocaleString('pt-BR')}.` };
+  }
+  if (!canFundTransfer(user, bidAmount, Math.round(auction.player.salary / 4))) {
+    return { success: false, error: 'Saldo insuficiente para cobrir o lance e manter despesas semanais.' };
+  }
+
+  const updatedAuctions = (state.roundAuctions || []).map(a => {
+    if (a.id === auctionId) {
+      return {
+        ...a,
+        currentBid: bidAmount,
+        highestBidderClubId: user.id,
+        highestBidderName: user.name,
+        minNextBid: Math.round(bidAmount * 1.05),
+      };
+    }
+    return a;
+  });
+
+  return {
+    success: true,
+    newState: {
+      ...state,
+      roundAuctions: updatedAuctions,
+    },
+  };
+}
+
+/**
+ * Concludes a Round Auction item, transferring player to winning club.
+ */
+export function concludeRoundAuctionItem(
+  state: GameState,
+  auctionId: number
+): { success: boolean; error?: string; newState?: GameState } {
+  const auction = (state.roundAuctions || []).find(a => a.id === auctionId);
+  if (!auction || auction.completed) return { success: false, error: 'Leilão inválido ou já concluído.' };
+
+  if (!auction.highestBidderClubId) {
+    const updatedAuctions = (state.roundAuctions || []).map(a => a.id === auctionId ? { ...a, completed: true } : a);
+    return { success: true, newState: { ...state, roundAuctions: updatedAuctions } };
+  }
+
+  const buyer = state.clubs.find(c => c.id === auction.highestBidderClubId);
+  const seller = state.clubs.find(c => c.id === auction.sellerClubId);
+  if (!buyer || !seller) return { success: false, error: 'Clubes envolvidos não encontrados.' };
+
+  const fee = auction.currentBid;
+  const player = auction.player;
+  const penalty = calculateRescissionPenalty(player.contractYears ?? 0, fee);
+
+  let updatedSeller = post(seller, state.currentRound, 'income', 'vendas_atletas', `Venda no leilão da rodada de ${player.name} para o ${buyer.name}`, fee, `auc-sale-${player.id}`);
+  if (penalty > 0) {
+    updatedSeller = post(updatedSeller, state.currentRound, 'expense', 'outros', `Multa rescisória de ${player.name}`, penalty, `rescission-${player.id}`);
+  }
+  updatedSeller = {
+    ...updatedSeller,
+    squad: updatedSeller.squad.filter(p => p.id !== player.id),
+  };
+
+  const updatedBuyer = post(buyer, state.currentRound, 'expense', 'compras_atletas', `Arremate no leilão da rodada de ${player.name}`, fee, `auc-buy-${player.id}`);
+  const buyerAfter = {
+    ...updatedBuyer,
+    squad: [...updatedBuyer.squad, { ...player, isStarter: false, contractYears: 3, listedForSale: false, listedPrice: undefined }],
+  };
+
+  const updatedClubs = state.clubs.map(c =>
+    c.id === seller.id ? updatedSeller : c.id === buyer.id ? buyerAfter : c
+  );
+
+  const updatedAuctions = (state.roundAuctions || []).map(a => a.id === auctionId ? { ...a, completed: true } : a);
+
+  return {
+    success: true,
+    newState: {
+      ...state,
+      clubs: updatedClubs,
+      roundAuctions: updatedAuctions,
+    },
   };
 }

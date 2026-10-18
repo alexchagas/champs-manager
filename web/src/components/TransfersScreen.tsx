@@ -20,15 +20,18 @@ import {
   ChevronRight,
   ChevronUp,
   ChevronDown,
-  Filter
+  Filter,
+  Gavel,
+  Tag
 } from 'lucide-react';
 import { Player, Position, MarketFilter, MarketSearchResult, TransferOffer } from '../types';
 import { calculateAskingPrice, calculateDemandedSalary } from '../engine/wasmBridge';
+import { calculateRescissionPenalty } from '../engine/careerEconomy';
 import { sound } from '../audio/soundEngine';
 import { getClubTheme } from '../theme/clubTheme';
 import { ClubCrest } from './ClubCrest';
 
-type TabType = 'free_agents' | 'search' | 'offers' | 'contracts';
+type TabType = 'auctions' | 'free_agents' | 'search' | 'offers' | 'contracts';
 
 const POSITION_COLORS: Record<Position, { bg: string; text: string; border: string }> = {
   GOL: { bg: 'bg-amber-950/70', text: 'text-amber-400', border: 'border-amber-700/60' },
@@ -89,13 +92,18 @@ export const TransfersScreen: React.FC = () => {
     acceptAiOffer, 
     rejectAiOffer, 
     renewContract, 
+    sellPlayerAuction,
+    listPlayerForSale,
+    delistPlayerForSale,
+    bidOnRoundAuction,
+    concludeRoundAuction,
     generateAiOffers, 
     searchPlayers 
   } = useGame();
 
   const clubTheme = getClubTheme(userClub);
 
-  const [activeTab, setActiveTab] = useState<TabType>('free_agents');
+  const [activeTab, setActiveTab] = useState<TabType>('auctions');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Modals state
@@ -109,6 +117,18 @@ export const TransfersScreen: React.FC = () => {
   const [renewingPlayer, setRenewingPlayer] = useState<Player | null>(null);
   const [renewingYears, setRenewingYears] = useState<number>(3);
   const [renewingSalary, setRenewingSalary] = useState<number>(0);
+
+  const [sellingPlayer, setSellingPlayer] = useState<Player | null>(null);
+  const [sellMode, setSellMode] = useState<'auction' | 'list'>('auction');
+  const [sellPrice, setSellPrice] = useState<number>(0);
+
+  const [counterOfferModal, setCounterOfferModal] = useState<{
+    player: Player;
+    years: number;
+    demanded: number;
+  } | null>(null);
+
+  const [roundBidInputs, setRoundBidInputs] = useState<Record<number, number>>({});
 
   const [releasingPlayer, setReleasingPlayer] = useState<Player | null>(null);
 
@@ -134,12 +154,13 @@ export const TransfersScreen: React.FC = () => {
     }, 4500);
   };
 
-  const formatMoney = (val: number) => {
+  const formatMoney = (val: number | undefined | null) => {
+    const num = typeof val === 'number' && !isNaN(val) ? val : 0;
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
       currency: 'BRL',
       maximumFractionDigits: 0,
-    }).format(val);
+    }).format(num);
   };
 
   const squadCount = userClub.squad.length;
@@ -299,8 +320,87 @@ export const TransfersScreen: React.FC = () => {
     if (res.success) {
       showToast('success', `Contrato de ${renewingPlayer.name} renovado com sucesso por ${renewingYears} anos!`);
       setRenewingPlayer(null);
+      setCounterOfferModal(null);
+    } else if (res.counterOffer != null) {
+      const demandedSalary = typeof res.counterOffer === 'number'
+        ? res.counterOffer
+        : Number((res.counterOffer as any).demandedSalary ?? (res.counterOffer as any).demanded ?? (res.counterOffer as any)) || 0;
+      setCounterOfferModal({
+        player: renewingPlayer,
+        years: renewingYears,
+        demanded: demandedSalary,
+      });
+      setRenewingSalary(demandedSalary);
     } else {
       showToast('error', res.error || 'Falha ao renovar contrato.');
+    }
+  };
+
+  // Open Sell Modal
+  const handleOpenSell = (player: Player) => {
+    setSellingPlayer(player);
+    setSellMode('auction');
+    setSellPrice(player.marketValue);
+    sound.playClick();
+  };
+
+  const handleConfirmSell = () => {
+    if (!sellingPlayer) return;
+    if (sellMode === 'auction') {
+      const res = sellPlayerAuction(sellingPlayer.id);
+      if (res.success) {
+        showToast(
+          'success',
+          `Leilão concluído! ${sellingPlayer.name} vendido para o ${res.buyerName || 'outro clube'} por ${formatMoney(res.finalBid || 0)}!`
+        );
+        setSellingPlayer(null);
+      } else {
+        showToast('error', res.error || 'Falha ao leiloar jogador.');
+      }
+    } else {
+      const res = listPlayerForSale(sellingPlayer.id, sellPrice);
+      if (res.success) {
+        showToast('success', `${sellingPlayer.name} colocado à venda por ${formatMoney(sellPrice)}.`);
+        setSellingPlayer(null);
+      } else {
+        showToast('error', res.error || 'Falha ao colocar jogador à venda.');
+      }
+    }
+  };
+
+  const handleDelist = (player: Player) => {
+    const res = delistPlayerForSale(player.id);
+    if (res.success) {
+      showToast('success', `${player.name} removido da lista de transferências.`);
+    } else {
+      showToast('error', res.error || 'Falha ao remover da lista.');
+    }
+  };
+
+  const handleBidRoundAuction = (auctionId: number, minBid: number) => {
+    const amount = roundBidInputs[auctionId] ?? minBid;
+    if (amount > userClub.balance) {
+      showToast('error', 'Saldo insuficiente para este lance.');
+      return;
+    }
+    const res = bidOnRoundAuction(auctionId, amount);
+    if (res.success) {
+      showToast('success', `Lance de ${formatMoney(amount)} registrado com sucesso!`);
+    } else {
+      showToast('error', res.error || 'Falha ao enviar lance.');
+    }
+  };
+
+  const handleConcludeRoundAuction = (auctionId: number) => {
+    if (isSquadFull) {
+      showToast('error', 'Seu elenco já atingiu o limite de 30 atletas.');
+      return;
+    }
+    const res = concludeRoundAuction(auctionId);
+    if (res.success) {
+      showToast('success', 'Leilão concluído com sucesso!');
+    } else {
+      showToast('error', res.error || 'Falha ao concluir leilão.');
     }
   };
 
@@ -405,6 +505,23 @@ export const TransfersScreen: React.FC = () => {
       {/* Tab Navigation */}
       <div className="bg-[var(--app-surface-1)] border-b border-[var(--app-border-subtle)] px-2 sm:px-4 flex items-center justify-between shrink-0 overflow-x-auto no-scrollbar">
         <div className="flex space-x-1 min-w-max">
+          <button
+            onClick={() => { setActiveTab('auctions'); sound.playClick(); }}
+            className={`flex items-center space-x-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer ${
+              activeTab === 'auctions'
+                ? 'border-[var(--app-border-highlight)] text-[var(--app-text-accent)] bg-[var(--app-surface-2)]'
+                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-[var(--app-surface-2)]/60'
+            }`}
+          >
+            <Gavel className="w-3.5 h-3.5" />
+            <span>Leilão da Rodada</span>
+            {gameState.roundAuctions && gameState.roundAuctions.length > 0 && (
+              <span className="ml-1 px-1.5 py-0.2 text-[10px] rounded-full bg-emerald-500 text-black font-extrabold font-mono">
+                {gameState.roundAuctions.length}
+              </span>
+            )}
+          </button>
+
           <button
             onClick={() => { setActiveTab('free_agents'); sound.playClick(); }}
             className={`flex items-center space-x-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer ${
@@ -530,6 +647,167 @@ export const TransfersScreen: React.FC = () => {
             >
               Ver contratos do elenco
             </button>
+          </div>
+        )}
+
+        {/* ================= TAB 0: LEILÃO DA RODADA ================= */}
+        {activeTab === 'auctions' && (
+          <div className="space-y-4 max-w-7xl mx-auto">
+            <div className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center space-x-2">
+                  <Gavel className="w-4 h-4 text-emerald-400" />
+                  <span>Leilão Oficial de Jogadores da Rodada</span>
+                </h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  A cada rodada, clubes com elenco excedente disponibilizam até 5 atletas em leilão aberto (Brasfoot clássico).
+                </p>
+              </div>
+              <div className="text-xs font-mono text-slate-400">
+                Rodada <span className="text-white font-bold">{gameState.currentRound}</span>
+              </div>
+            </div>
+
+            {(!gameState.roundAuctions || gameState.roundAuctions.length === 0) ? (
+              <div className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg p-12 text-center text-slate-400">
+                <Gavel className="w-8 h-8 mx-auto mb-2 opacity-40 text-slate-500" />
+                <p className="text-sm font-semibold">Nenhum atleta em leilão nesta rodada.</p>
+                <p className="text-xs text-slate-500 mt-1">Avance a rodada para novos atletas irem a leilão.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {gameState.roundAuctions.map((item) => {
+                  const posStyle = POSITION_COLORS[item.player.position] || POSITION_COLORS.MEI;
+                  const isUserLeading = item.highestBidderClubId === userClub.id;
+                  const currentInputBid = roundBidInputs[item.id] ?? item.minNextBid;
+
+                  return (
+                    <div
+                      key={item.id}
+                      className={`bg-[var(--app-surface-1)] border rounded-xl p-4 flex flex-col justify-between transition-all ${
+                        item.completed
+                          ? 'opacity-60 border-[var(--app-border-subtle)]'
+                          : isUserLeading
+                          ? 'border-emerald-600/80 shadow-md shadow-emerald-950/30'
+                          : 'border-[var(--app-border-subtle)] hover:border-[var(--app-border-highlight)]'
+                      }`}
+                    >
+                      <div>
+                        {/* Top info: Club seller and status */}
+                        <div className="flex items-center justify-between text-xs mb-2">
+                          <span className="text-slate-400 font-semibold truncate max-w-[160px]">
+                            {item.sellerClubName}
+                          </span>
+                          {item.completed ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700">
+                              ENCERRADO
+                            </span>
+                          ) : isUserLeading ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950/80 text-emerald-400 border border-emerald-800 animate-pulse">
+                              SEU LANCE LIDERA
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950/60 text-amber-300 border border-amber-800/60">
+                              EM DISPUTA
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Player Header */}
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <h3 className="font-bold text-sm text-slate-100">{item.player.name}</h3>
+                            <div className="text-xs text-slate-400 font-mono mt-0.5">
+                              {item.player.age} anos • Perna {item.player.foot}
+                            </div>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded text-[11px] font-bold border ${posStyle.bg} ${posStyle.text} ${posStyle.border}`}>
+                            {item.player.position}
+                          </span>
+                        </div>
+
+                        {/* Player Attributes & Values */}
+                        <div className="grid grid-cols-3 gap-2 my-3 p-2 rounded-lg bg-[var(--app-surface-2)] border border-[var(--app-border-subtle)] text-center text-xs">
+                          <div>
+                            <span className="text-[10px] text-slate-400 block uppercase">Força</span>
+                            <span className="font-mono font-bold text-emerald-400 text-sm">{item.player.strength}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-400 block uppercase">Salário</span>
+                            <span className="font-mono font-medium text-slate-200 text-[11px]">{formatMoney(item.player.salary)}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-400 block uppercase">Avaliação</span>
+                            <span className="font-mono font-medium text-slate-300 text-[11px]">{formatMoney(item.player.marketValue)}</span>
+                          </div>
+                        </div>
+
+                        {/* Current Auction State */}
+                        <div className="space-y-1.5 text-xs py-2 border-t border-[var(--app-border-subtle)]">
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-400">Lance Atual:</span>
+                            <span className="font-mono font-bold text-emerald-400 text-sm">
+                              {formatMoney(item.currentBid)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center text-[11px]">
+                            <span className="text-slate-400">Maior Oferta:</span>
+                            <span className="font-semibold text-slate-300">
+                              {item.highestBidderName || 'Nenhum lance'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center text-[11px]">
+                            <span className="text-slate-400">Preço Inicial:</span>
+                            <span className="font-mono text-slate-400">{formatMoney(item.startingPrice)}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Auction Actions */}
+                      {!item.completed && (
+                        <div className="mt-3 pt-3 border-t border-[var(--app-border-subtle)] space-y-2">
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="number"
+                              step="10000"
+                              min={item.minNextBid}
+                              value={currentInputBid}
+                              onChange={(e) => {
+                                const val = Number(e.target.value) || item.minNextBid;
+                                setRoundBidInputs((prev) => ({ ...prev, [item.id]: val }));
+                              }}
+                              className="flex-1 bg-[var(--app-surface-2)] border border-[var(--app-border-subtle)] text-[var(--app-text-accent)] text-xs font-mono font-bold rounded px-2.5 py-1.5 focus:outline-none focus:border-[var(--app-border-highlight)]"
+                            />
+                            <button
+                              disabled={isSquadFull || currentInputBid < item.minNextBid || currentInputBid > userClub.balance}
+                              onClick={() => handleBidRoundAuction(item.id, item.minNextBid)}
+                              className={`px-3 py-1.5 rounded text-xs font-bold transition-all ${
+                                isSquadFull || currentInputBid < item.minNextBid || currentInputBid > userClub.balance
+                                  ? 'opacity-40 bg-slate-800 text-slate-500 cursor-not-allowed'
+                                  : 'bg-emerald-600 hover:bg-emerald-500 text-black shadow cursor-pointer'
+                              }`}
+                            >
+                              Dar Lance
+                            </button>
+                          </div>
+                          <button
+                            disabled={isSquadFull}
+                            onClick={() => handleConcludeRoundAuction(item.id)}
+                            className={`w-full py-1.5 rounded text-xs font-semibold border transition-all ${
+                              isSquadFull
+                                ? 'opacity-40 bg-slate-800 text-slate-500 border-transparent cursor-not-allowed'
+                                : 'bg-[var(--app-surface-2)] hover:bg-[var(--app-surface-1)] border-[var(--app-border-subtle)] text-slate-300 hover:text-white cursor-pointer'
+                            }`}
+                          >
+                            Finalizar Leilão
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
@@ -1037,6 +1315,11 @@ export const TransfersScreen: React.FC = () => {
                               TITULAR
                             </span>
                           )}
+                          {p.listedForSale && (
+                            <span className="text-[10px] text-amber-400 bg-amber-950/70 border border-amber-800/60 px-1 rounded">
+                              À VENDA
+                            </span>
+                          )}
                         </td>
                         <td className="py-2.5 px-2 text-center">
                           <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold border ${posStyle.bg} ${posStyle.text} ${posStyle.border}`}>
@@ -1076,6 +1359,23 @@ export const TransfersScreen: React.FC = () => {
                             >
                               Renovar
                             </button>
+                            {p.listedForSale ? (
+                              <button
+                                onClick={() => handleDelist(p)}
+                                className="px-2 py-1 rounded text-xs font-semibold bg-amber-950/70 border border-amber-800 text-amber-300 hover:bg-amber-900 transition-all cursor-pointer"
+                                title="Remover da lista de transferências"
+                              >
+                                À Venda
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleOpenSell(p)}
+                                className="px-2 py-1 rounded text-xs font-semibold bg-[var(--app-surface-2)] border border-[var(--app-border-subtle)] text-slate-300 hover:text-white hover:border-[var(--app-border-highlight)] transition-all cursor-pointer"
+                                title="Vender em leilão ou colocar à venda"
+                              >
+                                Vender
+                              </button>
+                            )}
                             <button
                               disabled={isSquadAtMin}
                               onClick={() => handleOpenRelease(p)}
@@ -1392,6 +1692,201 @@ export const TransfersScreen: React.FC = () => {
                 className="flex-1 py-2 rounded text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-black shadow-lg shadow-emerald-950/50 cursor-pointer"
               >
                 Confirmar Renovação
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= MODAL: SELL PLAYER ================= */}
+      {sellingPlayer && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-xl w-full max-w-md p-5 space-y-4 shadow-2xl">
+            <div className="flex items-start justify-between border-b border-[var(--app-border-subtle)] pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-white">Vender Atleta</h3>
+                <p className="text-xs text-slate-400">Escolha como negociar o jogador</p>
+              </div>
+              <button 
+                onClick={() => setSellingPlayer(null)}
+                className="text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Player Info */}
+            <div className="bg-[var(--app-surface-2)] p-3 rounded-lg flex items-center justify-between border border-[var(--app-border-subtle)]">
+              <div>
+                <div className="font-bold text-sm text-slate-100">{sellingPlayer.name}</div>
+                <div className="text-xs text-slate-400 font-mono">
+                  {sellingPlayer.age} anos • {sellingPlayer.position} • Força {sellingPlayer.strength}
+                </div>
+              </div>
+              <div className="text-right">
+                <span className="text-[10px] text-slate-400 uppercase font-semibold">Valor de Mercado</span>
+                <div className="text-xs font-bold font-mono text-emerald-400">{formatMoney(sellingPlayer.marketValue)}</div>
+              </div>
+            </div>
+
+            {/* Rescission penalty warning if remaining contract */}
+            {((sellingPlayer.contractYears ?? 3) > 0) && (
+              <div className="bg-amber-950/40 border border-amber-800/60 rounded p-2.5 text-xs text-amber-300 flex items-start space-x-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
+                <span>
+                  <strong>Multa rescisória / indenização:</strong> Por regulamento (Brasfoot), 
+                  {' '}{Math.round(calculateRescissionPenalty(sellingPlayer.contractYears ?? 3) * 100)}% 
+                  do valor da venda será retido como indenização contratual ao atleta.
+                </span>
+              </div>
+            )}
+
+            {/* Mode selection: Auction vs Listing */}
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-slate-300">Método de Venda:</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSellMode('auction')}
+                  className={`p-3 rounded-lg border text-left cursor-pointer transition-all ${
+                    sellMode === 'auction'
+                      ? 'bg-emerald-950/70 border-emerald-500 text-emerald-200'
+                      : 'bg-[var(--app-surface-2)] border-[var(--app-border-subtle)] text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <div className="flex items-center space-x-2 font-bold text-xs">
+                    <Gavel className="w-4 h-4" />
+                    <span>Leilão Imediato</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Venda instantânea! Clubes da CPU disputam lances imediatos pelo atleta.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSellMode('list')}
+                  className={`p-3 rounded-lg border text-left cursor-pointer transition-all ${
+                    sellMode === 'list'
+                      ? 'bg-emerald-950/70 border-emerald-500 text-emerald-200'
+                      : 'bg-[var(--app-surface-2)] border-[var(--app-border-subtle)] text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <div className="flex items-center space-x-2 font-bold text-xs">
+                    <Tag className="w-4 h-4" />
+                    <span>Colocar à Venda</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Define um preço fixo. Outros clubes podem enviar propostas a cada rodada.
+                  </p>
+                </button>
+              </div>
+            </div>
+
+            {/* Price input if listing */}
+            {sellMode === 'list' && (
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Preço Pedido:</label>
+                <input
+                  type="number"
+                  step="10000"
+                  value={sellPrice}
+                  onChange={(e) => setSellPrice(Math.max(0, Number(e.target.value) || 0))}
+                  className="w-full bg-[var(--app-surface-2)] border border-[var(--app-border-subtle)] text-[var(--app-text-accent)] text-sm font-mono font-bold rounded px-3 py-2 focus:outline-none focus:border-[var(--app-border-highlight)]"
+                />
+              </div>
+            )}
+
+            {/* Modal Actions */}
+            <div className="flex space-x-2 pt-2">
+              <button
+                onClick={() => setSellingPlayer(null)}
+                className="flex-1 py-2 rounded text-xs font-semibold bg-[var(--app-surface-2)] hover:bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] text-slate-300 transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmSell}
+                className="flex-1 py-2 rounded text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-black shadow-lg shadow-emerald-950/50 cursor-pointer"
+              >
+                {sellMode === 'auction' ? 'Iniciar Leilão' : 'Confirmar Anúncio'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= MODAL: COUNTER OFFER ================= */}
+      {counterOfferModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-xl w-full max-w-md p-5 space-y-4 shadow-2xl">
+            <div className="flex items-start justify-between border-b border-[var(--app-border-subtle)] pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-white">Contraproposta Salarial</h3>
+                <p className="text-xs text-amber-400">O jogador exige melhores condições</p>
+              </div>
+              <button 
+                onClick={() => setCounterOfferModal(null)}
+                className="text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="bg-[var(--app-surface-2)] p-3 rounded-lg border border-[var(--app-border-subtle)] text-xs text-slate-200 space-y-2">
+              <p>
+                <strong>{counterOfferModal.player.name}</strong> recusou a oferta inicial de renovação.
+              </p>
+              <div className="flex justify-between items-center py-1 border-t border-[var(--app-border-subtle)]">
+                <span className="text-slate-400">Salário Exigido:</span>
+                <span className="font-mono font-bold text-emerald-400 text-sm">
+                  {formatMoney(counterOfferModal.demanded)}/mês
+                </span>
+              </div>
+              <div className="flex justify-between items-center py-1 border-t border-[var(--app-border-subtle)]">
+                <span className="text-slate-400">Prazo Solicitado:</span>
+                <span className="font-mono font-bold text-slate-100">
+                  {counterOfferModal.years} {counterOfferModal.years === 1 ? 'ano' : 'anos'}
+                </span>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-400 leading-relaxed">
+              {(counterOfferModal.player.contractYears ?? 3) === 0
+                ? 'Como o contrato atual encerra nesta temporada, caso a negociação seja encerrada, o jogador será automaticamente vendido em leilão regulamentar.'
+                : 'Você pode aceitar as exigências do atleta ou tentar negociar novamente mais tarde.'}
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-2 pt-2">
+              <button
+                onClick={() => {
+                  if ((counterOfferModal.player.contractYears ?? 3) === 0) {
+                    const res = sellPlayerAuction(counterOfferModal.player.id);
+                    if (res.success) {
+                      showToast('success', `Contrato expirado: ${counterOfferModal.player.name} foi leiloado para ${res.buyerName} por ${formatMoney(res.finalBid || 0)}.`);
+                    }
+                  }
+                  setCounterOfferModal(null);
+                  setRenewingPlayer(null);
+                }}
+                className="flex-1 py-2 rounded text-xs font-semibold bg-[var(--app-surface-2)] hover:bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] text-slate-300 transition-colors cursor-pointer"
+              >
+                {(counterOfferModal.player.contractYears ?? 3) === 0 ? 'Recusar e Leiloar' : 'Recusar'}
+              </button>
+              <button
+                onClick={() => {
+                  const res = renewContract(counterOfferModal.player.id, counterOfferModal.years, counterOfferModal.demanded);
+                  if (res.success) {
+                    showToast('success', `Contrato renovado com sucesso nos termos do atleta!`);
+                    setCounterOfferModal(null);
+                    setRenewingPlayer(null);
+                  } else {
+                    showToast('error', res.error || 'Falha ao renovar contrato.');
+                  }
+                }}
+                className="flex-1 py-2 rounded text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-black shadow-lg shadow-emerald-950/50 cursor-pointer"
+              >
+                Aceitar Contraproposta
               </button>
             </div>
           </div>

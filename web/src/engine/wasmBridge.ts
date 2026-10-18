@@ -11,7 +11,20 @@ import initWasm, {
 import wasmUrl from '../wasm_pkg/champs_core_bg.wasm?url';
 import { Club, GameState, MatchEvent, ClubTactics, Player, MarketFilter, MarketSearchResult, TransferOffer, StandingRow, MatchFixture } from '../types/index.ts';
 import { SimulatedMatchResult } from './simulationEngine.ts';
-import { canSell, validOffer, post, canFundTransfer, runAiMarket } from './careerEconomy.ts';
+import {
+  canSell,
+  validOffer,
+  post,
+  canFundTransfer,
+  runAiMarket,
+  calculateRescissionPenalty,
+  calculateClubAskingPrice,
+  evaluatePlayerTransferAcceptance,
+  evaluateContractRenewal,
+  runInstantPlayerAuction,
+  bidOnRoundAuctionItem,
+  concludeRoundAuctionItem,
+} from './careerEconomy.ts';
 import { sortStandings } from '../data/calendarGenerator.ts';
 import { addBreadcrumb, captureError } from '../observability/sentry.ts';
 
@@ -488,7 +501,7 @@ export function searchPlayersWasm(currentState: GameState, filter: MarketFilter)
           player: p,
           clubId: club.id,
           clubName: club.name,
-          askingPrice: calculateAskingPrice(p.marketValue, p.age),
+          askingPrice: calculateClubAskingPrice(club, p),
         });
       }
     }
@@ -529,7 +542,13 @@ export function buyPlayerWasm(
     if (!canSell(sellerClub, player)) {
       return { success: false, error: 'O clube vendedor não pode liberar este atleta pois ficaria abaixo do limite mínimo de 16 jogadores.' };
     }
-    const asking = calculateAskingPrice(player.marketValue, player.age);
+
+    const acceptance = evaluatePlayerTransferAcceptance(userClub, sellerClub, player);
+    if (!acceptance.accepted) {
+      return { success: false, error: acceptance.reason || 'O atleta recusou a proposta de transferência.' };
+    }
+
+    const asking = calculateClubAskingPrice(sellerClub, player);
     if (offerFee < asking) {
       return { success: false, error: `A proposta de R$ ${offerFee.toLocaleString('pt-BR')} foi recusada! O valor mínimo pedido é R$ ${asking.toLocaleString('pt-BR')}.` };
     }
@@ -538,19 +557,24 @@ export function buyPlayerWasm(
       return { success: false, error: 'Saldo insuficiente no caixa do clube para concretizar a compra.' };
     }
 
+    const penalty = calculateRescissionPenalty(player.contractYears ?? 0, offerFee);
+
     const updatedClubs = currentState.clubs.map((c) => {
       if (c.id === userClub.id) {
         return {
           ...c,
           ...post(c, currentState.currentRound, 'expense', 'compras_atletas', `Compra de ${player.name}`, offerFee, `buy-${player.id}`),
-          squad: [...c.squad, { ...player, isStarter: false, contractYears: 3 }],
+          squad: [...c.squad, { ...player, isStarter: false, contractYears: 3, listedForSale: false, listedPrice: undefined }],
         };
       }
       if (c.id === sellerClub.id) {
+        let sellerAfter = post(c, currentState.currentRound, 'income', 'vendas_atletas', `Venda de ${player.name}`, offerFee, `sale-${player.id}`);
+        if (penalty > 0) {
+          sellerAfter = post(sellerAfter, currentState.currentRound, 'expense', 'outros', `Multa rescisória de ${player.name}`, penalty, `rescission-${player.id}`);
+        }
         return {
-          ...c,
-          ...post(c, currentState.currentRound, 'income', 'vendas_atletas', `Venda de ${player.name}`, offerFee, `sale-${player.id}`),
-          squad: c.squad.filter((p) => p.id !== playerId),
+          ...sellerAfter,
+          squad: sellerAfter.squad.filter((p) => p.id !== playerId),
         };
       }
       return c;
@@ -809,33 +833,14 @@ export function renewContractWasm(
   playerId: number,
   years: number,
   newSalary: number
-): { success: boolean; state?: GameState; error?: string } {
-  if (!wasmInitialized) {
-    const userClub = currentState.clubs.find((c) => c.id === currentState.userClubId);
-    if (!userClub) return { success: false, error: 'Clube não encontrado.' };
-    if (years < 1 || years > 5) return { success: false, error: 'Duração de contrato deve ser de 1 a 5 anos.' };
-
-    const player = userClub.squad.find((p) => p.id === playerId);
-    if (!player) return { success: false, error: 'Jogador não encontrado no elenco.' };
-
-    const demanded = calculateDemandedSalary(player.salary, player.marketValue);
-    if (newSalary < demanded) {
-      return { success: false, error: `Salário de R$ ${newSalary.toLocaleString('pt-BR')} recusado! O atleta exige no mínimo R$ ${demanded.toLocaleString('pt-BR')}/mês.` };
-    }
-
-    const updatedClubs = currentState.clubs.map((c) => {
-      if (c.id === userClub.id) {
-        return {
-          ...c,
-          squad: c.squad.map((p) => (p.id === playerId ? { ...p, salary: newSalary, contractYears: years } : p)),
-        };
-      }
-      return c;
-    });
-
+): { success: boolean; state?: GameState; counterOffer?: number; error?: string } {
+  if (currentState.schemaVersion === 2 || !wasmInitialized) {
+    const res = evaluateContractRenewal(currentState, playerId, years, newSalary);
     return {
-      success: true,
-      state: { ...currentState, clubs: updatedClubs },
+      success: res.success,
+      state: res.newState,
+      counterOffer: res.counterOffer,
+      error: res.error,
     };
   }
 

@@ -10,6 +10,7 @@
     "wasm:build": "wasm-pack build ../crates/champs-core --target web --out-dir ../../web/src/wasm_pkg",
     "test": "node --test tests/*.test.mjs",
     "test:career": "node --experimental-strip-types --test tests/careerEconomy.test.mjs",
+    "test:transfers": "node --experimental-strip-types --test tests/classicTransfersAndEconomy.test.mjs",
     "sim:economy": "node --experimental-strip-types scripts/simulate-economy.mjs",
     "tauri": "tauri",
     "desktop:build": "tauri build",

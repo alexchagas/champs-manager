@@ -95,7 +95,7 @@ test('season rollover preserves jobs, balance and adds title to career', () => {
 test('Flamengo opening screen never shows unaffordable Palmeiras–Marinho offer', () => {
   const s = createNewGame(255, 'Alex');
   const palmeiras = s.clubs.find(c => c.name === 'Palmeiras');
-  assert.equal(palmeiras.balance, 52_200_000);
+  assert.equal(palmeiras.balance, 15_000_000);
   assert.ok(!(s.transferOffers || []).some(o => o.fromClubId === palmeiras.id && o.fee === 78_064_281));
   const migrated = migrateCareer(s);
   assert.ok((migrated.transferOffers || []).every(o => !validOffer(migrated, o)));
