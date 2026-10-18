@@ -741,16 +741,6 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const closed = commandMatchWasm(latest, { type: latest.activeMatch ? 'commit' : 'complete_cpu_date' });
       const fixtures = closed.calendar.filter(f => (f.fixtureDateIndex ?? f.round) === closed.currentRound && f.played);
       const clubs = closeRoundFinances(closed.clubs, fixtures, closed.currentRound);
-      const rated = scoreManagers({ ...closed, clubs }, fixtures);
-      const { state: managed, dismissals } = changeManagers(rated);
-      const completed = closed.activeMatch!;
-      const injuries = [completed, ...completed.parallelMatches].flatMap(session => session.teams.flatMap(team => {
-        const club = managed.clubs.find(c => c.id === team.clubId)!;
-        return team.injuredIds.map(id => ({ club, player: club.squad.find(p => p.id === id)! }));
-      }));
-      const articles = generateWeeklyNews(managed, fixtures, injuries, dismissals);
-      const count = (latest.autoSaveMatchCounter || 0) + 1;
-
       const currentLastSlot = Math.max(...closed.calendar.map(f => f.fixtureDateIndex ?? f.round), 1);
       const progressRatio = Math.min(1.0, closed.currentRound / currentLastSlot);
       const isMainBrazil = (closed.clubs.find(c => c.id === closed.userClubId)?.countryId || 29) === 29;
@@ -787,12 +777,27 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           })
         : closed.otherLeagues;
 
-      const final = resolvePendingFixtures({
-        ...managed,
+      const stateWithLeagues = {
+        ...closed,
+        clubs,
         nationalDivisions: updatedNationalDivisions,
         stateDivisions: updatedStateDivisions,
         continentalCompetitions: updatedContinentalCompetitions,
         otherLeagues: updatedOtherLeagues,
+      };
+
+      const rated = scoreManagers(stateWithLeagues, fixtures);
+      const { state: managed, dismissals } = changeManagers(rated);
+      const completed = closed.activeMatch!;
+      const injuries = [completed, ...completed.parallelMatches].flatMap(session => session.teams.flatMap(team => {
+        const club = managed.clubs.find(c => c.id === team.clubId)!;
+        return team.injuredIds.map(id => ({ club, player: club.squad.find(p => p.id === id)! }));
+      }));
+      const articles = generateWeeklyNews(managed, fixtures, injuries, dismissals);
+      const count = (latest.autoSaveMatchCounter || 0) + 1;
+
+      const final = resolvePendingFixtures({
+        ...managed,
         newsFeed: [...articles, ...(latest.newsFeed || [])].slice(0, 40),
         autoSaveMatchCounter: latest.options.autoSaveMode === 'every_3_matches' && count >= 3 ? 0 : count,
         activeScreen: 'round_results',
@@ -1181,16 +1186,20 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const currentSemester = nextCompetition === 'estadual' ? 1 : 2;
         const standings = nextCompetition === 'estadual' ? wasmUpdated.standingsEstadual || wasmUpdated.standings :
           nextCompetition === 'nacional' ? wasmUpdated.standingsNacional || wasmUpdated.standings : wasmUpdated.standings;
-        setGameState(runAiMarket({ 
+        const scoredState = scoreManagers({
           ...wasmUpdated,
-          activeMatch: undefined, 
-          activeMatchFixtureId: undefined, 
-          currentSemester, 
-          standings, 
+          currentSemester,
+          standings,
           nationalDivisions: updatedNationalDivisions,
           stateDivisions: updatedStateDivisions,
           continentalCompetitions: updatedContinentalCompetitions,
           otherLeagues: updatedOtherLeagues,
+        }, []);
+        const { state: managedState } = changeManagers(scoredState);
+        setGameState(runAiMarket({ 
+          ...managedState,
+          activeMatch: undefined, 
+          activeMatchFixtureId: undefined, 
           activeScreen: 'overview' 
         }));
         return;
@@ -1202,9 +1211,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const currentSemester = nextCompetition === 'estadual' ? 1 : 2;
       const standings = nextCompetition === 'estadual' ? prev.standingsEstadual || prev.standings :
         nextCompetition === 'nacional' ? prev.standingsNacional || prev.standings : prev.standings;
-      return runAiMarket({
+      const scoredState = scoreManagers({
         ...prev,
-        activeMatch: undefined, activeMatchFixtureId: undefined,
         currentRound: nextRound,
         currentSemester,
         standings,
@@ -1212,6 +1220,12 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         stateDivisions: updatedStateDivisions,
         continentalCompetitions: updatedContinentalCompetitions,
         otherLeagues: updatedOtherLeagues,
+      }, []);
+      const { state: managedState } = changeManagers(scoredState);
+      return runAiMarket({
+        ...managedState,
+        activeMatch: undefined,
+        activeMatchFixtureId: undefined,
         activeScreen: 'overview',
       });
     });

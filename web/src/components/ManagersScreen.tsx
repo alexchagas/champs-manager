@@ -10,10 +10,20 @@ const money = (n: number) => new Intl.NumberFormat('pt-BR', { style: 'currency',
 export const ManagersScreen: React.FC = () => {
   const { gameState, userClub, acceptManagerJob } = useGame();
   const clubTheme = getClubTheme(userClub);
+  const [divisionFilter, setDivisionFilter] = React.useState<number | 'all'>('all');
 
   const managers = gameState.managers || [];
   const human = managers.find(m => m.id === gameState.humanManagerId);
-  const sorted = (key: 'seasonScore' | 'careerScore') => [...managers].sort((a, b) => b[key] - a[key]);
+
+  const filteredManagers = React.useMemo(() => {
+    if (divisionFilter === 'all') return managers;
+    return managers.filter(m => {
+      const c = gameState.clubs.find(club => club.id === m.currentClubId);
+      return c?.division === divisionFilter;
+    });
+  }, [managers, divisionFilter, gameState.clubs]);
+
+  const sorted = (key: 'seasonScore' | 'careerScore') => [...filteredManagers].sort((a, b) => b[key] - a[key]);
 
   const ranking = (title: string, list: Manager[]) => (
     <section className="rounded-lg border border-[var(--app-border-subtle)] bg-[var(--app-surface-1)] p-4 shadow-md flex flex-col">
@@ -48,7 +58,7 @@ export const ManagersScreen: React.FC = () => {
                 <span className="truncate">
                   {m.name}
                   <span className="text-slate-400 text-xs ml-1 font-normal">
-                    · {club?.name || 'Disponível'}
+                    · {club?.name || 'Disponível'} {club?.divisionName ? `(${club.divisionName})` : ''}
                   </span>
                 </span>
                 {isHuman && (
@@ -158,6 +168,30 @@ export const ManagersScreen: React.FC = () => {
           </div>
         </section>
       )}
+
+      {/* Filtros de Divisão do Ranking */}
+      <div className="flex flex-wrap items-center gap-2 pt-1 pb-1">
+        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mr-1">Filtrar por Divisão:</span>
+        {[
+          { label: 'Todas as Ligas', val: 'all' as const },
+          { label: 'Série A', val: 1 },
+          { label: 'Série B', val: 2 },
+          { label: 'Série C', val: 3 },
+          { label: 'Série D', val: 4 },
+        ].map((btn) => (
+          <button
+            key={String(btn.val)}
+            onClick={() => setDivisionFilter(btn.val)}
+            className={`px-3 py-1 text-xs font-bold rounded-full transition-all cursor-pointer ${
+              divisionFilter === btn.val
+                ? 'bg-[var(--app-text-accent)] text-slate-950 shadow-sm'
+                : 'bg-[var(--app-surface-1)] text-slate-300 hover:bg-[var(--app-surface-2)] border border-[var(--app-border-subtle)]'
+            }`}
+          >
+            {btn.label}
+          </button>
+        ))}
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {ranking('Temporada', sorted('seasonScore'))}

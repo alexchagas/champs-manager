@@ -240,50 +240,322 @@ export function migrateCareer(state: GameState): GameState {
   return clean;
 }
 
-export function scoreManagers(state: GameState, fixtures: MatchFixture[]): GameState {
-  const managers = (state.managers || []).map(m => {
-    const club = state.clubs.find(c => c.id === m.currentClubId);
+/**
+ * Constrói em uma única passagem linear O(N) o mapa de clubId -> StandingRow[] de todas as competições ativas.
+ */
+export function buildClubRowsMap(state: GameState): Map<number, StandingRow[]> {
+  const map = new Map<number, StandingRow[]>();
+  const addRow = (row?: StandingRow) => {
+    if (!row) return;
+    let arr = map.get(row.clubId);
+    if (!arr) {
+      arr = [];
+      map.set(row.clubId, arr);
+    }
+    arr.push(row);
+  };
+
+  if (state.standingsEstadual) state.standingsEstadual.forEach(addRow);
+  if (state.stateDivisions) {
+    for (const d of state.stateDivisions) {
+      if (d.standings) d.standings.forEach(addRow);
+    }
+  }
+  if (state.standingsNacional) state.standingsNacional.forEach(addRow);
+  if (state.nationalDivisions) {
+    for (const d of state.nationalDivisions) {
+      if (d.standings) d.standings.forEach(addRow);
+    }
+  }
+  if (state.standingsContinental) state.standingsContinental.forEach(addRow);
+  if (state.continentalCompetitions) {
+    for (const d of state.continentalCompetitions) {
+      if (d.standings) d.standings.forEach(addRow);
+    }
+  }
+  if (state.otherLeagues) {
+    for (const d of state.otherLeagues) {
+      if (d.standings) d.standings.forEach(addRow);
+    }
+  }
+  if (state.standings) state.standings.forEach(addRow);
+  return map;
+}
+
+/**
+ * Retorna todas as linhas de classificação associadas a um clube em qualquer divisão ativa.
+ */
+export function getAllStandingRowsForClub(state: GameState, clubId: number, prebuiltMap?: Map<number, StandingRow[]>): StandingRow[] {
+  if (prebuiltMap) {
+    return prebuiltMap.get(clubId) || [];
+  }
+  const map = buildClubRowsMap(state);
+  return map.get(clubId) || [];
+}
+
+export function findClubStandingRow(state: GameState, clubId: number, prebuiltMap?: Map<number, StandingRow[]>): StandingRow | undefined {
+  const rows = getAllStandingRowsForClub(state, clubId, prebuiltMap);
+  return rows.find((r) => r.played > 0) || rows[0];
+}
+
+export function scoreManagers(state: GameState, fixtures: MatchFixture[] = []): GameState {
+  const clubsMap = new Map(state.clubs.map((c) => [c.id, c]));
+
+  // Mapa linear O(N) pré-computado para desempenho instantâneo (< 2ms)
+  const clubRowsMap = buildClubRowsMap(state);
+
+  // Mapa de fixtures por clube jogado nesta rodada
+  const fixtureByClub = new Map<number, MatchFixture>();
+  for (const f of fixtures) {
+    if (f.played) {
+      if (f.homeClubId > 0) fixtureByClub.set(f.homeClubId, f);
+      if (f.awayClubId > 0) fixtureByClub.set(f.awayClubId, f);
+    }
+  }
+
+  // Mapa de classificação da divisão nacional por clube para cálculo O(1) de posição
+  const divStandingsByClub = new Map<number, StandingRow[]>();
+  if (state.standingsNacional && state.standingsNacional.length >= 10) {
+    const sorted = [...state.standingsNacional].sort((a, b) => b.points - a.points || b.won - a.won || b.goalDiff - a.goalDiff);
+    for (const r of state.standingsNacional) divStandingsByClub.set(r.clubId, sorted);
+  }
+  if (state.nationalDivisions) {
+    for (const d of state.nationalDivisions) {
+      if (d.standings && d.standings.length >= 10) {
+        const sorted = [...d.standings].sort((a, b) => b.points - a.points || b.won - a.won || b.goalDiff - a.goalDiff);
+        for (const r of d.standings) divStandingsByClub.set(r.clubId, sorted);
+      }
+    }
+  }
+
+  const managers = (state.managers || []).map((m) => {
+    if (!m.currentClubId) return m;
+    const club = clubsMap.get(m.currentClubId);
     if (!club) return m;
-    const match = fixtures.find(f => f.played && (f.homeClubId === club.id || f.awayClubId === club.id));
+
     const job = m.jobs[m.jobs.length - 1];
-    if (!job || !match) return m;
-    const own = match.homeClubId === club.id ? match.homeScore! : match.awayScore!;
-    const opp = match.homeClubId === club.id ? match.awayScore! : match.homeScore!;
-    const points = own > opp ? 3 : own === opp ? 1 : 0;
-    const updatedJob = { ...job, wins: job.wins + (points === 3 ? 1 : 0), draws: job.draws + (points === 1 ? 1 : 0), losses: job.losses + (points === 0 ? 1 : 0), points: job.points + points };
+    if (!job) return m;
+
+    const rows = clubRowsMap.get(club.id) || [];
+    const directMatch = fixtureByClub.get(club.id);
+
+    // Soma estatísticas das competições em que o clube participa
+    const totalWins = rows.reduce((acc, r) => acc + (r.won || 0), 0);
+    const totalDraws = rows.reduce((acc, r) => acc + (r.drawn || 0), 0);
+    const totalLosses = rows.reduce((acc, r) => acc + (r.lost || 0), 0);
+    const totalPoints = rows.reduce((acc, r) => acc + (r.points || 0), 0);
+    const totalPlayed = totalWins + totalDraws + totalLosses;
+
+    let deltaWins = 0;
+    let deltaDraws = 0;
+    let deltaLosses = 0;
+    let deltaPoints = 0;
+    let deltaMatches = 0;
+
+    if (directMatch) {
+      const own = directMatch.homeClubId === club.id ? directMatch.homeScore! : directMatch.awayScore!;
+      const opp = directMatch.homeClubId === club.id ? directMatch.awayScore! : directMatch.homeScore!;
+      const matchPts = own > opp ? 3 : own === opp ? 1 : 0;
+      deltaWins = matchPts === 3 ? 1 : 0;
+      deltaDraws = matchPts === 1 ? 1 : 0;
+      deltaLosses = matchPts === 0 ? 1 : 0;
+      deltaPoints = matchPts;
+      deltaMatches = 1;
+    } else {
+      // Para clubes de ligas paralelas que avançaram suas rodadas
+      const prevJobMatches = (job.wins || 0) + (job.draws || 0) + (job.losses || 0);
+      if (totalPlayed > prevJobMatches) {
+        deltaWins = Math.max(0, totalWins - (job.wins || 0));
+        deltaDraws = Math.max(0, totalDraws - (job.draws || 0));
+        deltaLosses = Math.max(0, totalLosses - (job.losses || 0));
+        deltaPoints = deltaWins * 3 + deltaDraws;
+        deltaMatches = deltaWins + deltaDraws + deltaLosses;
+      }
+    }
+
+    // Se não houve partida nem avanço de rodada para esse clube, mantém o treinador como está
+    if (deltaMatches === 0 && !directMatch) {
+      return m;
+    }
+
+    const updatedJob = {
+      ...job,
+      wins: (job.wins || 0) + deltaWins,
+      draws: (job.draws || 0) + deltaDraws,
+      losses: (job.losses || 0) + deltaLosses,
+      points: (job.points || 0) + deltaPoints,
+    };
+
     const played = updatedJob.wins + updatedJob.draws + updatedJob.losses;
     const results = Math.round((updatedJob.points - played * job.initialExpectation) * 4);
-    const competitions = Math.round((updatedJob.wins * 2 + updatedJob.draws) / Math.max(1, played) * 8);
+    const competitions = Math.round(((updatedJob.wins * 2 + updatedJob.draws) / Math.max(1, played)) * 8);
     const currentValue = club.squad.reduce((n, p) => n + p.marketValue, 0);
     const squad = Math.round(Math.max(-15, Math.min(15, (currentValue / Math.max(1, job.initialSquadValue) - 1) * 30)));
-    const finances = Math.round(Math.max(-20, Math.min(20, (club.balance - job.initialBalance) / Math.max(1_000_000, job.initialBalance) * 12 - Math.max(0, (club.overdueWages || 0) - job.initialOverdueWages) / 100_000)));
+    const finances = Math.round(
+      Math.max(
+        -20,
+        Math.min(
+          20,
+          ((club.balance - job.initialBalance) / Math.max(1_000_000, job.initialBalance)) * 12 -
+            Math.max(0, (club.overdueWages || 0) - job.initialOverdueWages) / 100_000
+        )
+      )
+    );
+
     const scoreComponents = { results, competitions, squad, finances };
     const seasonScore = results + competitions + squad + finances;
-    const boardRating = Math.max(0, Math.min(100, Math.round(m.boardRating + (points - job.initialExpectation) * 3 + ((club.overdueWages || 0) > job.initialOverdueWages ? -5 : 0) + (club.squad.filter(p => !p.injured && !p.suspended).length < 11 ? -8 : 0))));
+
+    // Cálculo do boardRating com penalidades canônicas de salários e pressão de rebaixamento
+    let boardDelta = Math.round((deltaPoints - deltaMatches * job.initialExpectation) * 3);
+    if ((club.overdueWages || 0) > job.initialOverdueWages) {
+      boardDelta -= 5;
+    }
+    if (club.squad.filter((p) => !p.injured && !p.suspended).length < 11) {
+      boardDelta -= 8;
+    }
+
+    // Pressão por posição de tabela na liga nacional
+    const allDivRows = divStandingsByClub.get(club.id);
+    if (allDivRows) {
+      const pos = allDivRows.findIndex((r) => r.clubId === club.id) + 1;
+      const myRow = allDivRows[pos - 1];
+      if (myRow && myRow.played >= 5) {
+        if (pos > allDivRows.length - 4) {
+          // Z4: diretoria e torcida em crise
+          boardDelta -= 2;
+        } else if (pos === 1) {
+          // Líder
+          boardDelta += 1;
+        }
+      }
+    }
+
+    const boardRating = Math.max(0, Math.min(100, Math.round(m.boardRating + boardDelta)));
     const careerScore = seasonScore + m.jobs.slice(0, -1).reduce((n, j) => n + (j.finalScore || 0), 0);
-    return { ...m, jobs: [...m.jobs.slice(0, -1), updatedJob], seasonScore, careerScore, reputation: Math.max(0, Math.min(100, Math.round(50 + careerScore / 10))), scoreComponents, boardRating };
+    const reputation = Math.max(0, Math.min(100, Math.round(50 + careerScore / 10)));
+
+    return {
+      ...m,
+      jobs: [...m.jobs.slice(0, -1), updatedJob],
+      seasonScore,
+      careerScore,
+      reputation,
+      scoreComponents,
+      boardRating,
+    };
   });
+
   return { ...state, managers };
 }
 
-export function changeManagers(state: GameState): { state: GameState; dismissals: { club: Club; oldCoach: string; newCoach: string }[] } {
+export function changeManagers(state: GameState): {
+  state: GameState;
+  dismissals: { club: Club; oldCoach: string; newCoach: string }[];
+} {
   let managers = [...(state.managers || [])];
   const dismissals: { club: Club; oldCoach: string; newCoach: string }[] = [];
-  const clubs = state.clubs.map(club => {
-    const current = managers.find(m => m.id === club.managerId);
-    const row = state.standings.find(s => s.clubId === club.id);
-    if (!current || !row || row.played < 5 || current.boardRating >= 20 || current.jobs[current.jobs.length - 1]?.startRound === state.currentRound) return club;
+  const clubRowsMap = buildClubRowsMap(state);
+
+  const clubs = state.clubs.map((club) => {
+    const current = managers.find((m) => m.id === club.managerId);
+    const row = findClubStandingRow(state, club.id, clubRowsMap);
+    if (
+      !current ||
+      !row ||
+      row.played < 5 ||
+      current.boardRating >= 20 ||
+      current.jobs[current.jobs.length - 1]?.startRound === state.currentRound
+    ) {
+      return club;
+    }
+
+    // Demissão
     const end = current.jobs.length - 1;
-    managers = managers.map(m => m.id === current.id ? { ...m, currentClubId: undefined, available: true, jobs: m.jobs.map((j, i) => i === end ? { ...j, endSeason: state.seasonYear, endRound: state.currentRound, reason: 'Demissão pela diretoria', finalScore: m.seasonScore } : j), events: [...m.events, `Demitido pelo ${club.name} na rodada ${state.currentRound}`] } : m);
-    const next = managers.find(m => m.available && m.kind === 'ai' && m.id !== current.id);
+    managers = managers.map((m) =>
+      m.id === current.id
+        ? {
+            ...m,
+            currentClubId: undefined,
+            available: true,
+            jobs: m.jobs.map((j, i) =>
+              i === end
+                ? {
+                    ...j,
+                    endSeason: state.seasonYear,
+                    endRound: state.currentRound,
+                    reason: 'Demissão pela diretoria',
+                    finalScore: m.seasonScore,
+                  }
+                : j
+            ),
+            events: [...m.events, `Demitido pelo ${club.name} na rodada ${state.currentRound}`],
+          }
+        : m
+    );
+
+    const next = managers.find((m) => m.available && m.kind === 'ai' && m.id !== current.id);
     const id = next?.id || `manager-ai-${club.id}-${state.seasonYear}-${state.currentRound}`;
-    const name = next?.name || `Técnico ${club.id}-${state.currentRound}`;
-    const job = { clubId: club.id, clubName: club.name, startSeason: state.seasonYear, startRound: state.currentRound, wins: 0, draws: 0, losses: 0, points: 0, initialBalance: club.balance, initialSquadValue: club.squad.reduce((n, p) => n + p.marketValue, 0), initialExpectation: managerExpectation(club, state.clubs), initialOverdueWages: club.overdueWages || 0 };
-    if (next) managers = managers.map(m => m.id === id ? { ...m, available: false, currentClubId: club.id, boardRating: 55, jobs: [...m.jobs, job], events: [...m.events, `Contratado pelo ${club.name} na rodada ${state.currentRound}`] } : m);
-    else managers.push({ id, name, kind: 'ai', reputation: 35, boardRating: 55, riskProfile: 'balanced', currentClubId: club.id, available: false, jobs: [job], titles: [], events: [`Contratado pelo ${club.name} na rodada ${state.currentRound}`], seasonScore: 0, careerScore: 0, scoreComponents: { results: 0, competitions: 0, squad: 0, finances: 0 } });
+    const name = next?.name || `Técnico ${club.name}`;
+    const job = {
+      clubId: club.id,
+      clubName: club.name,
+      startSeason: state.seasonYear,
+      startRound: state.currentRound,
+      wins: 0,
+      draws: 0,
+      losses: 0,
+      points: 0,
+      initialBalance: club.balance,
+      initialSquadValue: club.squad.reduce((n, p) => n + p.marketValue, 0),
+      initialExpectation: managerExpectation(club, state.clubs),
+      initialOverdueWages: club.overdueWages || 0,
+    };
+
+    if (next) {
+      managers = managers.map((m) =>
+        m.id === id
+          ? {
+              ...m,
+              available: false,
+              currentClubId: club.id,
+              boardRating: 55,
+              jobs: [...m.jobs, job],
+              events: [...m.events, `Contratado pelo ${club.name} na rodada ${state.currentRound}`],
+            }
+          : m
+      );
+    } else {
+      managers.push({
+        id,
+        name,
+        kind: 'ai',
+        reputation: 35,
+        boardRating: 55,
+        riskProfile: 'balanced',
+        currentClubId: club.id,
+        available: false,
+        jobs: [job],
+        titles: [],
+        events: [`Contratado pelo ${club.name} na rodada ${state.currentRound}`],
+        seasonScore: 0,
+        careerScore: 0,
+        scoreComponents: { results: 0, competitions: 0, squad: 0, finances: 0 },
+      });
+    }
+
     dismissals.push({ club, oldCoach: current.name, newCoach: name });
-    return { ...club, managerId: id, coach: name, managerStrategy: next?.riskProfile || 'balanced', boardActions: [...(club.boardActions || []), `Novo técnico adota estratégia ${next?.riskProfile || 'balanced'}`] };
+    return {
+      ...club,
+      managerId: id,
+      coach: name,
+      managerStrategy: next?.riskProfile || 'balanced',
+      boardActions: [
+        ...(club.boardActions || []),
+        `Novo técnico adota estratégia ${next?.riskProfile || 'balanced'}`,
+      ],
+    };
   });
+
   return { state: { ...state, clubs, managers }, dismissals };
 }
 
@@ -451,19 +723,33 @@ export function runAiMarket(state: GameState): GameState {
 
 export function rolloverManagers(state: GameState): GameState {
   const champion = state.standings[0]?.clubId;
+  const history = state.championshipHistory || [];
+
   const managers = (state.managers || []).map(m => {
     if (!m.currentClubId) return m;
     const c = state.clubs.find(x => x.id === m.currentClubId);
     if (!c) return m;
     const last = m.jobs.length - 1;
-    const titleBonus = champion === c.id ? 20 : 0;
+
+    // Títulos conquistados pelo clube nesta temporada (em qualquer divisão ou copa)
+    const clubTitles = history.filter(
+      (r) => r.seasonYear === state.seasonYear && r.championClubId === c.id
+    );
+    const wonAnyTitle = clubTitles.length > 0 || champion === c.id;
+    const titleBonus = clubTitles.length > 0 ? clubTitles.length * 20 : (champion === c.id ? 20 : 0);
+
     const old = { ...m.jobs[last], endSeason: state.seasonYear, endRound: 38, reason: 'Fim da temporada', finalScore: m.seasonScore + titleBonus };
     const next = { clubId: c.id, clubName: c.name, startSeason: state.seasonYear + 1, startRound: 1, wins: 0, draws: 0, losses: 0, points: 0, initialBalance: c.balance, initialSquadValue: c.squad.reduce((n, p) => n + p.marketValue, 0), initialExpectation: managerExpectation(c, state.clubs), initialOverdueWages: c.overdueWages || 0 };
-    const title = champion === c.id ? `${state.seasonYear} · ${state.nationalLeagueName || state.leagueName || 'Campeonato'}` : undefined;
+
+    const earnedTitles = clubTitles.map((r) => `${r.seasonYear} · ${r.competitionName}`);
+    if (earnedTitles.length === 0 && champion === c.id) {
+      earnedTitles.push(`${state.seasonYear} · ${state.nationalLeagueName || state.leagueName || 'Campeonato'}`);
+    }
+
     const careerScore = m.careerScore + titleBonus;
     const reputation = Math.max(0, Math.min(100, Math.round(50 + careerScore / 10)));
-    const boardRating = Math.max(0, Math.min(100, Math.round(m.boardRating ?? 60)));
-    return { ...m, jobs: [...m.jobs.slice(0, -1), old, next], titles: title ? [...m.titles, title] : m.titles, careerScore, seasonScore: 0, scoreComponents: { results: 0, competitions: 0, squad: 0, finances: 0 }, reputation, boardRating };
+    const boardRating = Math.max(0, Math.min(100, Math.round((m.boardRating ?? 60) + 10)));
+    return { ...m, jobs: [...m.jobs.slice(0, -1), old, next], titles: earnedTitles.length > 0 ? [...m.titles, ...earnedTitles] : m.titles, careerScore, seasonScore: 0, scoreComponents: { results: 0, competitions: 0, squad: 0, finances: 0 }, reputation, boardRating };
   });
 
   // Roll contracts: player ages + 1, contractYears - 1
