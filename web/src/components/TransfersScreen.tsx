@@ -154,12 +154,13 @@ export const TransfersScreen: React.FC = () => {
     }, 4500);
   };
 
-  const formatMoney = (val: number) => {
+  const formatMoney = (val: number | undefined | null) => {
+    const num = typeof val === 'number' && !isNaN(val) ? val : 0;
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
       currency: 'BRL',
       maximumFractionDigits: 0,
-    }).format(val);
+    }).format(num);
   };
 
   const squadCount = userClub.squad.length;
@@ -320,13 +321,16 @@ export const TransfersScreen: React.FC = () => {
       showToast('success', `Contrato de ${renewingPlayer.name} renovado com sucesso por ${renewingYears} anos!`);
       setRenewingPlayer(null);
       setCounterOfferModal(null);
-    } else if (res.counterOffer) {
+    } else if (res.counterOffer != null) {
+      const demandedSalary = typeof res.counterOffer === 'number'
+        ? res.counterOffer
+        : Number((res.counterOffer as any).demandedSalary ?? (res.counterOffer as any).demanded ?? (res.counterOffer as any)) || 0;
       setCounterOfferModal({
         player: renewingPlayer,
         years: renewingYears,
-        demanded: res.counterOffer.demandedSalary,
+        demanded: demandedSalary,
       });
-      setRenewingSalary(res.counterOffer.demandedSalary);
+      setRenewingSalary(demandedSalary);
     } else {
       showToast('error', res.error || 'Falha ao renovar contrato.');
     }

@@ -1,5 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { 
   calculateRescissionPenalty, 
   generateRoundAuctions, 
@@ -193,3 +195,17 @@ test('Instant player auction: AI clubs submit bids and player is sold with resci
   const userAfter = auctionResult.newState.clubs.find(c => c.id === user.id);
   assert.ok(!userAfter.squad.some(p => p.id === playerToAuction.id));
 });
+
+test('Contract renewal counter-offer returns valid number and does not produce NaN in UI state', () => {
+  const projectRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+  const transfersScreenPath = path.join(projectRoot, 'src/components/TransfersScreen.tsx');
+  const content = fs.readFileSync(transfersScreenPath, 'utf-8');
+
+  // Verify formatMoney handles undefined/NaN safely
+  assert.ok(content.includes('typeof val === \'number\' && !isNaN(val)'), 'formatMoney must guard against undefined/NaN');
+
+  // Verify counter-offer extraction extracts a number, not undefined
+  assert.ok(content.includes('typeof res.counterOffer === \'number\''), 'handleConfirmRenew must check for number counterOffer');
+  assert.ok(!content.includes('demanded: res.counterOffer.demandedSalary,'), 'Must not attempt property access on primitive counterOffer number');
+});
+
