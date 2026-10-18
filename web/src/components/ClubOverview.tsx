@@ -334,8 +334,9 @@ export const ClubOverview: React.FC = () => {
 
     if (selectedOtherLeague) {
       if (selectedOtherLeague.id === 'continental-sister') {
+        const compType = selectedOtherLeague.leagueName.includes('Libertadores') ? 'libertadores' : 'sulamericana';
         return getCompetitionZones({
-          competitionType: 'sulamericana',
+          competitionType: compType,
           totalTeams: teamsPerTableOrGroup,
         });
       }

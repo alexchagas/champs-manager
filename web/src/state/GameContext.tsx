@@ -994,7 +994,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       (updatedUserClub.countryId ?? 29) === 29 && userDivision === 1
         ? gameState.standingsNacional
         : gameState.nationalDivisions?.find(d => d.countryId === 29 && d.division === 1)?.standings;
-    const seasonRecords = (gameState.tournamentHistory || []).filter(r => r.seasonYear === gameState.seasonYear);
+    const seasonRecords = (gameState.championshipHistory || []).filter(r => r.seasonYear === gameState.seasonYear);
     const qualifiers = computeContinentalQualifiers(updatedClubs, serieAStandings, seasonRecords);
 
     // 4. State overrides com a mobilidade estadual canônica
@@ -1062,7 +1062,12 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const nextContinentalCompetitions = buildInitialContinentalCompetitions(
       updatedUserClub,
       updatedClubs,
-      nextYear
+      nextYear,
+      {
+        qualifiedLibertadoresIds: qualifiers.libertadoresClubIds,
+        qualifiedPreLibertadoresIds: qualifiers.preLibertadoresClubIds,
+        qualifiedSulAmericanaIds: qualifiers.sulAmericanaClubIds,
+      }
     );
 
     const nextSeasonState: GameState = {

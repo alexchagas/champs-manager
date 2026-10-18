@@ -244,7 +244,51 @@ export function detectNewlyCompletedCompetitions(rawState: GameState): Champions
   const continentalTypes = ['libertadores', 'sulamericana', 'champions'] as const;
   for (const cType of continentalTypes) {
     const cMatches = calendar.filter(f => f.competitionType === cType);
-    if (cMatches.length === 0) continue;
+    if (cMatches.length === 0) {
+      const parallelComp = state.continentalCompetitions?.find(c => {
+        if (cType === 'sulamericana') return c.leagueName.includes('Sul-Americana');
+        if (cType === 'libertadores') return c.leagueName.includes('Libertadores');
+        if (cType === 'champions') return c.leagueName.includes('Champions');
+        return false;
+      });
+      if (parallelComp && parallelComp.standings.length >= 2) {
+        const allNationalPlayed = calendar.filter(f => f.competitionType === 'nacional').every(f => f.played);
+        if (parallelComp.currentRound >= parallelComp.totalRounds || allNationalPlayed) {
+          const cName = parallelComp.leagueName;
+          if (!isAlreadyRecorded(cType, cName)) {
+            const sorted = [...parallelComp.standings].sort(
+              (a, b) => b.points - a.points || b.won - a.won || b.goalDiff - a.goalDiff || b.goalsFor - a.goalsFor
+            );
+            const champRow = sorted[0];
+            const runnerRow = sorted[1];
+            const champ = getClub(champRow.clubId);
+            const runner = getClub(runnerRow.clubId);
+            const isUserChamp = champRow.clubId === state.userClubId;
+            const isUserRunner = runnerRow.clubId === state.userClubId;
+            const userPosition = isUserChamp ? 'Campeão 🏆' : isUserRunner ? 'Vice-campeão 🥈' : 'Participante';
+            const prize = getCompetitionPrizeMoney(cType, isUserChamp, isUserRunner);
+
+            records.push({
+              id: `${seasonYear}-${cType}`,
+              seasonYear,
+              competitionType: cType,
+              competitionName: cName,
+              championClubId: champRow.clubId,
+              championClubName: champ?.name || champRow.clubName,
+              championClubCrest: champ?.crestMiniUrl || champ?.crestUrl,
+              runnerUpClubId: runnerRow.clubId,
+              runnerUpClubName: runner?.name || runnerRow.clubName,
+              runnerUpClubCrest: runner?.crestMiniUrl || runner?.crestUrl,
+              finalScoreText: `${champRow.points} pts`,
+              userPositionText: userPosition,
+              userPrizeMoney: isUserChamp || isUserRunner ? prize : undefined,
+              managerName: isUserChamp ? state.managerName : undefined,
+            });
+          }
+        }
+      }
+      continue;
+    }
     const cName = state.continentalCupName || cMatches[0].competitionName || (cType === 'champions' ? 'UEFA Champions League' : 'Copa Libertadores');
     if (isAlreadyRecorded(cType, cName)) continue;
 

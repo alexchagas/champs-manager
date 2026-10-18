@@ -3,7 +3,11 @@ import { generateLeagueCalendar, initializeStandings, sortStandings, sortClubsBy
 import { getLeaguesByCountry, getClubsByLeague, getAllLeagues } from '../data/teamsDatabase.ts';
 import { getStateDivisionInfo, getUserStateDivision, getStateLeagueRule } from '../data/stateLeagueFormulas.ts';
 import { getDivisionConfig, formatGroupLabel } from '../data/leagueConfigurations.ts';
-import { getContinentalTournamentField, SOUTH_AMERICA_COUNTRY_IDS } from '../data/continentalRepresentatives.ts';
+import {
+  getContinentalTournamentField,
+  SOUTH_AMERICA_COUNTRY_IDS,
+  type ContinentalTournamentOptions,
+} from '../data/continentalRepresentatives.ts';
 
 // Países europeus / hemisfério norte com temporada cruzada (Agosto a Maio)
 export const CROSS_SEASON_COUNTRY_IDS = new Set([
@@ -295,7 +299,8 @@ export function buildInitialStateDivisions(
 export function buildInitialContinentalCompetitions(
   sourceClub: Club,
   allAvailableClubs: Club[] = [],
-  seasonYear = 2026
+  seasonYear = 2026,
+  options?: ContinentalTournamentOptions
 ): OtherLeagueStandings[] {
   const sourceCountryId = sourceClub.countryId || 29;
   if (!SOUTH_AMERICA_COUNTRY_IDS.has(sourceCountryId)) return [];
@@ -303,6 +308,7 @@ export function buildInitialContinentalCompetitions(
   const primaryContinental = getContinentalTournamentField(sourceClub, allAvailableClubs, undefined, {
     teamCount: 32,
     seed: seasonYear,
+    ...options,
   });
   const sisterType = primaryContinental.type === 'sulamericana' ? 'libertadores' : 'sulamericana';
   const primaryIds = new Set(primaryContinental.clubs.map((c) => c.id));
@@ -312,6 +318,7 @@ export function buildInitialContinentalCompetitions(
     teamCount: 32,
     seed: seasonYear + 100,
     excludeClubIds: primaryIds,
+    ...options,
   });
   if (sisterContinental.clubs.length < 16) return [];
 
@@ -458,6 +465,15 @@ export function advanceOtherLeaguesProgress(
             Math.max(0.0, ((context.currentRound || 14) - 13) / Math.max(1, (context.totalRounds || 38) - 13))
           );
           targetRound = Math.min(entry.totalRounds, Math.round(entry.totalRounds * natProgress));
+        }
+      } else if (entry.id === 'continental-sister') {
+        // Fase de grupos continental (2º semestre: semanas 16 a 26 = 6 rodadas)
+        if (context.currentSemester === 1) {
+          targetRound = 0;
+        } else {
+          const contRound = Math.max(0, (context.currentRound || 14) - 14);
+          const contPlayed = Math.min(entry.totalRounds, Math.floor(contRound / 2));
+          targetRound = contPlayed;
         }
       } else if (isOtherCrossSeason) {
         if (userProgressRatio <= 0.4) {

@@ -175,7 +175,8 @@ export function computeContinentalQualifiers(
         rec.competitionType === 'sulamericana' ||
         rec.competitionType === 'copa'
       ) {
-        const winnerClub = pool.find((c) => c.id === rec.winnerClubId);
+        const winnerId = rec.winnerClubId ?? (rec as any).championClubId;
+        const winnerClub = pool.find((c) => c.id === winnerId);
         if (winnerClub && (winnerClub.countryId ?? 29) === 29) {
           libertadoresDirectSet.add(winnerClub.id);
         }
