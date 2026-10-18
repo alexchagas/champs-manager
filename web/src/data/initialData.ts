@@ -252,6 +252,20 @@ export function createNewGame(
 
   const userClub = clonedClubs.find((c) => c.id === userClubId) || clonedClubs[0];
 
+  // If user chooses an access club (division >= 5 in Brazil), they participate in Série D (division 4)
+  if ((userClub.division ?? 1) >= 5 && (userClub.countryId || 29) === 29) {
+    userClub.division = 4;
+    userClub.divisionName = 'Série D';
+    const compClubIds = new Set(competitionClubs.map((c) => c.id));
+    for (const c of clonedClubs) {
+      if (c.division === 4 && !compClubIds.has(c.id)) {
+        c.division = 5;
+        c.divisionName = 'Acesso';
+        break;
+      }
+    }
+  }
+
   // Generate one chronological calendar from the clubs active in this season.
   const nationalClubs = competitionClubs.map(c => clonedClubs.find(active => active.id === c.id)!).filter(Boolean);
   const twoSemesterData = generateTwoSemesterCalendar(userClub, nationalClubs, clonedClubs);

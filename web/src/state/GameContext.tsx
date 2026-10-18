@@ -987,7 +987,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const updatedUserClub = updatedClubs.find(c => c.id === gameState.userClubId) || updatedClubs[0];
 
     // 2. Determina os clubes da divisão nacional do usuário para a nova temporada
-    const userDivision = updatedUserClub.division ?? 1;
+    const userDivision = (updatedUserClub.division ?? 1) >= 5 && (updatedUserClub.countryId ?? 29) === 29
+      ? 4
+      : (updatedUserClub.division ?? 1);
     let nationalClubs = updatedClubs.filter(
       c => c.countryId === (updatedUserClub.countryId ?? 29) && c.division === userDivision
     );
