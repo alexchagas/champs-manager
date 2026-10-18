@@ -1,5 +1,6 @@
 import type { Club, CountryInfo, LeagueInfo, StateInfo } from '../types/index.ts';
 import databaseRaw from './teamsDatabase.json' with { type: 'json' };
+import { formatGroupLabel, getDivisionConfig } from './leagueConfigurations.ts';
 
 interface DatabaseSchema {
   version: number;
@@ -16,6 +17,70 @@ const database: DatabaseSchema = databaseRaw as DatabaseSchema;
 const clubsById = new Map<number, Club>();
 for (const club of database.clubs) {
   clubsById.set(club.id, club);
+}
+
+export const PRE_LIB_PLACEHOLDER_IDS = [990001, 990002, 990003, 990004];
+
+export function isPreLibPlaceholderId(id?: number): boolean {
+  return typeof id === 'number' && id >= 990001 && id <= 990004;
+}
+
+function makePlaceholderSquad(startId: number) {
+  const positions: ('GOL' | 'ZAG' | 'LAT' | 'VOL' | 'MEI' | 'ATA')[] = [
+    'GOL', 'GOL',
+    'ZAG', 'ZAG', 'ZAG', 'LAT', 'LAT',
+    'VOL', 'VOL', 'MEI', 'MEI', 'MEI',
+    'ATA', 'ATA', 'ATA', 'ATA',
+  ];
+  return positions.map((pos, idx) => ({
+    id: startId + idx,
+    name: `Atleta ${idx + 1}`,
+    age: 23,
+    position: pos,
+    foot: 'D' as const,
+    strength: 65,
+    energy: 100,
+    salary: 15000,
+    marketValue: 800000,
+    isStarter: idx < 11,
+    isStar: false,
+    isWorldTop: false,
+    skill1: 'Passe',
+    skill2: 'Desarme',
+    goals: 0,
+    assists: 0,
+    yellowCards: 0,
+    redCards: 0,
+    injured: false,
+    suspended: false,
+    contractYears: 3,
+  }));
+}
+
+export const PRE_LIB_PLACEHOLDER_CLUBS: Club[] = [1, 2, 3, 4].map((num) => ({
+  id: 990000 + num,
+  name: `Vencedor Pré-Lib G${num}`,
+  shortName: `Pré-Lib G${num}`,
+  countryId: 0,
+  division: 1,
+  reputation: 3,
+  level: 10,
+  primaryColor: '#f59e0b',
+  secondaryColor: '#1e293b',
+  stadium: 'A definir',
+  capacity: 25000,
+  coach: 'Técnico a definir',
+  balance: 50000000,
+  ticketPrice: 40,
+  crestUrl: '',
+  crestMiniUrl: '',
+  tactics: { formation: '4-4-2', mentality: 'Equilibrada', penaltyTakerId: 0, freeKickTakerId: 0, cornerTakerId: 0, captainId: 0 },
+  squad: makePlaceholderSquad(991000 + num * 50),
+}));
+
+for (const ph of PRE_LIB_PLACEHOLDER_CLUBS) {
+  clubsById.set(ph.id, ph);
+  database.clubs.push(ph);
 }
 
 export function applyClubEdits(edits: Club[]): void {
@@ -173,47 +238,77 @@ export function getCompetitionClubs(selectedClubId: number, customPool?: Club[])
   countryName: string;
 } {
   const selectedClub = (customPool ? customPool.find((c) => c.id === selectedClubId) : undefined) || clubsById.get(selectedClubId) || database.clubs[0];
+  const countryId = selectedClub.countryId || 29;
+  const isBrazil = countryId === 29;
   const league = findLeagueForClub(selectedClub.id);
 
   let competitionClubs: Club[] = [];
   let leagueName = league?.name || selectedClub.leagueName || 'Campeonato Nacional';
   let divisionName = league?.divisionName || selectedClub.divisionName || '1ª Divisão';
-  const country = countriesById.get(selectedClub.countryId || 29);
-  const countryName = country?.name || (selectedClub as { countryName?: string }).countryName || (selectedClub.countryId === 29 ? 'Brasil' : 'Internacional');
+  const country = countriesById.get(countryId);
+  const countryName = country?.name || (selectedClub as { countryName?: string }).countryName || (isBrazil ? 'Brasil' : 'Internacional');
 
-  if (league && league.clubIds.length > 0) {
+  const isBrazilSerieDOrAccess = isBrazil && ((selectedClub.division ?? 1) >= 4 || league?.division === 4 || (league?.division ?? 1) >= 5);
+
+  if (isBrazilSerieDOrAccess) {
+    const serieDLeague = database.leagues.find((l) => l.countryId === 29 && l.division === 4) || league;
+    const serieDClubs = serieDLeague
+      ? (customPool
+          ? serieDLeague.clubIds.map((id) => customPool.find((c) => c.id === id) || clubsById.get(id)!).filter(Boolean)
+          : getClubsByLeague(serieDLeague))
+      : [];
+
+    competitionClubs = [...serieDClubs];
+
+    // If selectedClub is an access club (Division 5) not already among the 64 Série D clubs,
+    // replace the last club in its regional group (matching stateCode) or the 64th club.
+    if (competitionClubs.length > 0 && !competitionClubs.some((c) => c.id === selectedClub.id)) {
+      let replaceIdx = -1;
+      for (let i = competitionClubs.length - 1; i >= 0; i--) {
+        if (selectedClub.stateCode && competitionClubs[i].stateCode === selectedClub.stateCode) {
+          replaceIdx = i;
+          break;
+        }
+      }
+      if (replaceIdx < 0) replaceIdx = competitionClubs.length - 1;
+      competitionClubs[replaceIdx] = selectedClub;
+    }
+
+    const idx = competitionClubs.findIndex((c) => c.id === selectedClub.id);
+    const groupSize = 8;
+    const groupIndex = idx >= 0 ? Math.floor(idx / groupSize) : 0;
+    leagueName = 'Brasileirão Série D';
+    divisionName = `Série D (Grupo ${formatGroupLabel(groupIndex)})`;
+  } else if (league && league.clubIds.length > 0) {
     const allLeagueClubs = customPool
       ? league.clubIds.map((id) => customPool.find((c) => c.id === id) || clubsById.get(id)!).filter(Boolean)
       : getClubsByLeague(league);
 
-    let isSerieDGroup = false;
-    // If it's Série D (64 clubs), take the 8-team subgroup containing the chosen club
-    if (allLeagueClubs.length > 24) {
-      isSerieDGroup = true;
-      const idx = allLeagueClubs.findIndex((c) => c.id === selectedClub.id);
-      const groupSize = 8;
-      const groupIndex = idx >= 0 ? Math.floor(idx / groupSize) : 0;
-      const start = groupIndex * groupSize;
-      competitionClubs = allLeagueClubs.slice(start, start + groupSize);
-      leagueName = 'Brasileirão Série D';
-      divisionName = `Série D (Grupo ${groupIndex + 1})`;
+    const divConfig = getDivisionConfig(countryId, selectedClub.division || league.division || 1, countryName, allLeagueClubs.length);
+    const targetCount = divConfig?.teamCount || 20;
+
+    if (divConfig?.groupCount && divConfig.groupCount > 1) {
+      competitionClubs = allLeagueClubs.slice(0, Math.max(targetCount, allLeagueClubs.length));
+    } else if (allLeagueClubs.length > Math.max(24, targetCount)) {
+      competitionClubs = allLeagueClubs.slice(0, targetCount);
+      if (!competitionClubs.some((c) => c.id === selectedClub.id)) {
+        competitionClubs[competitionClubs.length - 1] = selectedClub;
+      }
     } else {
       competitionClubs = allLeagueClubs;
     }
   }
 
   // Canonicalize Brazilian national competition name
-  if ((selectedClub.countryId || 29) === 29) {
+  if (isBrazil) {
     leagueName = getCanonicalNationalLeagueName(selectedClub);
   }
 
-  // If division has fewer than 16 clubs (e.g. access pool, incomplete division like Spain Div 7 or England Div 7):
+  // If division has fewer than 16 clubs (e.g. incomplete division like Spain Div 7 or England Div 7):
   // Supplement with peers of similar level/reputation from that same country to build a viable competitive tournament group
-  // (Do NOT pad official 8-club regional groups from Série D with unrelated access clubs)
-  const isSerieD = divisionName.includes('Série D') || (selectedClub.division === 4 && selectedClub.countryId === 29);
-  if (!isSerieD && competitionClubs.length < 16) {
+  if (!isBrazilSerieDOrAccess && competitionClubs.length < 16) {
     const pool = customPool || database.clubs;
-    const sameCountry = pool.filter((c) => c.countryId === (selectedClub.countryId || 29));
+    const sameCountry = pool.filter((c) => c.countryId === countryId);
     
     if (sameCountry.length > competitionClubs.length) {
       const existingIds = new Set(competitionClubs.map((c) => c.id));
@@ -265,9 +360,9 @@ export function getCanonicalNationalLeagueName(club: {
   const isBrazil = (club.countryId ?? 29) === 29;
   if (isBrazil) {
     const div = club.division;
-    const letter = div === 1 ? 'A' : div === 2 ? 'B' : div === 3 ? 'C' : div === 4 ? 'D' : '';
+    const letter = div === 1 ? 'A' : div === 2 ? 'B' : div === 3 ? 'C' : (div && div >= 4) ? 'D' : '';
     if (letter) return `Brasileirão Série ${letter}`;
-    if (club.divisionName && /^Série [ABCD]/i.test(club.divisionName)) {
+    if (club.divisionName && /Série ([ABCD])/i.test(club.divisionName)) {
       const match = club.divisionName.match(/Série ([ABCD])/i);
       if (match) return `Brasileirão Série ${match[1].toUpperCase()}`;
     }

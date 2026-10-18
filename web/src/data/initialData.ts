@@ -1,9 +1,22 @@
 import type { Club, GameOptions, GameState, Manager } from '../types/index.ts';
-import { generateLeagueCalendar, generateTwoSemesterCalendar, initializeStandings, sortStandings } from './calendarGenerator.ts';
+import {
+  generateLeagueCalendar,
+  generateTwoSemesterCalendar,
+  initializeContinentalStandings,
+  initializeEstadualStandings,
+  initializeNacionalStandings,
+  initializeStandings,
+  sortStandings,
+} from './calendarGenerator.ts';
 import { getContinentalTournamentField } from './continentalRepresentatives.ts';
 import { getAllClubs, getCompetitionClubs } from './teamsDatabase.ts';
 import { generateKickoffNews } from '../engine/newsEngine.ts';
-import { buildInitialActiveOtherLeagues, buildInitialNationalDivisions, buildInitialStateDivisions } from '../engine/crossSeasonSimulation.ts';
+import {
+  buildInitialActiveOtherLeagues,
+  buildInitialContinentalCompetitions,
+  buildInitialNationalDivisions,
+  buildInitialStateDivisions,
+} from '../engine/crossSeasonSimulation.ts';
 import {
   initializeNationalTeams,
   isWorldCupYear,
@@ -211,8 +224,16 @@ export function createNewGame(
     (sourceClub.stateId != null && c.stateId === sourceClub.stateId) ||
     (sourceClub.stateCode != null && c.stateCode === sourceClub.stateCode)
   )) : [];
-  const continentalField = getContinentalTournamentField(sourceClub, basePool).clubs;
-  const activeClubs = [...new Map([...competitionClubs, ...statePool, ...continentalField, ...activeCountryClubs].map(c => [c.id, c])).values()];
+  const continentalInfo = getContinentalTournamentField(sourceClub, basePool);
+  const continentalField = continentalInfo.clubs;
+  const preLibField = continentalInfo.preLibertadoresClubs || [];
+  const sisterContinentalField = getContinentalTournamentField(sourceClub, basePool, undefined, {
+    forceType: 'sulamericana',
+    userParticipates: false,
+    teamCount: 32,
+    excludeClubIds: new Set([...continentalField, ...preLibField].map(c => c.id)),
+  }).clubs;
+  const activeClubs = [...new Map([...competitionClubs, ...statePool, ...continentalField, ...preLibField, ...sisterContinentalField, ...activeCountryClubs].map(c => [c.id, c])).values()];
   const clonedClubs: Club[] = JSON.parse(JSON.stringify(activeClubs)).map((c: Club) => ({
     ...c,
     debt: c.debt ?? 0,
@@ -235,11 +256,9 @@ export function createNewGame(
   const nationalClubs = competitionClubs.map(c => clonedClubs.find(active => active.id === c.id)!).filter(Boolean);
   const twoSemesterData = generateTwoSemesterCalendar(userClub, nationalClubs, clonedClubs);
   const calendar = twoSemesterData.calendar;
-  const standingsEstadual = sortStandings(initializeStandings(twoSemesterData.semester1Clubs));
-  const standingsNacional = sortStandings(initializeStandings(twoSemesterData.semester2Clubs));
-  const standingsContinental = sortStandings(
-    initializeStandings(twoSemesterData.continentalClubs, (_c, idx) => 'ABCD'[Math.floor(idx / 4)] || 'A')
-  );
+  const standingsEstadual = initializeEstadualStandings(userClub, twoSemesterData.semester1Clubs, twoSemesterData.estadualTier);
+  const standingsNacional = initializeNacionalStandings(userClub, twoSemesterData.semester2Clubs);
+  const standingsContinental = initializeContinentalStandings(twoSemesterData.continentalClubs);
   const standings = twoSemesterData.semester1Clubs.length ? standingsEstadual : standingsNacional;
 
   const seasonYear = 2026;
@@ -251,6 +270,12 @@ export function createNewGame(
   );
 
   const stateDivisions = buildInitialStateDivisions(
+    userClub,
+    clonedClubs,
+    seasonYear
+  );
+
+  const continentalCompetitions = buildInitialContinentalCompetitions(
     userClub,
     clonedClubs,
     seasonYear
@@ -343,7 +368,11 @@ export function createNewGame(
     standingsContinental,
     nationalDivisions,
     stateDivisions,
+    continentalCompetitions,
     otherLeagues,
+    stateTier: twoSemesterData.estadualTier ?? 1,
+    promotedStateClubIds: [],
+    relegatedStateClubIds: [],
     clubs: clonedClubs,
     calendar,
     standings,

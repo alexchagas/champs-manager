@@ -6,6 +6,7 @@ import {
   DollarSign, 
   ChevronLeft, 
   ChevronRight, 
+  ChevronDown,
   Play, 
   TrendingUp, 
   Users, 
@@ -30,7 +31,7 @@ import {
 } from 'lucide-react';
 import { calculateSectorStrength, getSquadStarters } from '../engine/simulationEngine';
 import { sound } from '../audio/soundEngine';
-import { getAllClubs, getStateByCode, getStateById, findLeagueForClub } from '../data/teamsDatabase';
+import { getAllClubs, getStateByCode, getStateById, findLeagueForClub, isPreLibPlaceholderId } from '../data/teamsDatabase';
 import { getCompetitionZones, getZoneForPosition } from '../engine/competitionZones';
 import { ClubCrest } from './ClubCrest';
 import { getClubTheme } from '../theme/clubTheme';
@@ -46,6 +47,7 @@ export const ClubOverview: React.FC = () => {
     setScreen, 
     currentRoundFixtures,
     completeRound,
+    advanceRound,
     viewClub,
     markNewsAsRead
   } = useGame();
@@ -84,8 +86,9 @@ export const ClubOverview: React.FC = () => {
   const allExternalLeagues = useMemo(() => [
     ...(gameState.stateDivisions || []),
     ...(gameState.nationalDivisions || []),
+    ...(gameState.continentalCompetitions || []),
     ...(gameState.otherLeagues || []),
-  ], [gameState.stateDivisions, gameState.nationalDivisions, gameState.otherLeagues]);
+  ], [gameState.stateDivisions, gameState.nationalDivisions, gameState.continentalCompetitions, gameState.otherLeagues]);
 
   const selectedOtherLeague = allExternalLeagues.find((l) => l.id === activeCompetitionTab);
   const tableIsOtherLeague = !!selectedOtherLeague;
@@ -97,9 +100,12 @@ export const ClubOverview: React.FC = () => {
 
   const isNationalDiv = !!gameState.nationalDivisions?.some((d) => d.id === selectedOtherLeague?.id);
   const isStateDiv = !!gameState.stateDivisions?.some((d) => d.id === selectedOtherLeague?.id);
+  const isSisterContinental = !!gameState.continentalCompetitions?.some((d) => d.id === selectedOtherLeague?.id) || selectedOtherLeague?.id === 'continental-sister';
 
   const tableTitle = tableIsOtherLeague
     ? (isNationalDiv || isStateDiv
+        ? selectedOtherLeague.leagueName
+        : isSisterContinental
         ? selectedOtherLeague.leagueName
         : selectedOtherLeague.countryId === userClub.countryId
         ? `${selectedOtherLeague.leagueName} (${selectedOtherLeague.seasonLabel})`
@@ -125,11 +131,12 @@ export const ClubOverview: React.FC = () => {
   const availableCompetitionTabs = useMemo(() => {
     const list: { id: string; label: string; isCurrent: boolean; badge?: string; tier?: number }[] = [];
     if (gameState.standingsEstadual && gameState.standingsEstadual.length > 0) {
+      const isTier2 = gameState.stateTier === 2;
       list.push({
         id: 'estadual',
         label: gameState.stateChampionshipName ? gameState.stateChampionshipName.split('(')[0].trim() : 'Estadual',
-        badge: '1ª Divisão',
-        tier: 1,
+        badge: isTier2 ? '2ª Divisão' : '1ª Divisão', // badge: '1ª Divisão'
+        tier: isTier2 ? 2 : 1,
         isCurrent: currentCompetition === 'estadual',
       });
     }
@@ -138,15 +145,15 @@ export const ClubOverview: React.FC = () => {
         list.push({
           id: sDiv.id,
           label: sDiv.leagueName,
-          badge: '2ª Divisão',
-          tier: 2,
+          badge: sDiv.division === 1 ? '1ª Divisão' : '2ª Divisão', // badge: '2ª Divisão'
+          tier: sDiv.division,
           isCurrent: false,
         });
       });
     }
     if (gameState.standingsNacional && gameState.standingsNacional.length > 0) {
       const divisionLetter = userClub.countryId === 29
-        ? (userClub.division === 1 ? 'A' : userClub.division === 2 ? 'B' : userClub.division === 3 ? 'C' : userClub.division === 4 ? 'D' : '')
+        ? (userClub.division === 1 ? 'A' : userClub.division === 2 ? 'B' : userClub.division === 3 ? 'C' : userClub.division >= 4 ? 'D' : '')
         : '';
       const nationalLabel = divisionLetter
         ? `Brasileirão Série ${divisionLetter}`
@@ -162,6 +169,15 @@ export const ClubOverview: React.FC = () => {
         id: 'continental',
         label: gameState.continentalCupName || 'Libertadores',
         isCurrent: currentCompetition === 'libertadores' || currentCompetition === 'sulamericana' || currentCompetition === 'champions',
+      });
+    }
+    if (gameState.continentalCompetitions && gameState.continentalCompetitions.length > 0) {
+      gameState.continentalCompetitions.forEach(sisterContinental => {
+        list.push({
+          id: sisterContinental.id,
+          label: sisterContinental.leagueName,
+          isCurrent: false,
+        });
       });
     }
     const hasCopaMatches = gameState.calendar.some(f => f.competitionType === 'copa');
@@ -197,35 +213,42 @@ export const ClubOverview: React.FC = () => {
     return list;
   }, [gameState, currentCompetition, userClub.countryId, userClub.division]);
 
-  const continentalGroups = useMemo(() => {
-    if (!tableIsContinental) return [];
-    const set = new Set<string>();
-    for (const row of standingsList) {
-      if (row.group) set.add(row.group);
-      else {
-        const fix = gameState.calendar.find(f => (f.homeClubId === row.clubId || f.awayClubId === row.clubId) && f.competitionRound?.startsWith('Grupo '));
-        const g = fix?.competitionRound?.match(/Grupo ([A-Z])/)?.[1];
-        if (g) set.add(g);
-      }
-    }
-    return Array.from(set).sort();
-  }, [tableIsContinental, standingsList, gameState.calendar]);
-
   const enrichedStandingsList = useMemo(() => {
-    if (!tableIsContinental) return standingsList;
+    const matchesTargetComp = (compType?: string) => {
+      if (tableIsOtherLeague) return false;
+      if (tableIsContinental) return compType === 'libertadores' || compType === 'sulamericana' || compType === 'champions';
+      if (tableIsEstadual) return compType === 'estadual';
+      if (tableIsNacional) return compType === 'nacional';
+      return false;
+    };
     return standingsList.map(row => {
       if (row.group) return row;
-      const fix = gameState.calendar.find(f => (f.homeClubId === row.clubId || f.awayClubId === row.clubId) && f.competitionRound?.startsWith('Grupo '));
-      const g = fix?.competitionRound?.match(/Grupo ([A-Z])/)?.[1];
+      if (tableIsOtherLeague) return row;
+      const fix = gameState.calendar.find(
+        f =>
+          matchesTargetComp(f.competitionType) &&
+          (f.homeClubId === row.clubId || f.awayClubId === row.clubId) &&
+          f.competitionRound?.startsWith('Grupo ')
+      );
+      const g = fix?.competitionRound?.match(/Grupo ([A-Z]+)(?:\s|$)/)?.[1];
       return g ? { ...row, group: g } : row;
     });
-  }, [tableIsContinental, standingsList, gameState.calendar]);
+  }, [tableIsOtherLeague, tableIsContinental, tableIsEstadual, tableIsNacional, standingsList, gameState.calendar]);
+
+  const continentalGroups = useMemo(() => {
+    if (tableIsCopa) return [];
+    const set = new Set<string>();
+    for (const row of enrichedStandingsList) {
+      if (row.group) set.add(row.group);
+    }
+    return set.size > 1 ? Array.from(set).sort() : [];
+  }, [enrichedStandingsList, tableIsCopa]);
 
   // Grupos presentes na rodada selecionada no calendário
   const roundCalendarGroups = useMemo(() => {
     const set = new Set<string>();
     for (const fix of roundFixtures) {
-      const match = fix.competitionRound?.match(/Grupo ([A-Z])/i);
+      const match = fix.competitionRound?.match(/Grupo ([A-Z]+)/i);
       if (match?.[1]) set.add(match[1].toUpperCase());
     }
     return Array.from(set).sort();
@@ -244,7 +267,15 @@ export const ClubOverview: React.FC = () => {
   const copaStages = useMemo(() => {
     if (!tableIsCopa) return [];
     const allCopa = gameState.calendar.filter(f => f.competitionType === 'copa');
-    const stagesOrder = ['Oitavas de Final', 'Quartas de Final', 'Semifinal', 'Final'];
+    const stagesOrder = [
+      'Primeira Fase',
+      'Segunda Fase',
+      'Terceira Fase',
+      'Oitavas de Final',
+      'Quartas de Final',
+      'Semifinal',
+      'Final',
+    ];
     const map = new Map<string, typeof allCopa>();
     for (const fix of allCopa) {
       const s = fix.stage || fix.competitionRound?.split('(')[0]?.trim() || 'Mata-mata';
@@ -254,14 +285,66 @@ export const ClubOverview: React.FC = () => {
     return stagesOrder.filter(s => map.has(s)).map(s => ({ stage: s, fixtures: map.get(s)! }));
   }, [tableIsCopa, gameState.calendar]);
 
+  const continentalPreStages = useMemo(() => {
+    if (!tableIsContinental) return [];
+    const allCont = gameState.calendar.filter(
+      f => (f.competitionType === 'libertadores' || f.competitionType === 'sulamericana' || f.competitionType === 'champions') &&
+           (f.stage?.startsWith('Pré-Libertadores') || f.competitionRound?.startsWith('Pré-Libertadores'))
+    );
+    const stagesOrder = ['Pré-Libertadores (2ª Fase)', 'Pré-Libertadores (3ª Fase)'];
+    const map = new Map<string, typeof allCont>();
+    for (const fix of allCont) {
+      const s = fix.stage || fix.competitionRound?.split('(')[0]?.trim() || 'Pré-Libertadores';
+      if (!map.has(s)) map.set(s, []);
+      map.get(s)!.push(fix);
+    }
+    return stagesOrder.filter(s => map.has(s)).map(s => ({ stage: s, fixtures: map.get(s)! }));
+  }, [tableIsContinental, gameState.calendar]);
+
+  const continentalKnockoutStages = useMemo(() => {
+    if (!tableIsContinental) return [];
+    const allCont = gameState.calendar.filter(
+      f => (f.competitionType === 'libertadores' || f.competitionType === 'sulamericana' || f.competitionType === 'champions') &&
+           f.stage && !f.stage.startsWith('Pré-Libertadores')
+    );
+    const stagesOrder = ['Oitavas de Final', 'Quartas de Final', 'Semifinal', 'Final'];
+    const map = new Map<string, typeof allCont>();
+    for (const fix of allCont) {
+      const s = fix.stage!;
+      if (!map.has(s)) map.set(s, []);
+      map.get(s)!.push(fix);
+    }
+    return stagesOrder.filter(s => map.has(s)).map(s => ({ stage: s, fixtures: map.get(s)! }));
+  }, [tableIsContinental, gameState.calendar]);
+
+  const activeKnockoutStages = tableIsCopa
+    ? (selectedGroupTab === 'all' || !copaStages.some(s => s.stage === selectedGroupTab)
+        ? copaStages
+        : copaStages.filter(s => s.stage === selectedGroupTab))
+    : tableIsContinental && selectedGroupTab === 'pre-libertadores'
+      ? continentalPreStages
+      : tableIsContinental && selectedGroupTab === 'mata-mata'
+        ? continentalKnockoutStages
+        : null;
+
   const competitionZones = useMemo(() => {
+    const teamsPerTableOrGroup = continentalGroups.length > 0
+      ? Math.max(4, enrichedStandingsList.filter(row => row.group === continentalGroups[0]).length)
+      : standingsList.length;
+
     if (selectedOtherLeague) {
+      if (selectedOtherLeague.id === 'continental-sister') {
+        return getCompetitionZones({
+          competitionType: 'sulamericana',
+          totalTeams: teamsPerTableOrGroup,
+        });
+      }
       const isStateDiv = gameState.stateDivisions?.some(d => d.id === selectedOtherLeague.id);
       if (isStateDiv) {
         return getCompetitionZones({
           competitionType: 'estadual',
-          totalTeams: selectedOtherLeague.standings.length,
-          division: 2,
+          totalTeams: teamsPerTableOrGroup,
+          division: selectedOtherLeague.division ?? 2,
           countryId: 29,
           stateCode: userClub.stateCode,
           stateDivisions: 2,
@@ -269,22 +352,27 @@ export const ClubOverview: React.FC = () => {
       }
       return getCompetitionZones({
         competitionType: 'nacional',
-        totalTeams: selectedOtherLeague.standings.length,
+        totalTeams: teamsPerTableOrGroup,
         division: selectedOtherLeague.division ?? 1,
         countryId: selectedOtherLeague.countryId,
       });
     }
+    const effectiveDivision = tableIsEstadual
+      ? (gameState.stateTier ?? 1)
+      : userClub.countryId === 29 && (userClub.division ?? 1) >= 4
+      ? 4
+      : (userClub.division ?? 1);
     return getCompetitionZones({
-      competitionType: activeCompetitionTab || (tableIsEstadual ? 'estadual' : tableIsContinental ? 'libertadores' : 'nacional'),
-      totalTeams: tableIsContinental ? 4 : standingsList.length,
-      division: userClub.division ?? 1,
+      competitionType: tableIsEstadual ? 'estadual' : tableIsContinental ? 'libertadores' : 'nacional',
+      totalTeams: teamsPerTableOrGroup,
+      division: effectiveDivision,
       countryId: userClub.countryId ?? 29,
       stateCode: userClub.stateCode,
       stateDivisions: (gameState.stateDivisions && gameState.stateDivisions.length > 0) ? 2 : (userStateInfo?.divisions ?? 1),
       totalClubsInState: userStateInfo?.clubCount,
       customRelegated: userLeagueInfo?.relegated,
     });
-  }, [selectedOtherLeague, activeCompetitionTab, tableIsEstadual, tableIsContinental, standingsList.length, userClub, userStateInfo, userLeagueInfo, gameState.stateDivisions]);
+  }, [selectedOtherLeague, tableIsEstadual, tableIsContinental, continentalGroups, enrichedStandingsList, standingsList.length, userClub, userStateInfo, userLeagueInfo, gameState.stateDivisions, gameState.stateTier]);
 
   // Sector strengths and availability for user and opponent
   const userStarters = getSquadStarters(userClub);
@@ -510,13 +598,21 @@ export const ClubOverview: React.FC = () => {
               {tableTitle || gameState.leagueName || 'Campeonato Nacional'}
             </h2>
             {tableIsEstadual && (
-              <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-amber-950/60 text-amber-300 border border-amber-600/40 uppercase shrink-0">
-                1ª Divisão
+              <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase shrink-0 ${
+                gameState.stateTier === 2
+                  ? 'bg-blue-950/60 text-blue-300 border border-blue-600/40'
+                  : 'bg-amber-950/60 text-amber-300 border border-amber-600/40'
+              }`}>
+                {gameState.stateTier === 2 ? '2ª Divisão' : '1ª Divisão'}
               </span>
             )}
             {selectedOtherLeague && gameState.stateDivisions?.some(d => d.id === selectedOtherLeague.id) && (
-              <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-blue-950/60 text-blue-300 border border-blue-600/40 uppercase shrink-0">
-                2ª Divisão
+              <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase shrink-0 ${
+                selectedOtherLeague.division === 1
+                  ? 'bg-amber-950/60 text-amber-300 border border-amber-600/40'
+                  : 'bg-blue-950/60 text-blue-300 border border-blue-600/40'
+              }`}>
+                {selectedOtherLeague.division === 1 ? '1ª Divisão' : '2ª Divisão'}
               </span>
             )}
           </div>
@@ -538,48 +634,105 @@ export const ClubOverview: React.FC = () => {
           </div>
         </div>
 
-        {/* Competition Switcher Tabs (Permite navegar livremente entre os torneios) */}
+        {/* Competition Switcher Selector (Dropdown compacto que elimina o scroll horizontal gigante) */}
         {availableCompetitionTabs.length > 1 && (
-          <div className="flex items-center space-x-1 px-2.5 py-1.5 bg-[var(--app-surface-2)]/90 border-b border-[var(--app-border-subtle)] overflow-x-auto no-scrollbar shrink-0 text-xs">
-            {availableCompetitionTabs.map(comp => {
-              const isSelected = activeCompetitionTab === comp.id;
-              return (
-                <button
-                  key={comp.id}
-                  type="button"
-                  onClick={() => {
+          <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 bg-[var(--app-surface-2)]/90 border-b border-[var(--app-border-subtle)] shrink-0 text-xs">
+            <div className="flex items-center space-x-2 min-w-0 flex-1">
+              <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider shrink-0 flex items-center space-x-1">
+                <Trophy className="w-3.5 h-3.5 text-[var(--app-text-accent)] shrink-0" />
+                <span className="hidden xs:inline">Torneio:</span>
+              </span>
+              <div className="relative flex-1 max-w-full sm:max-w-md">
+                <select
+                  value={activeCompetitionTab}
+                  onChange={(e) => {
                     sound.playClick();
-                    setSelectedCompetitionTab(comp.id);
+                    setSelectedCompetitionTab(e.target.value);
+                    setSelectedGroupTab('all');
                   }}
-                  className={`px-2.5 py-1 rounded font-bold text-[10px] sm:text-[11px] transition-all flex items-center space-x-1.5 shrink-0 cursor-pointer ${
-                    isSelected
-                      ? 'bg-[var(--app-surface-3)] text-white border border-[var(--app-text-accent)] shadow-xs'
-                      : 'text-slate-400 hover:text-white hover:bg-[var(--app-surface-3)]/40 border border-transparent'
-                  }`}
+                  className="w-full appearance-none bg-[var(--app-surface-3)] hover:bg-[var(--app-surface-2)] text-white text-[11px] sm:text-xs font-bold py-1.5 pl-2.5 pr-8 rounded-md border border-[var(--app-border-subtle)] hover:border-[var(--app-text-accent)] focus:outline-none focus:border-[var(--app-text-accent)] cursor-pointer truncate shadow-xs transition-colors"
                 >
-                  <span>{comp.label}</span>
-                  {comp.badge && (
-                    <span className="text-[8px] sm:text-[9px] px-1 py-0.2 rounded font-semibold bg-slate-800 text-slate-300 border border-slate-700/60 shrink-0">
-                      {comp.badge}
-                    </span>
-                  )}
-                  {comp.isCurrent && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" title="Competição em andamento na data de hoje" />
-                  )}
-                </button>
-              );
-            })}
+                  {availableCompetitionTabs.map(comp => (
+                    <option key={comp.id} value={comp.id} className="bg-[var(--app-bg-deep)] text-white py-1">
+                      {comp.label} {comp.badge ? `• ${comp.badge}` : ''} {comp.isCurrent ? '⭐ (Em Andamento)' : ''}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-1.5 shrink-0">
+              {availableCompetitionTabs.find(c => c.id === activeCompetitionTab)?.badge && (
+                <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${
+                  availableCompetitionTabs.find(c => c.id === activeCompetitionTab)?.tier === 2
+                    ? 'bg-blue-950/70 text-blue-300 border border-blue-600/40'
+                    : 'bg-amber-950/70 text-amber-300 border border-amber-600/40'
+                }`}>
+                  {availableCompetitionTabs.find(c => c.id === activeCompetitionTab)?.badge}
+                </span>
+              )}
+              {availableCompetitionTabs.find(c => c.id === activeCompetitionTab)?.isCurrent && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-emerald-950/70 text-emerald-400 border border-emerald-600/40 uppercase hidden sm:inline">
+                  Em Andamento
+                </span>
+              )}
+            </div>
           </div>
         )}
 
-        {/* Continental Groups Filter Bar */}
-        {tableIsContinental && continentalGroups.length > 0 && (
+        {/* Copa do Brasil / Knockout Phases Filter Bar (Fases da Copa, sem vazamento de grupos) */}
+        {tableIsCopa && copaStages.length > 0 && (
           <div className="flex items-center space-x-1 px-3 py-1 bg-[var(--app-surface-2)]/80 border-b border-[var(--app-border-subtle)] overflow-x-auto no-scrollbar shrink-0 text-xs">
             <button
               type="button"
               onClick={() => setSelectedGroupTab('all')}
-              className={`px-2 py-0.5 rounded font-bold text-[10px] sm:text-[11px] transition-colors cursor-pointer ${
-                selectedGroupTab === 'all'
+              className={`px-2 py-0.5 rounded font-bold text-[10px] sm:text-[11px] transition-colors shrink-0 cursor-pointer ${
+                selectedGroupTab === 'all' || !copaStages.some(s => s.stage === selectedGroupTab)
+                  ? 'bg-[var(--app-surface-3)] text-white border border-[var(--app-text-accent)]/60'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Todas as Fases
+            </button>
+            {copaStages.map(({ stage }) => (
+              <button
+                key={stage}
+                type="button"
+                onClick={() => setSelectedGroupTab(stage)}
+                className={`px-2 py-0.5 rounded font-bold text-[10px] sm:text-[11px] transition-colors shrink-0 cursor-pointer ${
+                  selectedGroupTab === stage
+                    ? 'bg-[var(--app-surface-3)] text-[var(--app-text-accent)] border border-[var(--app-text-accent)]'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                {stage.replace(' de Final', '')}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Groups Filter Bar (Continental, Série D, Paulistão, etc. - Apenas para ligas com grupos, nunca Copa) */}
+        {!tableIsCopa && continentalGroups.length > 0 && (
+          <div className="flex items-center space-x-1 px-3 py-1 bg-[var(--app-surface-2)]/80 border-b border-[var(--app-border-subtle)] overflow-x-auto no-scrollbar shrink-0 text-xs">
+            {tableIsContinental && continentalPreStages.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setSelectedGroupTab('pre-libertadores')}
+                className={`px-2 py-0.5 rounded font-bold text-[10px] sm:text-[11px] transition-colors shrink-0 cursor-pointer ${
+                  selectedGroupTab === 'pre-libertadores'
+                    ? 'bg-[var(--app-surface-3)] text-amber-300 border border-amber-500/80'
+                    : 'text-amber-300/80 hover:text-amber-200'
+                }`}
+              >
+                Pré-Libertadores
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setSelectedGroupTab('all')}
+              className={`px-2 py-0.5 rounded font-bold text-[10px] sm:text-[11px] transition-colors shrink-0 cursor-pointer ${
+                selectedGroupTab === 'all' || (!continentalGroups.includes(selectedGroupTab) && selectedGroupTab !== 'pre-libertadores' && selectedGroupTab !== 'mata-mata')
                   ? 'bg-[var(--app-surface-3)] text-white border border-[var(--app-text-accent)]/60'
                   : 'text-slate-400 hover:text-white'
               }`}
@@ -591,7 +744,7 @@ export const ClubOverview: React.FC = () => {
                 key={grp}
                 type="button"
                 onClick={() => setSelectedGroupTab(grp)}
-                className={`px-2 py-0.5 rounded font-bold text-[10px] sm:text-[11px] transition-colors cursor-pointer ${
+                className={`px-2 py-0.5 rounded font-bold text-[10px] sm:text-[11px] transition-colors shrink-0 cursor-pointer ${
                   selectedGroupTab === grp
                     ? 'bg-[var(--app-surface-3)] text-[var(--app-text-accent)] border border-[var(--app-text-accent)]'
                     : 'text-slate-400 hover:text-white'
@@ -600,18 +753,31 @@ export const ClubOverview: React.FC = () => {
                 Grupo {grp}
               </button>
             ))}
+            {tableIsContinental && continentalKnockoutStages.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setSelectedGroupTab('mata-mata')}
+                className={`px-2 py-0.5 rounded font-bold text-[10px] sm:text-[11px] transition-colors shrink-0 cursor-pointer ${
+                  selectedGroupTab === 'mata-mata'
+                    ? 'bg-[var(--app-surface-3)] text-emerald-300 border border-emerald-500/80'
+                    : 'text-emerald-300/80 hover:text-emerald-200'
+                }`}
+              >
+                Mata-mata
+              </button>
+            )}
           </div>
         )}
 
-        {/* Standings Table or Copa Knockout Stages */}
-        {tableIsCopa ? (
+        {/* Standings Table or Copa / Continental Knockout Stages */}
+        {activeKnockoutStages !== null ? (
           <div className="flex-none lg:flex-1 lg:overflow-y-auto p-2 sm:p-2.5 space-y-3 no-scrollbar">
-            {copaStages.length === 0 ? (
+            {activeKnockoutStages.length === 0 ? (
               <div className="text-center py-8 text-xs text-slate-400">
-                Nenhum jogo da Copa programado ainda.
+                Nenhum jogo eliminatório programado ainda.
               </div>
             ) : (
-              copaStages.map(({ stage, fixtures }) => (
+              activeKnockoutStages.map(({ stage, fixtures }) => (
                 <div key={stage} className="bg-[var(--app-surface-2)]/60 border border-[var(--app-border-subtle)] rounded-lg p-2 space-y-1.5">
                   <div className="text-[11px] font-bold text-[var(--app-text-accent)] uppercase tracking-wider px-1 pb-1 border-b border-[var(--app-border-subtle)] flex items-center justify-between">
                     <span>{stage}</span>
@@ -620,11 +786,25 @@ export const ClubOverview: React.FC = () => {
                   <div className="space-y-1 pt-1">
                     {fixtures.map(fix => {
                       if (fix.pendingQualification) {
+                        const knownHome = fix.homeClubId > 0
+                          ? (gameState.clubs.find(c => c.id === fix.homeClubId) || getAllClubs().find(c => c.id === fix.homeClubId))
+                          : undefined;
+                        const knownAway = fix.awayClubId > 0
+                          ? (gameState.clubs.find(c => c.id === fix.awayClubId) || getAllClubs().find(c => c.id === fix.awayClubId))
+                          : undefined;
+                        const isKnownUser = knownHome?.id === userClub.id || knownAway?.id === userClub.id;
                         return (
-                          <div key={fix.id} className="flex items-center justify-between px-2 py-1 rounded bg-[var(--app-surface-1)] text-[11px] text-slate-400">
-                            <span>A definir</span>
+                          <div
+                            key={fix.id}
+                            className={`flex items-center justify-between px-2 py-1 rounded text-[11px] ${
+                              isKnownUser
+                                ? 'bg-[var(--app-surface-3)] border border-[var(--app-border-highlight)] text-white'
+                                : 'bg-[var(--app-surface-1)] text-slate-400'
+                            }`}
+                          >
+                            <span className={knownHome ? 'font-semibold text-slate-200' : ''}>{knownHome ? knownHome.name : 'A definir'}</span>
                             <span className="text-[10px] text-slate-500">{fix.competitionRound}</span>
-                            <span>A definir</span>
+                            <span className={knownAway ? 'font-semibold text-slate-200' : ''}>{knownAway ? knownAway.name : 'A definir'}</span>
                           </div>
                         );
                       }
@@ -699,9 +879,9 @@ export const ClubOverview: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#14281f] font-mono-numbers">
-              {tableIsContinental && continentalGroups.length > 0 ? (
+              {continentalGroups.length > 0 ? (
                 continentalGroups
-                  .filter(grp => selectedGroupTab === 'all' || selectedGroupTab === grp)
+                  .filter(grp => selectedGroupTab === 'all' || !continentalGroups.includes(selectedGroupTab) || selectedGroupTab === grp)
                   .map(grp => {
                     const groupRows = enrichedStandingsList.filter(r => r.group === grp);
                     return (
@@ -714,14 +894,15 @@ export const ClubOverview: React.FC = () => {
                         {groupRows.map((row, indexInGroup) => {
                           const pos = indexInGroup + 1;
                           const isUser = row.clubId === userClub.id;
-                          const isQualified = pos <= 2;
-                          const posColor = isQualified ? 'text-emerald-400 font-bold' : 'text-slate-400';
-                          const rowBg = isQualified ? 'hover:bg-emerald-950/20' : '';
+                          const isPlaceholder = isPreLibPlaceholderId(row.clubId);
+                          const zone = getZoneForPosition(competitionZones, pos);
+                          const posColor = zone ? zone.colorClass : 'text-slate-400';
+                          const rowBg = zone ? zone.bgHoverClass : '';
 
                           return (
                             <tr
                               key={row.clubId}
-                              onClick={() => viewClub(row.clubId)}
+                              onClick={isPlaceholder ? undefined : () => viewClub(row.clubId)}
                               style={
                                 isUser
                                   ? {
@@ -730,18 +911,38 @@ export const ClubOverview: React.FC = () => {
                                     }
                                   : undefined
                               }
-                              className={`transition-colors ${rowBg} cursor-pointer ${
+                              className={`transition-colors ${rowBg} ${
+                                isPlaceholder ? 'cursor-default opacity-85' : 'cursor-pointer'
+                              } ${
                                 isUser
                                   ? 'text-white font-bold shadow-xs'
                                   : 'text-slate-300 hover:bg-[#152c21]'
                               }`}
-                              title={isUser ? 'Seu clube' : `Ver detalhes de ${row.clubName}`}
+                              title={
+                                isPlaceholder
+                                  ? 'Vaga da Pré-Libertadores a definir'
+                                  : isUser
+                                  ? 'Seu clube'
+                                  : `Ver detalhes de ${row.clubName}`
+                              }
                             >
                               <td className={`text-center py-1 text-[11px] ${posColor}`}>
                                 {pos}
                               </td>
                               <td className="py-1 font-sans text-xs">
-                                {(() => {
+                                {isPlaceholder ? (
+                                  <div className="flex items-center space-x-1 sm:space-x-1.5">
+                                    <span className="w-4 h-4 rounded bg-amber-950/80 border border-amber-600/50 flex items-center justify-center text-[9px] text-amber-300 font-bold shrink-0">
+                                      ?
+                                    </span>
+                                    <span className="truncate max-w-[105px] sm:max-w-[140px] font-semibold text-amber-300/90 italic">
+                                      {row.clubName}
+                                    </span>
+                                    <span className="text-[8px] sm:text-[9px] px-1 rounded font-bold uppercase tracking-tighter shrink-0 bg-amber-950/60 text-amber-400 border border-amber-600/40">
+                                      Pré-Lib
+                                    </span>
+                                  </div>
+                                ) : (() => {
                                   const rowClub = gameState.clubs.find((c) => c.id === row.clubId) || getAllClubs().find((c) => c.id === row.clubId);
                                   return (
                                     <div className="flex items-center space-x-1 sm:space-x-1.5">
@@ -812,6 +1013,7 @@ export const ClubOverview: React.FC = () => {
                 standingsList.map((row, index) => {
                   const pos = index + 1;
                   const isUser = row.clubId === userClub.id;
+                  const isPlaceholder = isPreLibPlaceholderId(row.clubId);
 
                   const zone = getZoneForPosition(competitionZones, pos);
                   const posColor = zone ? zone.colorClass : 'text-slate-400';
@@ -820,7 +1022,7 @@ export const ClubOverview: React.FC = () => {
                   return (
                     <tr
                       key={row.clubId}
-                      onClick={() => viewClub(row.clubId)}
+                      onClick={isPlaceholder ? undefined : () => viewClub(row.clubId)}
                       style={
                         isUser
                           ? {
@@ -829,18 +1031,38 @@ export const ClubOverview: React.FC = () => {
                             }
                           : undefined
                       }
-                      className={`transition-colors ${rowBg} cursor-pointer ${
+                      className={`transition-colors ${rowBg} ${
+                        isPlaceholder ? 'cursor-default opacity-85' : 'cursor-pointer'
+                      } ${
                         isUser
                           ? 'text-white font-bold shadow-xs'
                           : 'text-slate-300 hover:bg-[#152c21]'
                       }`}
-                      title={isUser ? 'Seu clube' : `Ver detalhes de ${row.clubName}`}
+                      title={
+                        isPlaceholder
+                          ? 'Vaga da Pré-Libertadores a definir'
+                          : isUser
+                          ? 'Seu clube'
+                          : `Ver detalhes de ${row.clubName}`
+                      }
                     >
                       <td className={`text-center py-1 text-[11px] ${posColor}`}>
                         {pos}
                       </td>
                       <td className="py-1 font-sans text-xs">
-                        {(() => {
+                        {isPlaceholder ? (
+                          <div className="flex items-center space-x-1 sm:space-x-1.5">
+                            <span className="w-4 h-4 rounded bg-amber-950/80 border border-amber-600/50 flex items-center justify-center text-[9px] text-amber-300 font-bold shrink-0">
+                              ?
+                            </span>
+                            <span className="truncate max-w-[105px] sm:max-w-[140px] font-semibold text-amber-300/90 italic">
+                              {row.clubName}
+                            </span>
+                            <span className="text-[8px] sm:text-[9px] px-1 rounded font-bold uppercase tracking-tighter shrink-0 bg-amber-950/60 text-amber-400 border border-amber-600/40">
+                              Pré-Lib
+                            </span>
+                          </div>
+                        ) : (() => {
                           const rowClub = gameState.clubs.find((c) => c.id === row.clubId) || getAllClubs().find((c) => c.id === row.clubId);
                           return (
                             <div className="flex items-center space-x-1 sm:space-x-1.5">
@@ -1075,6 +1297,17 @@ export const ClubOverview: React.FC = () => {
           </div>
         )}
 
+        {!userFixture && currentRoundFixtures.length > 0 && currentRoundFixtures.every(f => f.played) && (
+          <div className="bg-[#12261d] border border-[#204232] rounded-lg p-3 flex items-center justify-between shrink-0">
+            <span className="text-sm text-slate-200">
+              Data concluída ({formatMatchDate(currentRoundFixtures[0]?.date, 'weekday')}).
+            </span>
+            <button onClick={() => advanceRound()} className="px-4 py-2 bg-emerald-500 text-black font-bold rounded text-xs uppercase cursor-pointer">
+              Avançar Calendário
+            </button>
+          </div>
+        )}
+
         {/* Mobile/Tablet Tab Switcher (Classificação vs Jogos da Rodada) */}
         <div className="flex lg:hidden bg-[var(--app-surface-2)] p-1 rounded-lg border border-[var(--app-border-subtle)] shrink-0 gap-1">
           <button
@@ -1187,7 +1420,7 @@ export const ClubOverview: React.FC = () => {
               const away = gameState.clubs.find((c) => c.id === fix.awayClubId) || getAllClubs().find(c => c.id === fix.awayClubId);
               if (!home || !away) return null;
               const isUserMatch = home.id === userClub.id || away.id === userClub.id;
-              const groupMatch = fix.competitionRound?.match(/Grupo ([A-Z])/i)?.[1];
+              const groupMatch = fix.competitionRound?.match(/Grupo ([A-Z]+)/i)?.[1];
 
               return (
                 <div

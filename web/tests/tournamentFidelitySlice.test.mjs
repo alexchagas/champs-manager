@@ -102,8 +102,8 @@ test('Requirement 2: honest continental tournament generation and no Sul-America
   );
   assert.equal(modestField.type, 'libertadores');
 
-  // 4. Blocker test note for 32 clubs: current topology remains 16 clubs
-  assert.equal(flamengoField.clubs.length, 16, 'Topology must safely remain 16 clubs');
+  // 4. Expanded continental topology: 32 clubs in 8 groups (A-H)
+  assert.equal(flamengoField.clubs.length, 32, 'Continental topology must have 32 clubs in 8 groups');
 });
 
 // ---------------------------------------------------------------------------

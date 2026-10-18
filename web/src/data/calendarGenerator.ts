@@ -1,33 +1,21 @@
 import type { Club, MatchFixture, StandingRow } from '../types/index.ts';
-import { getContinentalTournamentField } from './continentalRepresentatives.ts';
-import { getStateLeagueRule } from './stateLeagueFormulas.ts';
-import { getCanonicalNationalLeagueName } from './teamsDatabase.ts';
+import {
+  computeContinentalQualifiers,
+  getContinentalTournamentField,
+  seedClubsByPots,
+  type ContinentalTournamentOptions,
+} from './continentalRepresentatives.ts';
+import { formatGroupLabel, getDivisionConfig, getNationalCupConfig } from './leagueConfigurations.ts';
+import { getStateLeagueRule, getUserStateDivision, sortClubsByMeritocracy } from './stateLeagueFormulas.ts';
+import { getCanonicalNationalLeagueName, isPreLibPlaceholderId } from './teamsDatabase.ts';
 
-/**
- * Ordenação canônica por mérito esportivo (engenharia reversa do motor h/D.java):
- * 1. Menor divisão nacional (1 = Série A, 2 = Série B, 3 = Série C, 4 = Série D, 5 = Acesso)
- * 2. Maior level técnico do time (descendente)
- * 3. Maior reputação (estrelas, descendente)
- */
-export function sortClubsByMeritocracy(clubs: Club[]): Club[] {
-  return [...clubs].sort((a, b) => {
-    const divA = a.division ?? 5;
-    const divB = b.division ?? 5;
-    if (divA !== divB) return divA - divB;
-    const levelDiff = (b.level ?? 10) - (a.level ?? 10);
-    if (levelDiff !== 0) return levelDiff;
-    const repDiff = (b.reputation ?? 1) - (a.reputation ?? 1);
-    if (repDiff !== 0) return repDiff;
-    return a.name.localeCompare(b.name);
-  });
-}
+export { sortClubsByMeritocracy };
 
 // Standard Berger / round-robin scheduling algorithm
 export function generateLeagueCalendar(clubs: Club[]): MatchFixture[] {
   const n = clubs.length;
   if (n < 2) return [];
 
-  const clubIds = clubs.map((c) => c.id);
   const rounds: { home: number; away: number }[][] = [];
 
   // Berger tables
@@ -116,7 +104,9 @@ export function generateTwoSemesterCalendar(
   userClub: Club,
   nationalClubs: Club[],
   allAvailableClubs?: Club[],
-  seasonYear = 2026
+  seasonYear = 2026,
+  continentalOptions?: ContinentalTournamentOptions,
+  stateOverrides?: { promotedStateClubIds?: number[]; relegatedStateClubIds?: number[] }
 ): {
   calendar: MatchFixture[];
   estadualName: string;
@@ -125,42 +115,38 @@ export function generateTwoSemesterCalendar(
   semester1Clubs: Club[];
   semester2Clubs: Club[];
   continentalClubs: Club[];
+  estadualTier: 1 | 2;
 } {
   const isBrazil = userClub.countryId === 29;
-  const estadualName = getStateChampionshipName(userClub.stateCode, userClub.stateId);
+  let estadualName = getStateChampionshipName(userClub.stateCode, userClub.stateId);
   const nacionalName = getCanonicalNationalLeagueName(userClub);
 
   const pool = allAvailableClubs && allAvailableClubs.length > 0 ? allAvailableClubs : nationalClubs;
-  const sameState = (c: Club) => c.countryId === 29 && (
-    (userClub.stateId != null && c.stateId === userClub.stateId) ||
-    (userClub.stateCode != null && c.stateCode === userClub.stateCode)
-  );
-
   const stateRule = isBrazil ? getStateLeagueRule(userClub.stateCode) : undefined;
-  const targetStateCount = stateRule ? stateRule.nTimes : 12;
 
   let semester1Clubs: Club[] = [];
+  let userStateTier: 1 | 2 = 1;
   if (isBrazil) {
-    const rawStateClubs = pool.filter(sameState);
-    const sortedStateClubs = sortClubsByMeritocracy(rawStateClubs);
-
-    // Seleciona a elite do estado (tamanho oficial da regra da federação)
-    const eliteStateClubs = sortedStateClubs.slice(0, targetStateCount);
-
-    if (eliteStateClubs.some(c => c.id === userClub.id)) {
-      semester1Clubs = eliteStateClubs;
-    } else {
-      // Substitui o último classificado da elite para garantir o usuário junto com os gigantes
-      semester1Clubs = [userClub, ...eliteStateClubs.slice(0, targetStateCount - 1)];
-    }
+    const userStateDiv = getUserStateDivision(
+      userClub,
+      pool,
+      seasonYear,
+      stateOverrides?.promotedStateClubIds,
+      stateOverrides?.relegatedStateClubIds
+    );
+    semester1Clubs = userStateDiv.fieldClubs;
+    estadualName = userStateDiv.leagueName;
+    userStateTier = userStateDiv.tier;
   }
 
   const semester2Clubs = nationalClubs.length >= 2 ? nationalClubs : pool.slice(0, 20);
 
-  const continentalInfo = getContinentalTournamentField(userClub, pool);
+  const continentalInfo = getContinentalTournamentField(userClub, pool, undefined, {
+    seasonYear,
+    ...continentalOptions,
+  });
   const continentalName = continentalInfo.name;
   const continentalClubs = continentalInfo.clubs;
-  const userParticipatesInContinental = continentalInfo.userParticipates ?? continentalClubs.some(c => c.id === userClub.id);
 
   const allFixtures: MatchFixture[] = [];
   let nextId = 1;
@@ -172,18 +158,27 @@ export function generateTwoSemesterCalendar(
     return date.toISOString().slice(0, 10);
   };
   const addRound = (fixtures: MatchFixture[], localRound: number, week: number, type: MatchFixture['competitionType'], name: string, label: string, offset = 0) => {
-    for (const fix of fixtures.filter(f => f.round === localRound)) allFixtures.push({
-      ...fix, id: nextId++, date: dateAt(week, offset), competitionType: type,
-      competitionName: name, competitionRound: label, stage: label,
-      dayOfWeek: offset === 3 ? 'quarta' : offset === 4 ? 'quinta' : 'domingo',
-    });
+    for (const fix of fixtures.filter(f => f.round === localRound)) {
+      const isPending = isPreLibPlaceholderId(fix.homeClubId) || isPreLibPlaceholderId(fix.awayClubId);
+      allFixtures.push({
+        ...fix,
+        id: nextId++,
+        date: dateAt(week, offset),
+        competitionType: type,
+        competitionName: name,
+        competitionRound: label,
+        stage: label,
+        dayOfWeek: offset === 3 ? 'quarta' : offset === 4 ? 'quinta' : 'domingo',
+        pendingQualification: isPending ? true : fix.pendingQualification,
+      });
+    }
   };
 
-  const isFormula7 = stateRule?.formulaId === 7 && semester1Clubs.length === 16;
+  const isFormula7 = userStateTier === 1 && stateRule?.formulaId === 7 && semester1Clubs.length === 16;
   let estadualGroupRounds = Math.min(11, Math.ceil(semester1Clubs.length / 2) * 2 - 1);
 
   if (isFormula7) {
-    // Paulistão Fórmula 7: 16 clubes em 4 grupos de 4.
+    // Paulistão Fórmula 7: 16 clubes em 4 grupos de 4 (com 1 cabeça de chave por grupo).
     // Cada clube joga 12 partidas (contra os clubes dos outros 3 grupos).
     estadualGroupRounds = 12;
     const gA = semester1Clubs.slice(0, 4);
@@ -222,24 +217,27 @@ export function generateTwoSemesterCalendar(
   }
 
   const reserve = (type: MatchFixture['competitionType'], name: string, round: number, week: number,
-    label: string, stage: string, dayOfWeek: 'domingo' | 'quarta' | 'quinta', leg?: 1 | 2) => {
+    label: string, stage: string, dayOfWeek: 'domingo' | 'quarta' | 'quinta', leg?: 1 | 2, homeClubId = 0, awayClubId = 0) => {
     allFixtures.push({ id: nextId++, round, date: dateAt(week, dayOfWeek === 'domingo' ? 0 : dayOfWeek === 'quarta' ? 3 : 4),
-      homeClubId: 0, awayClubId: 0, played: false, pendingQualification: true,
+      homeClubId, awayClubId, played: false, pendingQualification: true,
       competitionType: type, competitionName: name, competitionRound: label, stage, dayOfWeek, leg });
   };
 
   // Knockout slots have no participants until qualification is decided.
   if (semester1Clubs.length >= 4) {
     if (isFormula7) {
-      // TODO(SPEC-009/SPEC-008): Formula 7 authentic format features 8-club Quartas de Final.
-      // Currently using 4-club Semifinais until multi-tier state knockout brackets are expanded.
-      for (let tie = 0; tie < 2; tie++) {
-        reserve('estadual', estadualName, 13, 11, 'Semifinal (Ida)', 'Semifinal', 'quarta', 1);
+      // Paulistão Fórmula 7: Quartas de Final (1º x 2º de cada grupo A, B, C, D) -> Semifinal -> Final
+      // Rodadas 1..12 terminam em week 11 (domingo). Quartas em week 12 (domingo), Semi Ida em week 12 (quarta), Semi Volta em week 13 (domingo), Final em week 13 (quarta).
+      for (let tie = 0; tie < 4; tie++) {
+        reserve('estadual', estadualName, 13, 12, 'Quartas de Final', 'Quartas de Final', 'domingo');
       }
       for (let tie = 0; tie < 2; tie++) {
-        reserve('estadual', estadualName, 14, 12, 'Semifinal (Volta)', 'Semifinal', 'domingo', 2);
+        reserve('estadual', estadualName, 14, 12, 'Semifinal (Ida)', 'Semifinal', 'quarta', 1);
       }
-      reserve('estadual', estadualName, 15, 13, 'Final', 'Final', 'domingo');
+      for (let tie = 0; tie < 2; tie++) {
+        reserve('estadual', estadualName, 15, 13, 'Semifinal (Volta)', 'Semifinal', 'domingo', 2);
+      }
+      reserve('estadual', estadualName, 16, 13, 'Final', 'Final', 'quarta');
     } else {
       for (let leg = 1; leg <= 2; leg++) for (let tie = 0; tie < 2; tie++) reserve('estadual', estadualName,
         estadualGroupRounds + leg, estadualGroupRounds + leg - 1,
@@ -249,86 +247,364 @@ export function generateTwoSemesterCalendar(
   }
 
   const nationalStart = isBrazil ? 14 : 0;
-  const nationalRaw = generateLeagueCalendar(semester2Clubs);
-  const nationalRounds = nationalRaw.length ? Math.max(...nationalRaw.map(f => f.round)) : 0;
-  for (let r = 1; r <= nationalRounds; r++) addRound(nationalRaw, r, nationalStart + r - 1, 'nacional', nacionalName, `Rodada ${r}`);
+  const divConfig = getDivisionConfig(
+    userClub.countryId || 29,
+    userClub.division || 1,
+    undefined,
+    semester2Clubs.length
+  );
+  const nationalGroupCount =
+    divConfig?.groupCount && divConfig.groupCount > 1 && semester2Clubs.length >= divConfig.groupCount * 2
+      ? divConfig.groupCount
+      : 1;
 
-  // Continental matches are generated for the 16 eligible clubs
-  if (continentalClubs.length === 16) {
-    const continentalType = continentalInfo.type === 'sulamericana' ? 'sulamericana' : continentalInfo.type === 'libertadores' ? 'libertadores' : 'champions';
-    for (let group = 0; group < 4; group++) {
-      const raw = generateLeagueCalendar(continentalClubs.slice(group * 4, group * 4 + 4));
-      for (let r = 1; r <= 6; r++) addRound(raw, r, nationalStart + r * 2, continentalType, continentalName,
-        `Grupo ${'ABCD'[group]} • Rodada ${r}`, 3);
+  let nationalPhaseRounds = 0;
+  if (nationalGroupCount > 1) {
+    const groupSize = Math.ceil(semester2Clubs.length / nationalGroupCount);
+    for (let gIdx = 0; gIdx < nationalGroupCount; gIdx++) {
+      const label = formatGroupLabel(gIdx);
+      const groupClubs = semester2Clubs.slice(gIdx * groupSize, (gIdx + 1) * groupSize);
+      if (groupClubs.length < 2) continue;
+      const raw = generateLeagueCalendar(groupClubs);
+      const singleTurnRounds = groupClubs.length % 2 === 0 ? groupClubs.length - 1 : groupClubs.length;
+      const maxRound = divConfig?.rounds === 1 ? singleTurnRounds : Math.max(...raw.map(f => f.round), 0);
+      if (maxRound > nationalPhaseRounds) nationalPhaseRounds = maxRound;
+      for (let r = 1; r <= maxRound; r++) {
+        addRound(raw, r, nationalStart + r - 1, 'nacional', nacionalName, `Grupo ${label} • Rodada ${r}`);
+      }
     }
-    for (const [stage, firstRound, ties] of [['Quartas de Final', 7, 4], ['Semifinal', 9, 2], ['Final', 11, 1]] as const) {
+  } else {
+    const nationalRaw = generateLeagueCalendar(semester2Clubs);
+    const singleTurnRounds = semester2Clubs.length % 2 === 0 ? semester2Clubs.length - 1 : semester2Clubs.length;
+    const totalRawRounds = nationalRaw.length ? Math.max(...nationalRaw.map(f => f.round)) : 0;
+    nationalPhaseRounds = divConfig?.rounds === 1 ? Math.min(singleTurnRounds, totalRawRounds) : totalRawRounds;
+    for (let r = 1; r <= nationalPhaseRounds; r++) {
+      addRound(nationalRaw, r, nationalStart + r - 1, 'nacional', nacionalName, `Rodada ${r}`);
+    }
+  }
+
+  if (divConfig?.format === 'groups_and_playoffs' && (divConfig.playoffTeams ?? 0) >= 2) {
+    const playoffTeams = divConfig.playoffTeams ?? 0;
+    const allPlayoffStages = [
+      { stage: 'Segunda Fase', ties: 16, minTeams: 32 },
+      { stage: 'Oitavas de Final', ties: 8, minTeams: 16 },
+      { stage: 'Quartas de Final', ties: 4, minTeams: 8 },
+      { stage: 'Semifinal', ties: 2, minTeams: 4 },
+      { stage: 'Final', ties: 1, minTeams: 2 },
+    ] as const;
+
+    let nextNatRound = nationalPhaseRounds + 1;
+    let nextNatWeek = nationalStart + nationalPhaseRounds;
+    for (const { stage, ties, minTeams } of allPlayoffStages) {
+      if (playoffTeams < minTeams) continue;
+      for (let leg = 1; leg <= 2; leg++) {
+        for (let tie = 0; tie < ties; tie++) {
+          reserve(
+            'nacional',
+            nacionalName,
+            nextNatRound,
+            nextNatWeek,
+            `${stage} (${leg === 1 ? 'Ida' : 'Volta'})`,
+            stage,
+            'domingo',
+            leg as 1 | 2
+          );
+        }
+        nextNatRound++;
+        nextNatWeek++;
+      }
+    }
+  }
+
+  if (continentalClubs.length >= 4) {
+    const continentalType = continentalInfo.type === 'sulamericana' ? 'sulamericana' : continentalInfo.type === 'libertadores' ? 'libertadores' : 'champions';
+    const preLibClubs = continentalInfo.preLibertadoresClubs || [];
+
+    // Fase Preliminar: Pré-Libertadores (2ª Fase com 16 clubes / 8 confrontos e 3ª Fase com 8 clubes / 4 confrontos)
+    if (continentalType === 'libertadores' && preLibClubs.length >= 16) {
+      for (let i = 0; i < 8; i++) {
+        allFixtures.push({
+          id: nextId++,
+          round: 1,
+          date: dateAt(1, 3),
+          homeClubId: preLibClubs[i * 2 + 1].id,
+          awayClubId: preLibClubs[i * 2].id,
+          played: false,
+          competitionType: continentalType,
+          competitionName: continentalName,
+          competitionRound: 'Pré-Libertadores • 2ª Fase (Ida)',
+          stage: 'Pré-Libertadores (2ª Fase)',
+          dayOfWeek: 'quarta',
+          leg: 1,
+        });
+      }
+      for (let i = 0; i < 8; i++) {
+        allFixtures.push({
+          id: nextId++,
+          round: 2,
+          date: dateAt(3, 3),
+          homeClubId: preLibClubs[i * 2].id,
+          awayClubId: preLibClubs[i * 2 + 1].id,
+          played: false,
+          competitionType: continentalType,
+          competitionName: continentalName,
+          competitionRound: 'Pré-Libertadores • 2ª Fase (Volta)',
+          stage: 'Pré-Libertadores (2ª Fase)',
+          dayOfWeek: 'quarta',
+          leg: 2,
+        });
+      }
+      for (let leg = 1; leg <= 2; leg++) {
+        for (let tie = 0; tie < 4; tie++) {
+          reserve(
+            continentalType,
+            continentalName,
+            2 + leg,
+            leg === 1 ? 6 : 9,
+            `Pré-Libertadores • 3ª Fase (${leg === 1 ? 'Ida' : 'Volta'})`,
+            'Pré-Libertadores (3ª Fase)',
+            'quarta',
+            leg as 1 | 2
+          );
+        }
+      }
+    }
+
+    const groupCount = Math.max(1, Math.ceil(continentalClubs.length / 4));
+    const groupLabels = Array.from({ length: groupCount }, (_, index) => formatGroupLabel(index));
+    const groups = groupLabels.map((label, index) => ({ label, clubs: continentalClubs.slice(index * 4, (index + 1) * 4) })).filter(group => group.clubs.length >= 2);
+    for (const [groupIndex, group] of groups.entries()) {
+      const raw = generateLeagueCalendar(group.clubs);
+      const rounds = Math.max(...raw.map(f => f.round), 0);
+      for (let r = 1; r <= rounds; r++) addRound(raw, r, nationalStart + r * 2, continentalType, continentalName,
+        `Grupo ${groupLabels[groupIndex]} • Rodada ${r}`, 3);
+    }
+
+    // 8 grupos (32 clubes) -> Oitavas (rounds 7-8), Quartas (9-10), Semifinal (11-12), Final (13-14)
+    // 4 grupos (16 clubes) -> Quartas (rounds 7-8), Semifinal (9-10), Final (11-12)
+    const hasOitavas = groups.length >= 8;
+    const continentalStages = hasOitavas
+      ? ([
+          ['Oitavas de Final', 7, 8],
+          ['Quartas de Final', 9, 4],
+          ['Semifinal', 11, 2],
+          ['Final', 13, 1],
+        ] as const)
+      : ([
+          ['Quartas de Final', 7, 4],
+          ['Semifinal', 9, 2],
+          ['Final', 11, 1],
+        ] as const);
+
+    const knockoutRounds = Math.max(0, Math.floor(groups.length / 2));
+    for (const [stage, firstRound, ties] of continentalStages) {
+      if (stage === 'Oitavas de Final' && groups.length < 8) continue;
+      if (stage === 'Quartas de Final' && knockoutRounds < 2) continue;
+      if (stage === 'Semifinal' && knockoutRounds < 1) continue;
       for (let leg = 1; leg <= 2; leg++) for (let tie = 0; tie < ties; tie++) reserve(continentalType, continentalName,
         firstRound + leg - 1, nationalStart + (firstRound + leg - 1) * 2,
         `${stage} (${leg === 1 ? 'Ida' : 'Volta'})`, stage, 'quarta', leg as 1 | 2);
     }
   }
-  // Cup participants advance through a two-legged knockout bracket (Ida e Volta).
+
+  // Copa Nacional / Copa do Brasil configurável via getNationalCupConfig
   if (semester2Clubs.length >= 16 || pool.length >= 16) {
-    const cupName = isBrazil ? 'Copa do Brasil' : 'Copa Nacional';
-    const sameCountryPool = pool.filter(c => c.countryId === (userClub.countryId ?? 29) && c.id !== userClub.id);
-    const sortedNationalField = [...new Map([...semester2Clubs.filter(c => c.id !== userClub.id), ...sameCountryPool].map(c => [c.id, c])).values()]
-      .sort((a, b) => ((a.division ?? 1) - (b.division ?? 1)) || ((b.reputation ?? 1) - (a.reputation ?? 1)));
-    const cupField = [userClub, ...sortedNationalField].slice(0, 16);
+    const cupConfig = getNationalCupConfig(userClub.countryId ?? 29);
+    const cupName = cupConfig.name;
+    const sameCountryPool = pool.filter(c => c.countryId === (userClub.countryId ?? 29));
+    const sortedCountryClubs = sortClubsByMeritocracy(
+      [...new Map([userClub, ...semester2Clubs, ...sameCountryPool].map(c => [c.id, c])).values()]
+    );
 
-    // Oitavas de Final (Ida e Volta)
-    for (let i = 0; i < 8; i++) {
-      allFixtures.push({
-        id: nextId++,
-        round: 1,
-        date: dateAt(nationalStart + 1, 4),
-        homeClubId: cupField[i * 2].id,
-        awayClubId: cupField[i * 2 + 1].id,
-        played: false,
-        competitionType: 'copa',
-        competitionName: cupName,
-        competitionRound: 'Oitavas de Final (Ida)',
-        stage: 'Oitavas de Final',
-        dayOfWeek: 'quinta',
-        leg: 1,
-      });
-    }
-    for (let i = 0; i < 8; i++) {
-      allFixtures.push({
-        id: nextId++,
-        round: 2,
-        date: dateAt(nationalStart + 3, 4),
-        homeClubId: cupField[i * 2 + 1].id,
-        awayClubId: cupField[i * 2].id,
-        played: false,
-        competitionType: 'copa',
-        competitionName: cupName,
-        competitionRound: 'Oitavas de Final (Volta)',
-        stage: 'Oitavas de Final',
-        dayOfWeek: 'quinta',
-        leg: 2,
-      });
-    }
+    const hasEarlyPhases =
+      isBrazil &&
+      cupConfig.stages.some(s => s.stage === 'Primeira Fase') &&
+      sortedCountryClubs.length >= (cupConfig.teamsCount || 72);
 
-    // Subsequent rounds: Quartas (rounds 3, 4), Semifinal (rounds 5, 6), Final (rounds 7, 8)
-    const stages = [
-      { stage: 'Quartas de Final', firstRound: 3, ties: 4, startWeek: nationalStart + 7 },
-      { stage: 'Semifinal', firstRound: 5, ties: 2, startWeek: nationalStart + 13 },
-      { stage: 'Final', firstRound: 7, ties: 1, startWeek: nationalStart + 19 },
-    ] as const;
+    if (hasEarlyPhases) {
+      // Regra Oficial Copa do Brasil:
+      // - 8 clubes (Libertadores / Elite) entram diretamente nas Oitavas de Final (Pote 1 das Oitavas).
+      // - 64 clubes disputam a Primeira Fase (Jogo Único, 32 confrontos) -> Segunda Fase (Jogo Único, 16 confrontos) -> Terceira Fase (Ida e Volta, 8 confrontos).
+      // - Os 8 classificados da Terceira Fase enfrentam os 8 pré-classificados nas Oitavas de Final!
+      const directCount = cupConfig.directEntryCount ?? 8;
+      const qualifiers = computeContinentalQualifiers(sortedCountryClubs);
+      const preferredDirectIds = new Set(
+        continentalOptions?.qualifiedLibertadoresIds ?? qualifiers.copaDirectOitavasIds
+      );
 
-    for (const { stage, firstRound, ties, startWeek } of stages) {
+      const directEntryClubs: Club[] = [];
+      for (const c of sortedCountryClubs) {
+        if (directEntryClubs.length >= directCount) break;
+        if (preferredDirectIds.has(c.id)) {
+          directEntryClubs.push(c);
+        }
+      }
+      for (const c of sortedCountryClubs) {
+        if (directEntryClubs.length >= directCount) break;
+        if (!directEntryClubs.some(dc => dc.id === c.id)) {
+          directEntryClubs.push(c);
+        }
+      }
+
+      const directIds = new Set(directEntryClubs.map(c => c.id));
+      let earlyCandidates = sortedCountryClubs.filter(c => !directIds.has(c.id));
+      if (!directIds.has(userClub.id)) {
+        earlyCandidates = [userClub, ...earlyCandidates.filter(c => c.id !== userClub.id)];
+      }
+      const firstPhaseClubs = sortClubsByMeritocracy(earlyCandidates.slice(0, 64));
+
+      // 1. Primeira Fase (32 confrontos, Jogo Único - Mando do clube menor vs clube maior, week 2)
+      for (let i = 0; i < 32; i++) {
+        const strongClub = firstPhaseClubs[i];
+        const modestClub = firstPhaseClubs[63 - i];
+        allFixtures.push({
+          id: nextId++,
+          round: 1,
+          date: dateAt(2, 4),
+          homeClubId: modestClub.id,
+          awayClubId: strongClub.id,
+          played: false,
+          competitionType: 'copa',
+          competitionName: cupName,
+          competitionRound: 'Primeira Fase (Jogo Único)',
+          stage: 'Primeira Fase',
+          dayOfWeek: 'quinta',
+        });
+      }
+
+      // 2. Segunda Fase (16 confrontos, Jogo Único, week 5)
+      for (let tie = 0; tie < 16; tie++) {
+        reserve('copa', cupName, 2, 5, 'Segunda Fase (Jogo Único)', 'Segunda Fase', 'quinta');
+      }
+
+      // 3. Terceira Fase (8 confrontos, Ida e Volta, weeks 8 e 10)
       for (let leg = 1; leg <= 2; leg++) {
-        for (let tie = 0; tie < ties; tie++) {
+        for (let tie = 0; tie < 8; tie++) {
           reserve(
             'copa',
             cupName,
-            firstRound + leg - 1,
-            startWeek + (leg === 1 ? 0 : 2),
-            `${stage} (${leg === 1 ? 'Ida' : 'Volta'})`,
-            stage,
+            2 + leg,
+            leg === 1 ? 8 : 10,
+            `Terceira Fase (${leg === 1 ? 'Ida' : 'Volta'})`,
+            'Terceira Fase',
             'quinta',
             leg as 1 | 2
           );
+        }
+      }
+
+      // 4. Oitavas de Final (8 confrontos, Ida e Volta, weeks nationalStart + 1 e nationalStart + 3)
+      // Os 8 clubes da Libertadores/Elite já ficam pré-alocados aguardando os 8 vencedores da 3ª Fase!
+      for (let tie = 0; tie < 8; tie++) {
+        reserve(
+          'copa',
+          cupName,
+          5,
+          nationalStart + 1,
+          'Oitavas de Final (Ida)',
+          'Oitavas de Final',
+          'quinta',
+          1,
+          directEntryClubs[tie].id,
+          0
+        );
+      }
+      for (let tie = 0; tie < 8; tie++) {
+        reserve(
+          'copa',
+          cupName,
+          6,
+          nationalStart + 3,
+          'Oitavas de Final (Volta)',
+          'Oitavas de Final',
+          'quinta',
+          2,
+          0,
+          directEntryClubs[tie].id
+        );
+      }
+
+      // 5. Quartas (rounds 7-8), Semifinal (rounds 9-10) e Final (rounds 11-12)
+      const finalStages = [
+        { stage: 'Quartas de Final', firstRound: 7, ties: 4, startWeek: nationalStart + 7 },
+        { stage: 'Semifinal', firstRound: 9, ties: 2, startWeek: nationalStart + 13 },
+        { stage: 'Final', firstRound: 11, ties: 1, startWeek: nationalStart + 19 },
+      ] as const;
+
+      for (const { stage, firstRound, ties, startWeek } of finalStages) {
+        for (let leg = 1; leg <= 2; leg++) {
+          for (let tie = 0; tie < ties; tie++) {
+            reserve(
+              'copa',
+              cupName,
+              firstRound + leg - 1,
+              startWeek + (leg === 1 ? 0 : 2),
+              `${stage} (${leg === 1 ? 'Ida' : 'Volta'})`,
+              stage,
+              'quinta',
+              leg as 1 | 2
+            );
+          }
+        }
+      }
+    } else {
+      const cupField = [userClub, ...sortedCountryClubs.filter(c => c.id !== userClub.id)].slice(0, 16);
+
+      // Oitavas de Final (Ida e Volta)
+      for (let i = 0; i < 8; i++) {
+        allFixtures.push({
+          id: nextId++,
+          round: 1,
+          date: dateAt(nationalStart + 1, 4),
+          homeClubId: cupField[i * 2].id,
+          awayClubId: cupField[i * 2 + 1].id,
+          played: false,
+          competitionType: 'copa',
+          competitionName: cupName,
+          competitionRound: 'Oitavas de Final (Ida)',
+          stage: 'Oitavas de Final',
+          dayOfWeek: 'quinta',
+          leg: 1,
+        });
+      }
+      for (let i = 0; i < 8; i++) {
+        allFixtures.push({
+          id: nextId++,
+          round: 2,
+          date: dateAt(nationalStart + 3, 4),
+          homeClubId: cupField[i * 2 + 1].id,
+          awayClubId: cupField[i * 2].id,
+          played: false,
+          competitionType: 'copa',
+          competitionName: cupName,
+          competitionRound: 'Oitavas de Final (Volta)',
+          stage: 'Oitavas de Final',
+          dayOfWeek: 'quinta',
+          leg: 2,
+        });
+      }
+
+      // Subsequent rounds: Quartas (rounds 3, 4), Semifinal (rounds 5, 6), Final (rounds 7, 8)
+      const stages = [
+        { stage: 'Quartas de Final', firstRound: 3, ties: 4, startWeek: nationalStart + 7 },
+        { stage: 'Semifinal', firstRound: 5, ties: 2, startWeek: nationalStart + 13 },
+        { stage: 'Final', firstRound: 7, ties: 1, startWeek: nationalStart + 19 },
+      ] as const;
+
+      for (const { stage, firstRound, ties, startWeek } of stages) {
+        for (let leg = 1; leg <= 2; leg++) {
+          for (let tie = 0; tie < ties; tie++) {
+            reserve(
+              'copa',
+              cupName,
+              firstRound + leg - 1,
+              startWeek + (leg === 1 ? 0 : 2),
+              `${stage} (${leg === 1 ? 'Ida' : 'Volta'})`,
+              stage,
+              'quinta',
+              leg as 1 | 2
+            );
+          }
         }
       }
     }
@@ -349,6 +625,7 @@ export function generateTwoSemesterCalendar(
     semester1Clubs,
     semester2Clubs,
     continentalClubs,
+    estadualTier: userStateTier,
   };
 }
 
@@ -385,3 +662,38 @@ export function sortStandings(standings: StandingRow[]): StandingRow[] {
     return a.clubName.localeCompare(b.clubName);
   });
 }
+
+export function initializeEstadualStandings(userClub: Club, clubs: Club[], tier: 1 | 2 = 1): StandingRow[] {
+  const isBrazil = (userClub.countryId ?? 29) === 29;
+  const stateRule = isBrazil ? getStateLeagueRule(userClub.stateCode) : undefined;
+  const isFormula7 = tier === 1 && stateRule?.formulaId === 7 && clubs.length === 16;
+  return sortStandings(
+    initializeStandings(clubs, isFormula7 ? (_c, idx) => formatGroupLabel(Math.floor(idx / 4)) : undefined)
+  );
+}
+
+export function initializeNacionalStandings(userClub: Club, clubs: Club[]): StandingRow[] {
+  const divConfig = getDivisionConfig(userClub.countryId || 29, userClub.division || 1, undefined, clubs.length);
+  const groupCount =
+    divConfig?.groupCount && divConfig.groupCount > 1 && clubs.length >= divConfig.groupCount * 2
+      ? divConfig.groupCount
+      : 1;
+  const groupSize = groupCount > 1 ? Math.ceil(clubs.length / groupCount) : clubs.length;
+  return sortStandings(
+    initializeStandings(
+      clubs,
+      groupCount > 1 ? (_c, idx) => formatGroupLabel(Math.floor(idx / groupSize)) : undefined
+    )
+  );
+}
+
+export function initializeContinentalStandings(clubs: Club[]): StandingRow[] {
+  const groupCount = Math.max(1, Math.ceil(clubs.length / 4));
+  return sortStandings(
+    initializeStandings(clubs, (_c, idx) => {
+      const groupIndex = Math.floor(idx / 4);
+      return groupIndex < groupCount ? formatGroupLabel(groupIndex) : undefined;
+    })
+  );
+}
+

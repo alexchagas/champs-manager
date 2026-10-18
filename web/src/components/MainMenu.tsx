@@ -1064,7 +1064,7 @@ export const MainMenu: React.FC = () => {
                               : 'bg-[#12231a] text-slate-300 hover:bg-[#183324] border border-[#1e3c2d]'
                           }`}
                         >
-                          Estaduais / Acesso (72 Clubes)
+                          Estaduais / Acesso ({countryLeagues.find((l) => l.division === 5)?.teamCount ?? 703} Clubes)
                         </button>
                         <button
                           onClick={() => handleDivisionChange('all')}
@@ -1074,7 +1074,7 @@ export const MainMenu: React.FC = () => {
                               : 'bg-[#12231a] text-slate-300 hover:bg-[#183324] border border-[#1e3c2d]'
                           }`}
                         >
-                          Todos do Brasil (196 Clubes)
+                          Todos do Brasil ({allCountries.find((c) => c.id === 29)?.clubCount ?? 827} Clubes)
                         </button>
 
                         {/* State Filter for Brazil */}

@@ -1,5 +1,25 @@
 import type { Club } from '../types/index.ts';
 import { getAllClubs } from './teamsDatabase.ts';
+import { seedClubsByPots } from './continentalRepresentatives.ts';
+
+/**
+ * Ordenação canônica por mérito esportivo (engenharia reversa do motor h/D.java):
+ * 1. Menor divisão nacional (1 = Série A, 2 = Série B, 3 = Série C, 4 = Série D, 5 = Acesso)
+ * 2. Maior level técnico do time (descendente)
+ * 3. Maior reputação (estrelas, descendente)
+ */
+export function sortClubsByMeritocracy(clubs: Club[]): Club[] {
+  return [...clubs].sort((a, b) => {
+    const divA = a.division ?? 5;
+    const divB = b.division ?? 5;
+    if (divA !== divB) return divA - divB;
+    const repDiff = (b.reputation ?? 1) - (a.reputation ?? 1);
+    if (repDiff !== 0) return repDiff;
+    const levelDiff = (b.level ?? 10) - (a.level ?? 10);
+    if (levelDiff !== 0) return levelDiff;
+    return a.name.localeCompare(b.name);
+  });
+}
 
 /**
  * Catálogo canônico de Fórmulas dos Campeonatos Estaduais do Brasil
@@ -309,6 +329,60 @@ export function getStateDivisionInfo(stateCode?: string, allClubs?: Club[]): Sta
     } else if (code === 'PR') {
       tier2LeagueName = 'Paranaense 2ª Divisão';
       tier2DivName = '2ª Divisão';
+    } else if (code === 'GO') {
+      tier2LeagueName = 'Goiano Divisão de Acesso';
+      tier2DivName = 'Divisão de Acesso';
+    } else if (code === 'BA') {
+      tier2LeagueName = 'Baiano 2ª Divisão';
+      tier2DivName = '2ª Divisão';
+    } else if (code === 'PE') {
+      tier2LeagueName = 'Pernambucano Série A2';
+      tier2DivName = 'Série A2';
+    } else if (code === 'CE') {
+      tier2LeagueName = 'Cearense Série B';
+      tier2DivName = 'Série B';
+    } else if (code === 'MT') {
+      tier2LeagueName = 'Mato-Grossense 2ª Divisão';
+      tier2DivName = '2ª Divisão';
+    } else if (code === 'PA') {
+      tier2LeagueName = 'Paraense Série B1';
+      tier2DivName = 'Série B1';
+    } else if (code === 'PB') {
+      tier2LeagueName = 'Paraibano 2ª Divisão';
+      tier2DivName = '2ª Divisão';
+    } else if (code === 'SE') {
+      tier2LeagueName = 'Sergipano Série A2';
+      tier2DivName = 'Série A2';
+    } else if (code === 'AP') {
+      tier2LeagueName = 'Amapaense 2ª Divisão';
+      tier2DivName = '2ª Divisão';
+    } else if (code === 'ES') {
+      tier2LeagueName = 'Capixabão Série B';
+      tier2DivName = 'Série B';
+    } else if (code === 'RN') {
+      tier2LeagueName = 'Potiguar 2ª Divisão';
+      tier2DivName = '2ª Divisão';
+    } else if (code === 'MA') {
+      tier2LeagueName = 'Maranhense Série B';
+      tier2DivName = 'Série B';
+    } else if (code === 'MS') {
+      tier2LeagueName = 'Sul-Mato-Grossense Série B';
+      tier2DivName = 'Série B';
+    } else if (code === 'PI') {
+      tier2LeagueName = 'Piauiense Série B';
+      tier2DivName = 'Série B';
+    } else if (code === 'DF') {
+      tier2LeagueName = 'Brasiliense 2ª Divisão';
+      tier2DivName = '2ª Divisão';
+    } else if (code === 'AL') {
+      tier2LeagueName = 'Alagoano 2ª Divisão';
+      tier2DivName = '2ª Divisão';
+    } else if (code === 'AM') {
+      tier2LeagueName = 'Amazonense Série B';
+      tier2DivName = 'Série B';
+    } else if (code === 'TO') {
+      tier2LeagueName = 'Tocantinense 2ª Divisão';
+      tier2DivName = '2ª Divisão';
     }
 
     tier2 = {
@@ -316,6 +390,16 @@ export function getStateDivisionInfo(stateCode?: string, allClubs?: Club[]): Sta
       badge: '2ª Divisão',
       divisionName: tier2DivName,
       leagueName: tier2LeagueName,
+    };
+  }
+
+  let tier3: StateTierInfo | undefined = undefined;
+  if (code === 'SP' && remainingClubsCount >= 24) {
+    tier3 = {
+      tier: 3 as any,
+      badge: '3ª Divisão',
+      divisionName: 'Série A3',
+      leagueName: 'Paulistão Série A3',
     };
   }
 
@@ -328,5 +412,123 @@ export function getStateDivisionInfo(stateCode?: string, allClubs?: Club[]): Sta
     remainingClubsCount,
     tier1,
     tier2,
+    tier3,
   };
+}
+
+export interface UserStateDivisionResult {
+  tier: 1 | 2;
+  leagueName: string;
+  divisionName: string;
+  badge: string;
+  fieldClubs: Club[];
+  parallelTier?: {
+    tier: 1 | 2;
+    leagueName: string;
+    divisionName: string;
+    badge: string;
+    fieldClubs: Club[];
+  };
+}
+
+/**
+ * Determina canonicamente em qual divisão estadual o clube do usuário joga (1ª Divisão Elite vs 2ª Divisão Acesso),
+ * garantindo que a divisão não jogada fique ativa na aba paralela para acompanhamento.
+ */
+export function getUserStateDivision(
+  userClub: Club,
+  allAvailableClubs?: Club[],
+  seasonYear = 2026,
+  promotedStateClubIds?: number[],
+  relegatedStateClubIds?: number[]
+): UserStateDivisionResult {
+  const pool = allAvailableClubs && allAvailableClubs.length > 0 ? allAvailableClubs : getAllClubs();
+  const sameState = (c: Club) =>
+    c.countryId === 29 &&
+    ((userClub.stateId != null && c.stateId === userClub.stateId) ||
+      (userClub.stateCode != null && (c.stateCode || '').toUpperCase() === (userClub.stateCode || '').toUpperCase()));
+
+  const rawStateClubs = pool.filter(sameState);
+  let sortedStateClubs = sortClubsByMeritocracy(rawStateClubs);
+
+  const stateRule = getStateLeagueRule(userClub.stateCode);
+  const divInfo = getStateDivisionInfo(userClub.stateCode, pool);
+  const targetEliteCount = stateRule ? stateRule.nTimes : 12;
+
+  // Aplica sobreposições de acesso/rebaixamento da virada de temporada anterior
+  if ((promotedStateClubIds && promotedStateClubIds.length > 0) || (relegatedStateClubIds && relegatedStateClubIds.length > 0)) {
+    const promotedSet = new Set(promotedStateClubIds || []);
+    const relegatedSet = new Set(relegatedStateClubIds || []);
+    const promotedClubs = sortedStateClubs.filter(c => promotedSet.has(c.id));
+    const relegatedClubs = sortedStateClubs.filter(c => relegatedSet.has(c.id));
+    const regularClubs = sortedStateClubs.filter(c => !promotedSet.has(c.id) && !relegatedSet.has(c.id));
+    sortedStateClubs = [...promotedClubs, ...regularClubs, ...relegatedClubs];
+  }
+
+  // 1. Estado de divisão única (AC, RO, RR): todos os clubes jogam a 1ª Divisão
+  if (!divInfo.hasSecondDivision || !divInfo.tier2) {
+    const targetCount = Math.min(sortedStateClubs.length, targetEliteCount);
+    let fieldClubs = sortedStateClubs.slice(0, targetCount);
+    if (!fieldClubs.some(c => c.id === userClub.id)) {
+      fieldClubs = [userClub, ...fieldClubs.slice(0, targetCount - 1)];
+    }
+    return {
+      tier: 1,
+      leagueName: divInfo.tier1.leagueName,
+      divisionName: divInfo.tier1.divisionName,
+      badge: divInfo.tier1.badge,
+      fieldClubs,
+    };
+  }
+
+  // 2. Estado com 2ª Divisão disponível (24 federações)
+  const eliteClubs = sortedStateClubs.slice(0, targetEliteCount);
+  const remainingClubs = sortedStateClubs.filter(c => !eliteClubs.some(e => e.id === c.id));
+  const isUserElite = eliteClubs.some(c => c.id === userClub.id);
+
+  if (isUserElite) {
+    // Usuário joga na 1ª Divisão (Elite)
+    let fieldClubs = eliteClubs;
+    if (stateRule?.formulaId === 7 && fieldClubs.length === 16) {
+      fieldClubs = seedClubsByPots(fieldClubs, 4, seasonYear, true);
+    }
+    const parallelField = remainingClubs.slice(0, Math.min(16, remainingClubs.length));
+    return {
+      tier: 1,
+      leagueName: divInfo.tier1.leagueName,
+      divisionName: divInfo.tier1.divisionName,
+      badge: divInfo.tier1.badge,
+      fieldClubs,
+      parallelTier: {
+        tier: 2,
+        leagueName: divInfo.tier2.leagueName,
+        divisionName: divInfo.tier2.divisionName,
+        badge: divInfo.tier2.badge,
+        fieldClubs: parallelField,
+      },
+    };
+  } else {
+    // Usuário joga na 2ª Divisão (Acesso / Série A2)
+    const targetA2Count = Math.min(16, Math.max(8, remainingClubs.length));
+    const tier2WithoutUser = remainingClubs.filter(c => c.id !== userClub.id);
+    const fieldClubs = [userClub, ...tier2WithoutUser.slice(0, targetA2Count - 1)];
+    let parallelField = eliteClubs;
+    if (stateRule?.formulaId === 7 && parallelField.length === 16) {
+      parallelField = seedClubsByPots(parallelField, 4, seasonYear, true);
+    }
+    return {
+      tier: 2,
+      leagueName: divInfo.tier2.leagueName,
+      divisionName: divInfo.tier2.divisionName,
+      badge: divInfo.tier2.badge,
+      fieldClubs,
+      parallelTier: {
+        tier: 1,
+        leagueName: divInfo.tier1.leagueName,
+        divisionName: divInfo.tier1.divisionName,
+        badge: divInfo.tier1.badge,
+        fieldClubs: parallelField,
+      },
+    };
+  }
 }

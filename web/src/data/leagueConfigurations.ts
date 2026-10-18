@@ -21,6 +21,30 @@ export interface DivisionConfig {
   tiebreakPriority: TiebreakCriteria; // Critério primário de desempate
 }
 
+export interface NationalCupStageConfig {
+  stage: string;                      // Ex: 'Primeira Fase', 'Segunda Fase', 'Terceira Fase', 'Oitavas de Final', etc.
+  ties: number;                       // Quantidade de confrontos na fase (32, 16, 8, 4, 2, 1)
+  legs: 1 | 2;                        // 1 = jogo único (só ida), 2 = ida e volta
+}
+
+export interface NationalCupConfig {
+  name: string;                       // Ex: 'Copa do Brasil'
+  teamsCount: number;                 // Total de participantes (ex: 72 = 64 na 1ª Fase + 8 entrando nas Oitavas)
+  directEntryCount?: number;          // Quantidade de clubes (Libertadores/Elite) que entram direto em fase avançada
+  directEntryStage?: string;          // Fase em que entram os clubes da Libertadores/Elite (ex: 'Oitavas de Final')
+  stages: NationalCupStageConfig[];   // Fases configuráveis da Copa
+}
+
+export interface ContinentalQualificationConfig {
+  libertadoresSpots: number;          // Total de vagas via liga nacional (ex: G6 no Brasileirão Série A)
+  libertadoresDirectSpots?: number;   // Vagas diretas na Fase de Grupos (ex: G4 no Brasileirão Série A)
+  preLibertadoresSpots?: number;      // Vagas na Pré-Libertadores (ex: 5º e 6º no Brasileirão Série A)
+  sulAmericanaSpots: number;          // Vagas via liga nacional (ex: 7º ao 12º no Brasileirão Série A)
+  cupWinnerGetsLibertadores: boolean; // Campeão da Copa do Brasil garante vaga direta na Fase de Grupos da Libertadores
+  continentalWinnersGetLibertadores: boolean; // Campeões da Libertadores e Sul-Americana garantem vaga direta
+  preLibertadoresStages?: NationalCupStageConfig[]; // Fases preliminares da Pré-Libertadores (2ª Fase e 3ª Fase)
+}
+
 export interface CountryLeagueConfig {
   countryId: number;
   countryName: string;
@@ -28,6 +52,8 @@ export interface CountryLeagueConfig {
   divisions: DivisionConfig[];
   hasStateChampionships?: boolean;    // Exclusivo Brasil
   hasNationalCup?: boolean;           // Copa do Brasil, FA Cup, Copa del Rey, etc.
+  nationalCup?: NationalCupConfig;    // Configuração detalhada das fases da Copa Nacional
+  continentalQualification?: ContinentalQualificationConfig;
 }
 
 /**
@@ -41,11 +67,38 @@ export const COUNTRY_LEAGUE_PRESETS: Record<number, CountryLeagueConfig> = {
     bundleKey: 'brazil',
     hasStateChampionships: true,
     hasNationalCup: true,
+    continentalQualification: {
+      libertadoresSpots: 6,
+      libertadoresDirectSpots: 4,
+      preLibertadoresSpots: 2,
+      sulAmericanaSpots: 6,
+      cupWinnerGetsLibertadores: true,
+      continentalWinnersGetLibertadores: true,
+      preLibertadoresStages: [
+        { stage: 'Pré-Libertadores (2ª Fase)', ties: 8, legs: 2 },
+        { stage: 'Pré-Libertadores (3ª Fase)', ties: 4, legs: 2 },
+      ],
+    },
+    nationalCup: {
+      name: 'Copa do Brasil',
+      teamsCount: 72,
+      directEntryCount: 8,
+      directEntryStage: 'Oitavas de Final',
+      stages: [
+        { stage: 'Primeira Fase', ties: 32, legs: 1 },
+        { stage: 'Segunda Fase', ties: 16, legs: 1 },
+        { stage: 'Terceira Fase', ties: 8, legs: 2 },
+        { stage: 'Oitavas de Final', ties: 8, legs: 2 },
+        { stage: 'Quartas de Final', ties: 4, legs: 2 },
+        { stage: 'Semifinal', ties: 2, legs: 2 },
+        { stage: 'Final', ties: 1, legs: 2 },
+      ],
+    },
     divisions: [
       { division: 1, name: 'Brasileirão Série A', teamCount: 20, rounds: 2, format: 'round_robin', relegationDirect: 4, tiebreakPriority: 'wins' },
       { division: 2, name: 'Brasileirão Série B', teamCount: 20, rounds: 2, format: 'round_robin', relegationDirect: 4, tiebreakPriority: 'wins' },
-      { division: 3, name: 'Brasileirão Série C', teamCount: 20, rounds: 1, format: 'groups_and_playoffs', groupCount: 2, playoffTeams: 4, relegationDirect: 4, tiebreakPriority: 'wins' },
-      { division: 4, name: 'Brasileirão Série D', teamCount: 64, rounds: 2, format: 'groups_and_playoffs', groupCount: 8, playoffTeams: 32, relegationDirect: 0, tiebreakPriority: 'wins' },
+      { division: 3, name: 'Brasileirão Série C', teamCount: 20, rounds: 1, format: 'groups_and_playoffs', groupCount: 1, playoffTeams: 8, promotionPlayoff: 4, relegationDirect: 4, tiebreakPriority: 'wins' },
+      { division: 4, name: 'Brasileirão Série D', teamCount: 64, rounds: 2, format: 'groups_and_playoffs', groupCount: 8, playoffTeams: 32, promotionPlayoff: 4, relegationDirect: 0, tiebreakPriority: 'wins' },
     ],
   },
 
@@ -262,3 +315,54 @@ export function getCountryLeagueConfig(countryId: number, countryName = 'Naciona
     hasNationalCup: true,
   };
 }
+
+/**
+ * Returns the DivisionConfig for a specific country and division (falling back to the last configured division if division > 4).
+ */
+export function getDivisionConfig(
+  countryId: number = 29,
+  division: number = 1,
+  countryName = 'Nacional',
+  totalClubs = 20
+): DivisionConfig | undefined {
+  const countryConfig = getCountryLeagueConfig(countryId, countryName, totalClubs);
+  const effectiveDiv = countryId === 29 && division >= 4 ? 4 : division;
+  return (
+    countryConfig.divisions.find((d) => d.division === effectiveDiv) ||
+    countryConfig.divisions[countryConfig.divisions.length - 1]
+  );
+}
+
+/**
+ * Returns the NationalCupConfig for a given country, falling back to a 16-club two-legged cup.
+ */
+export function getNationalCupConfig(countryId: number = 29): NationalCupConfig {
+  const countryConfig = COUNTRY_LEAGUE_PRESETS[countryId];
+  if (countryConfig?.nationalCup) {
+    return countryConfig.nationalCup;
+  }
+  return {
+    name: countryId === 29 ? 'Copa do Brasil' : 'Copa Nacional',
+    teamsCount: 16,
+    stages: [
+      { stage: 'Oitavas de Final', ties: 8, legs: 2 },
+      { stage: 'Quartas de Final', ties: 4, legs: 2 },
+      { stage: 'Semifinal', ties: 2, legs: 2 },
+      { stage: 'Final', ties: 1, legs: 2 },
+    ],
+  };
+}
+
+/**
+ * Converts a 0-based group index to an uppercase alphabetic label (0 -> 'A', 1 -> 'B', ..., 7 -> 'H', 26 -> 'AA').
+ */
+export function formatGroupLabel(groupIndex: number): string {
+  let label = '';
+  let value = Math.max(0, groupIndex);
+  do {
+    label = String.fromCharCode(65 + (value % 26)) + label;
+    value = Math.floor(value / 26) - 1;
+  } while (value >= 0);
+  return label;
+}
+

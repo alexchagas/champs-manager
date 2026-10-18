@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
+const projectRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+
 test('AccessGatekeeper Safari and WebKit compatibility attributes', () => {
-  const filePath = path.resolve('web/src/components/AccessGatekeeper.tsx');
+  const filePath = path.join(projectRoot, 'src/components/AccessGatekeeper.tsx');
   const content = fs.readFileSync(filePath, 'utf-8');
 
   // Must not have global select-none on outer container
@@ -39,7 +41,7 @@ test('AccessGatekeeper Safari and WebKit compatibility attributes', () => {
 });
 
 test('BugReportModal Safari input compatibility', () => {
-  const filePath = path.resolve('web/src/components/BugReportModal.tsx');
+  const filePath = path.join(projectRoot, 'src/components/BugReportModal.tsx');
   const content = fs.readFileSync(filePath, 'utf-8');
 
   assert.ok(
