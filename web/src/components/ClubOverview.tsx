@@ -149,13 +149,15 @@ export const ClubOverview: React.FC = () => {
         badge: isTier2 ? '2ª Divisão' : '1ª Divisão',
         tier: isTier2 ? 2 : 1,
         isCurrent: currentCompetition === 'estadual',
-        category: currentCompetition === 'estadual' ? 'current' : 'state',
+        category: 'state',
       });
     }
 
     // 2. Outras Divisões Estaduais e outros Estados do Brasil
     if (gameState.stateDivisions && gameState.stateDivisions.length > 0) {
-      const sortedStateDivs = [...gameState.stateDivisions].sort((a, b) => a.leagueName.localeCompare(b.leagueName));
+      const sortedStateDivs = [...gameState.stateDivisions].sort((a, b) => 
+        a.leagueName.localeCompare(b.leagueName) || (a.division || 1) - (b.division || 1)
+      );
       sortedStateDivs.forEach(sDiv => {
         list.push({
           id: sDiv.id,
@@ -733,24 +735,27 @@ export const ClubOverview: React.FC = () => {
                   className="w-full appearance-none bg-[var(--app-surface-3)] hover:bg-[var(--app-surface-2)] text-white text-[11px] sm:text-xs font-bold py-1.5 pl-2.5 pr-8 rounded-md border border-[var(--app-border-subtle)] hover:border-[var(--app-text-accent)] focus:outline-none focus:border-[var(--app-text-accent)] cursor-pointer truncate shadow-xs transition-colors"
                 >
                   {/* Sua Competição Atual */}
-                  {availableCompetitionTabs.some(c => c.category === 'current') && (
+                  {availableCompetitionTabs.some(c => c.isCurrent) && (
                     <optgroup label="Sua Competição (Em Andamento)" className="bg-[var(--app-surface-1)] text-[var(--app-text-accent)] font-bold">
-                      {availableCompetitionTabs.filter(c => c.category === 'current').map(comp => (
-                        <option key={comp.id} value={comp.id} className="bg-[var(--app-bg-deep)] text-white font-normal py-1">
+                      {availableCompetitionTabs.filter(c => c.isCurrent).map(comp => (
+                        <option key={`current-${comp.id}`} value={comp.id} className="bg-[var(--app-bg-deep)] text-white font-normal py-1">
                           {comp.label} {comp.badge ? `• ${comp.badge}` : ''} ⭐
                         </option>
                       ))}
                     </optgroup>
                   )}
 
-                  {/* Campeonatos Estaduais */}
+                  {/* Campeonatos Estaduais (1ª e 2ª Divisões) */}
                   {availableCompetitionTabs.some(c => c.category === 'state') && (
-                    <optgroup label="Campeonatos Estaduais" className="bg-[var(--app-surface-1)] text-amber-400 font-bold">
-                      {availableCompetitionTabs.filter(c => c.category === 'state').map(comp => (
-                        <option key={comp.id} value={comp.id} className="bg-[var(--app-bg-deep)] text-white font-normal py-1">
-                          {comp.label} {comp.badge ? `• ${comp.badge}` : ''}
-                        </option>
-                      ))}
+                    <optgroup label="Campeonatos Estaduais (1ª e 2ª Divisões)" className="bg-[var(--app-surface-1)] text-amber-400 font-bold">
+                      {availableCompetitionTabs
+                        .filter(c => c.category === 'state')
+                        .sort((a, b) => a.label.localeCompare(b.label) || (a.tier || 1) - (b.tier || 1))
+                        .map(comp => (
+                          <option key={comp.id} value={comp.id} className="bg-[var(--app-bg-deep)] text-white font-normal py-1">
+                            {comp.label} {comp.badge ? `• ${comp.badge}` : ''} {comp.isCurrent ? '⭐' : ''}
+                          </option>
+                        ))}
                     </optgroup>
                   )}
 

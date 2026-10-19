@@ -760,9 +760,11 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const progressRatio = Math.min(1.0, closed.currentRound / currentLastSlot);
       const isMainBrazil = (closed.clubs.find(c => c.id === closed.userClubId)?.countryId || 29) === 29;
 
+      const safeSemester: 1 | 2 = closed.currentSemester ?? (closed.currentRound <= 14 ? 1 : 2);
+
       const updatedNationalDivisions = closed.nationalDivisions && closed.nationalDivisions.length > 0
         ? advanceOtherLeaguesProgress(closed.nationalDivisions, progressRatio, closed.clubs, isMainBrazil, {
-            currentSemester: closed.currentSemester,
+            currentSemester: safeSemester,
             currentRound: closed.currentRound,
             totalRounds: currentLastSlot,
           })
@@ -770,7 +772,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const updatedStateDivisions = closed.stateDivisions && closed.stateDivisions.length > 0
         ? advanceOtherLeaguesProgress(closed.stateDivisions, progressRatio, closed.clubs, true, {
-            currentSemester: closed.currentSemester,
+            currentSemester: safeSemester,
             currentRound: closed.currentRound,
             totalRounds: currentLastSlot,
           })
@@ -778,7 +780,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const updatedContinentalCompetitions = closed.continentalCompetitions && closed.continentalCompetitions.length > 0
         ? advanceOtherLeaguesProgress(closed.continentalCompetitions, progressRatio, closed.clubs, true, {
-            currentSemester: closed.currentSemester,
+            currentSemester: safeSemester,
             currentRound: closed.currentRound,
             totalRounds: currentLastSlot,
           })
@@ -786,7 +788,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const updatedOtherLeagues = closed.otherLeagues && closed.otherLeagues.length > 0
         ? advanceOtherLeaguesProgress(closed.otherLeagues, progressRatio, closed.clubs, isMainBrazil, {
-            currentSemester: closed.currentSemester,
+            currentSemester: safeSemester,
             currentRound: closed.currentRound,
             totalRounds: currentLastSlot,
           })

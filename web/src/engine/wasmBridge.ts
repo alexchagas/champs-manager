@@ -104,6 +104,7 @@ function mergeCareerState(current: GameState, parsed: GameState): GameState {
     stateChampionshipName: current.stateChampionshipName,
     nationalLeagueName: current.nationalLeagueName,
     continentalCupName: current.continentalCupName,
+    currentSemester: parsed.currentSemester ?? current.currentSemester ?? ((parsed.currentRound ?? current.currentRound) <= 14 ? 1 : 2),
     nationalDivisions: parsed.nationalDivisions ?? current.nationalDivisions,
     stateDivisions: parsed.stateDivisions ?? current.stateDivisions,
     continentalCompetitions: parsed.continentalCompetitions ?? current.continentalCompetitions,
