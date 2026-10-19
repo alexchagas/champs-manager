@@ -130,31 +130,49 @@ export const ClubOverview: React.FC = () => {
   const standingsList = displayedStandings || gameState.standings;
 
   const availableCompetitionTabs = useMemo(() => {
-    const list: { id: string; label: string; isCurrent: boolean; badge?: string; tier?: number }[] = [];
+    interface CompetitionTabItem {
+      id: string;
+      label: string;
+      isCurrent: boolean;
+      badge?: string;
+      tier?: number;
+      category: 'current' | 'state' | 'national' | 'continental' | 'copa' | 'international';
+    }
+    const list: CompetitionTabItem[] = [];
+
+    // 1. Estadual do clube do usuário
     if (gameState.standingsEstadual && gameState.standingsEstadual.length > 0) {
       const isTier2 = gameState.stateTier === 2;
       list.push({
         id: 'estadual',
         label: gameState.stateChampionshipName ? gameState.stateChampionshipName.split('(')[0].trim() : 'Estadual',
-        badge: isTier2 ? '2ª Divisão' : '1ª Divisão', // badge: '1ª Divisão'
+        badge: isTier2 ? '2ª Divisão' : '1ª Divisão',
         tier: isTier2 ? 2 : 1,
         isCurrent: currentCompetition === 'estadual',
+        category: currentCompetition === 'estadual' ? 'current' : 'state',
       });
     }
+
+    // 2. Outras Divisões Estaduais e outros Estados do Brasil
     if (gameState.stateDivisions && gameState.stateDivisions.length > 0) {
-      gameState.stateDivisions.forEach(sDiv => {
+      const sortedStateDivs = [...gameState.stateDivisions].sort((a, b) => a.leagueName.localeCompare(b.leagueName));
+      sortedStateDivs.forEach(sDiv => {
         list.push({
           id: sDiv.id,
           label: sDiv.leagueName,
-          badge: sDiv.division === 1 ? '1ª Divisão' : '2ª Divisão', // badge: '2ª Divisão'
+          badge: sDiv.division === 1 ? '1ª Divisão' : '2ª Divisão',
           tier: sDiv.division,
           isCurrent: false,
+          category: 'state',
         });
       });
     }
+
+    // 3. Campeonato Nacional
     if (gameState.standingsNacional && gameState.standingsNacional.length > 0) {
+      const userDiv = userClub.division ?? 1;
       const divisionLetter = userClub.countryId === 29
-        ? (userClub.division === 1 ? 'A' : userClub.division === 2 ? 'B' : userClub.division === 3 ? 'C' : userClub.division >= 4 ? 'D' : '')
+        ? (userDiv === 1 ? 'A' : userDiv === 2 ? 'B' : userDiv === 3 ? 'C' : userDiv >= 4 ? 'D' : '')
         : '';
       const nationalLabel = divisionLetter
         ? `Brasileirão Série ${divisionLetter}`
@@ -163,13 +181,17 @@ export const ClubOverview: React.FC = () => {
         id: 'nacional',
         label: nationalLabel,
         isCurrent: currentCompetition === 'nacional',
+        category: currentCompetition === 'nacional' ? 'current' : 'national',
       });
     }
+
+    // 4. Copas e Continentais
     if (gameState.standingsContinental && gameState.standingsContinental.length > 0) {
       list.push({
         id: 'continental',
         label: gameState.continentalCupName || 'Libertadores',
         isCurrent: currentCompetition === 'libertadores' || currentCompetition === 'sulamericana' || currentCompetition === 'champions',
+        category: (currentCompetition === 'libertadores' || currentCompetition === 'sulamericana' || currentCompetition === 'champions') ? 'current' : 'continental',
       });
     }
     if (gameState.continentalCompetitions && gameState.continentalCompetitions.length > 0) {
@@ -178,6 +200,7 @@ export const ClubOverview: React.FC = () => {
           id: sisterContinental.id,
           label: sisterContinental.leagueName,
           isCurrent: false,
+          category: 'continental',
         });
       });
     }
@@ -187,17 +210,23 @@ export const ClubOverview: React.FC = () => {
         id: 'copa',
         label: userClub.countryId === 29 ? 'Copa do Brasil' : 'Copa Nacional',
         isCurrent: currentCompetition === 'copa',
+        category: currentCompetition === 'copa' ? 'current' : 'copa',
       });
     }
+
+    // 5. Outras Divisões Nacionais
     if (gameState.nationalDivisions && gameState.nationalDivisions.length > 0) {
       gameState.nationalDivisions.forEach(div => {
         list.push({
           id: div.id,
           label: div.leagueName,
           isCurrent: false,
+          category: 'national',
         });
       });
     }
+
+    // 6. Ligas Internacionais
     if (gameState.otherLeagues && gameState.otherLeagues.length > 0) {
       gameState.otherLeagues.forEach(other => {
         const flag = COUNTRY_FLAGS[other.countryId] || other.countryFlag || '🌐';
@@ -208,6 +237,7 @@ export const ClubOverview: React.FC = () => {
           id: other.id,
           label,
           isCurrent: false,
+          category: 'international',
         });
       });
     }
@@ -579,7 +609,7 @@ export const ClubOverview: React.FC = () => {
               Sem Clube
             </span>
             <span className="truncate">
-              Você está desempregado há <strong>{humanManager.unemployedRounds || 0}</strong> {(humanManager.unemployedRounds || 0) === 1 ? 'rodada' : 'rodadas'}. Avance as rodadas para acompanhar o futebol e aguardar convites oficiais.
+              Você está desempregado há <strong>{(humanManager as any)?.unemployedRounds || 0}</strong> {((humanManager as any)?.unemployedRounds || 0) === 1 ? 'rodada' : 'rodadas'}. Avance as rodadas para acompanhar o futebol e aguardar convites oficiais.
             </span>
           </div>
           <button
@@ -702,11 +732,60 @@ export const ClubOverview: React.FC = () => {
                   }}
                   className="w-full appearance-none bg-[var(--app-surface-3)] hover:bg-[var(--app-surface-2)] text-white text-[11px] sm:text-xs font-bold py-1.5 pl-2.5 pr-8 rounded-md border border-[var(--app-border-subtle)] hover:border-[var(--app-text-accent)] focus:outline-none focus:border-[var(--app-text-accent)] cursor-pointer truncate shadow-xs transition-colors"
                 >
-                  {availableCompetitionTabs.map(comp => (
-                    <option key={comp.id} value={comp.id} className="bg-[var(--app-bg-deep)] text-white py-1">
-                      {comp.label} {comp.badge ? `• ${comp.badge}` : ''} {comp.isCurrent ? '⭐ (Em Andamento)' : ''}
-                    </option>
-                  ))}
+                  {/* Sua Competição Atual */}
+                  {availableCompetitionTabs.some(c => c.category === 'current') && (
+                    <optgroup label="Sua Competição (Em Andamento)" className="bg-[var(--app-surface-1)] text-[var(--app-text-accent)] font-bold">
+                      {availableCompetitionTabs.filter(c => c.category === 'current').map(comp => (
+                        <option key={comp.id} value={comp.id} className="bg-[var(--app-bg-deep)] text-white font-normal py-1">
+                          {comp.label} {comp.badge ? `• ${comp.badge}` : ''} ⭐
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+
+                  {/* Campeonatos Estaduais */}
+                  {availableCompetitionTabs.some(c => c.category === 'state') && (
+                    <optgroup label="Campeonatos Estaduais" className="bg-[var(--app-surface-1)] text-amber-400 font-bold">
+                      {availableCompetitionTabs.filter(c => c.category === 'state').map(comp => (
+                        <option key={comp.id} value={comp.id} className="bg-[var(--app-bg-deep)] text-white font-normal py-1">
+                          {comp.label} {comp.badge ? `• ${comp.badge}` : ''}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+
+                  {/* Campeonato Nacional e Divisões */}
+                  {availableCompetitionTabs.some(c => c.category === 'national') && (
+                    <optgroup label="Campeonato Nacional (Séries A, B, C, D)" className="bg-[var(--app-surface-1)] text-emerald-400 font-bold">
+                      {availableCompetitionTabs.filter(c => c.category === 'national').map(comp => (
+                        <option key={comp.id} value={comp.id} className="bg-[var(--app-bg-deep)] text-white font-normal py-1">
+                          {comp.label} {comp.badge ? `• ${comp.badge}` : ''}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+
+                  {/* Copas & Torneios Continentais */}
+                  {availableCompetitionTabs.some(c => c.category === 'continental' || c.category === 'copa') && (
+                    <optgroup label="Copas & Torneios Continentais" className="bg-[var(--app-surface-1)] text-sky-400 font-bold">
+                      {availableCompetitionTabs.filter(c => c.category === 'continental' || c.category === 'copa').map(comp => (
+                        <option key={comp.id} value={comp.id} className="bg-[var(--app-bg-deep)] text-white font-normal py-1">
+                          {comp.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+
+                  {/* Ligas Internacionais */}
+                  {availableCompetitionTabs.some(c => c.category === 'international') && (
+                    <optgroup label="Ligas Internacionais" className="bg-[var(--app-surface-1)] text-purple-400 font-bold">
+                      {availableCompetitionTabs.filter(c => c.category === 'international').map(comp => (
+                        <option key={comp.id} value={comp.id} className="bg-[var(--app-bg-deep)] text-white font-normal py-1">
+                          {comp.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
                 <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               </div>

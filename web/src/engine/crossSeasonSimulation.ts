@@ -1,7 +1,7 @@
 import type { Club, StandingRow, OtherLeagueStandings, LeagueInfo } from '../types/index.ts';
 import { generateLeagueCalendar, initializeStandings, sortStandings, sortClubsByMeritocracy } from '../data/calendarGenerator.ts';
-import { getLeaguesByCountry, getClubsByLeague, getAllLeagues } from '../data/teamsDatabase.ts';
-import { getStateDivisionInfo, getUserStateDivision, getStateLeagueRule } from '../data/stateLeagueFormulas.ts';
+import { getLeaguesByCountry, getClubsByLeague, getAllLeagues, getAllClubs } from '../data/teamsDatabase.ts';
+import { getStateDivisionInfo, getUserStateDivision, getStateLeagueRule, STATE_LEAGUE_RULES } from '../data/stateLeagueFormulas.ts';
 import { getDivisionConfig, formatGroupLabel } from '../data/leagueConfigurations.ts';
 import {
   getContinentalTournamentField,
@@ -249,47 +249,98 @@ export function buildInitialStateDivisions(
 ): OtherLeagueStandings[] {
   const sourceCountryId = sourceClub.countryId || 29;
   if (sourceCountryId !== 29) return [];
-  const stateCode = sourceClub.stateCode;
-  if (!stateCode) return [];
+  const userStateCode = (sourceClub.stateCode || '').toUpperCase();
+  if (!userStateCode) return [];
 
+  const pool = allAvailableClubs && allAvailableClubs.length > 0 ? allAvailableClubs : getAllClubs();
+  const results: OtherLeagueStandings[] = [];
+
+  // 1. Divisão paralela do próprio estado do usuário (ex: Série A2 se usuário está na A1)
   const userStateDiv = getUserStateDivision(
     sourceClub,
-    allAvailableClubs,
+    pool,
     seasonYear,
     promotedStateClubIds,
     relegatedStateClubIds
   );
 
-  if (!userStateDiv.parallelTier) return [];
+  if (userStateDiv.parallelTier) {
+    const parallel = userStateDiv.parallelTier;
+    const fieldClubs = parallel.fieldClubs;
+    const totalTeams = fieldClubs.length;
+    if (totalTeams >= 4) {
+      const stateRule = getStateLeagueRule(userStateCode);
+      const isFormula7 = parallel.tier === 1 && stateRule?.formulaId === 7 && totalTeams === 16;
+      const groupCount = isFormula7 ? 4 : 1;
+      const totalRounds = isFormula7 ? 12 : (totalTeams - 1) * 2;
 
-  const parallel = userStateDiv.parallelTier;
-  const fieldClubs = parallel.fieldClubs;
-  const totalTeams = fieldClubs.length;
-  if (totalTeams < 4) return [];
+      const standings = preSimulateLeagueRounds(
+        fieldClubs,
+        0,
+        2000 + (sourceClub.stateId || 1) * 17 + parallel.tier * 31,
+        groupCount
+      );
 
-  const stateRule = getStateLeagueRule(stateCode);
-  const isFormula7 = parallel.tier === 1 && stateRule?.formulaId === 7 && totalTeams === 16;
-  const groupCount = isFormula7 ? 4 : 1;
-  const totalRounds = isFormula7 ? 12 : (totalTeams - 1) * 2;
+      results.push({
+        id: `state-${userStateCode.toLowerCase()}-div${parallel.tier}`,
+        countryId: 29,
+        countryName: 'Brasil',
+        leagueName: parallel.leagueName,
+        division: parallel.tier,
+        seasonLabel: `${seasonYear}`,
+        currentRound: 0,
+        totalRounds,
+        standings,
+      });
+    }
+  }
 
-  const standings = preSimulateLeagueRounds(
-    fieldClubs,
-    0,
-    2000 + (sourceClub.stateId || 1) * 17 + parallel.tier * 31,
-    groupCount
-  );
+  // 2. Todos os outros Campeonatos Estaduais do Brasil (Carioca, Gaúcho, Mineiro, Catarinense, etc.)
+  // Engenharia reversa de best/w.java (dZ()): gera os estaduais ativos de todas as federações com >= 4 clubes
+  const allStateCodes = Object.keys(STATE_LEAGUE_RULES);
+  for (const sCode of allStateCodes) {
+    if (sCode === userStateCode) continue;
 
-  return [{
-    id: `state-${stateCode.toLowerCase()}-div${parallel.tier}`,
-    countryId: 29,
-    countryName: 'Brasil',
-    leagueName: parallel.leagueName,
-    division: parallel.tier,
-    seasonLabel: `${seasonYear}`,
-    currentRound: 0,
-    totalRounds,
-    standings,
-  }];
+    const stateRule = getStateLeagueRule(sCode);
+    const divInfo = getStateDivisionInfo(sCode, pool);
+    const rawClubs = pool.filter(c => c.countryId === 29 && (c.stateCode || '').toUpperCase() === sCode);
+    if (rawClubs.length < 4) continue;
+
+    const sortedClubs = sortClubsByMeritocracy(rawClubs);
+    const targetEliteCount = Math.min(sortedClubs.length, stateRule.nTimes);
+    const fieldClubs = sortedClubs.slice(0, targetEliteCount);
+    if (fieldClubs.length < 4) continue;
+
+    const isFormula7 = stateRule.formulaId === 7 && fieldClubs.length === 16;
+    const groupCount = isFormula7 ? 4 : 1;
+    const totalRounds = isFormula7 
+      ? 12 
+      : stateRule.doisTurnos 
+      ? (fieldClubs.length - 1) * 2 
+      : (fieldClubs.length - 1);
+
+    const stateSeed = 2000 + (sCode.charCodeAt(0) * 31 + sCode.charCodeAt(1)) + seasonYear;
+    const standings = preSimulateLeagueRounds(
+      fieldClubs,
+      0,
+      stateSeed,
+      groupCount
+    );
+
+    results.push({
+      id: `state-${sCode.toLowerCase()}`,
+      countryId: 29,
+      countryName: 'Brasil',
+      leagueName: divInfo.tier1.leagueName,
+      division: 1,
+      seasonLabel: `${seasonYear}`,
+      currentRound: 0,
+      totalRounds,
+      standings,
+    });
+  }
+
+  return results;
 }
 
 /**

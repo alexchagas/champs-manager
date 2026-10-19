@@ -5,6 +5,7 @@ import { getClubTheme } from '../theme/clubTheme';
 import { ClubCrest } from './ClubCrest';
 import { Award, UserCheck, Shield, ChevronRight, Briefcase, Sparkles, Users, LogOut, AlertTriangle, Eye, Check } from 'lucide-react';
 import { getReputationLevelLabel, getOpenJobVacancies } from '../engine/careerEconomy';
+import { getClubById } from '../data/teamsDatabase';
 import { sound } from '../audio/soundEngine';
 
 const money = (n: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(n);
@@ -13,6 +14,8 @@ export const ManagersScreen: React.FC = () => {
   const { gameState, userClub, acceptManagerJob, resignCurrentJob, viewClub } = useGame();
   const clubTheme = getClubTheme(userClub);
   const [divisionFilter, setDivisionFilter] = useState<number | 'all'>('all');
+  const [managerSearchQuery, setManagerSearchQuery] = useState('');
+  const [displayLimit, setDisplayLimit] = useState<number | 'all'>(50);
   const [showResignConfirm, setShowResignConfirm] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'jobs'>('overview');
 
@@ -20,12 +23,22 @@ export const ManagersScreen: React.FC = () => {
   const human = managers.find(m => m.id === gameState.humanManagerId) || managers.find(m => m.kind === 'human');
 
   const filteredManagers = useMemo(() => {
-    if (divisionFilter === 'all') return managers;
-    return managers.filter(m => {
-      const c = gameState.clubs.find(club => club.id === m.currentClubId);
-      return c?.division === divisionFilter;
-    });
-  }, [managers, divisionFilter, gameState.clubs]);
+    let list = managers;
+    if (divisionFilter !== 'all') {
+      list = list.filter(m => {
+        const c = gameState.clubs.find(club => club.id === m.currentClubId) || getClubById(m.currentClubId || -1);
+        return c?.division === divisionFilter;
+      });
+    }
+    if (managerSearchQuery.trim()) {
+      const q = managerSearchQuery.toLowerCase().trim();
+      list = list.filter(m => {
+        const club = gameState.clubs.find(c => c.id === m.currentClubId) || getClubById(m.currentClubId || -1);
+        return m.name.toLowerCase().includes(q) || (club?.name.toLowerCase().includes(q) ?? false);
+      });
+    }
+    return list;
+  }, [managers, divisionFilter, managerSearchQuery, gameState.clubs]);
 
   const sorted = (key: 'seasonScore' | 'careerScore') => [...filteredManagers].sort((a, b) => b[key] - a[key]);
 
@@ -38,60 +51,78 @@ export const ManagersScreen: React.FC = () => {
   const repLabel = getReputationLevelLabel(repLevel);
   const repStars = '★'.repeat(Math.max(1, repLevel));
 
-  const ranking = (title: string, list: Manager[]) => (
-    <section className="rounded-lg border border-[var(--app-border-subtle)] bg-[var(--app-surface-1)] p-4 shadow-md flex flex-col">
-      <div className="flex items-center space-x-2 mb-3 pb-2 border-b border-[var(--app-border-subtle)]">
-        <Award className="w-4 h-4 text-[var(--app-text-accent)]" />
-        <h2 className="text-[var(--app-text-accent)] font-bold text-sm uppercase tracking-wider">
-          Ranking: {title}
-        </h2>
-      </div>
+  const ranking = (title: string, list: Manager[]) => {
+    const displayed = displayLimit === 'all' ? list : list.slice(0, displayLimit);
+    return (
+      <section className="rounded-lg border border-[var(--app-border-subtle)] bg-[var(--app-surface-1)] p-4 shadow-md flex flex-col min-h-0">
+        <div className="flex items-center justify-between mb-3 pb-2 border-b border-[var(--app-border-subtle)]">
+          <div className="flex items-center space-x-2">
+            <Award className="w-4 h-4 text-[var(--app-text-accent)]" />
+            <h2 className="text-[var(--app-text-accent)] font-bold text-sm uppercase tracking-wider">
+              Ranking: {title}
+            </h2>
+          </div>
+          <span className="text-[11px] text-slate-400 font-mono-numbers">
+            {displayed.length} de {list.length} treinadores
+          </span>
+        </div>
 
-      <div className="space-y-1 text-sm flex-1">
-        {list.slice(0, 15).map((m, i) => {
-          const isHuman = m.id === human?.id;
-          const club = gameState.clubs.find(c => c.id === m.currentClubId);
+        <div className="space-y-1 text-sm flex-1 max-h-[560px] overflow-y-auto pr-1">
+          {displayed.map((m, i) => {
+            const isHuman = m.id === human?.id;
+            const club = gameState.clubs.find(c => c.id === m.currentClubId) || getClubById(m.currentClubId || -1);
 
-          return (
-            <div 
-              key={m.id} 
-              style={isHuman ? { 
-                borderLeft: `4px solid ${clubTheme.primaryAccent}`,
-                backgroundColor: clubTheme.subtleBg 
-              } : undefined}
-              className={`flex items-center justify-between border-b border-[var(--app-border-subtle)] py-1.5 px-2 rounded-r transition-colors ${
-                isHuman 
-                  ? 'font-bold text-white shadow-xs' 
-                  : 'text-slate-300 hover:bg-[var(--app-surface-2)]'
-              }`}
-            >
-              <div className="flex items-center space-x-2 min-w-0">
-                <span className="text-xs text-slate-400 font-mono-numbers w-5">{i + 1}º</span>
-                {club && <ClubCrest club={club} size="xs" preferMini={true} className="w-4 h-4 shrink-0" />}
-                <span className="truncate">
-                  {m.name}
-                  <span className="text-slate-400 text-xs ml-1 font-normal">
-                    · {club?.name || 'Disponível'} {club?.divisionName ? `(${club.divisionName})` : ''}
+            return (
+              <div 
+                key={m.id} 
+                style={isHuman ? { 
+                  borderLeft: `4px solid ${clubTheme.primaryAccent}`,
+                  backgroundColor: clubTheme.subtleBg 
+                } : undefined}
+                className={`flex items-center justify-between border-b border-[var(--app-border-subtle)] py-1.5 px-2 rounded-r transition-colors ${
+                  isHuman 
+                    ? 'font-bold text-white shadow-xs' 
+                    : 'text-slate-300 hover:bg-[var(--app-surface-2)]'
+                }`}
+              >
+                <div className="flex items-center space-x-2 min-w-0 flex-1 mr-2">
+                  <span className="text-xs text-slate-400 font-mono-numbers w-6 shrink-0">{i + 1}º</span>
+                  {club && <ClubCrest club={club} size="xs" preferMini={true} className="w-4 h-4 shrink-0" />}
+                  <span className="truncate">
+                    {m.name}
+                    <span className="text-slate-400 text-xs ml-1 font-normal">
+                      · {club?.name || 'Disponível'} {club?.divisionName ? `(${club.divisionName})` : ''}
+                    </span>
                   </span>
-                </span>
-                {isHuman && (
-                  <span 
-                    className="text-[9px] px-1.5 py-0.2 rounded font-black tracking-wider uppercase shrink-0"
-                    style={{ backgroundColor: clubTheme.primaryAccent, color: clubTheme.onPrimaryAccent }}
-                  >
-                    VOCÊ
+                  {isHuman && (
+                    <span 
+                      className="text-[9px] px-1.5 py-0.2 rounded font-black tracking-wider uppercase shrink-0"
+                      style={{ backgroundColor: clubTheme.primaryAccent, color: clubTheme.onPrimaryAccent }}
+                    >
+                      VOCÊ
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center space-x-2 shrink-0">
+                  <span className="text-[10px] text-amber-400 font-bold hidden sm:inline">
+                    {'★'.repeat(Math.max(1, m.reputationLevel || 1))}
                   </span>
-                )}
+                  <strong className="font-mono-numbers text-[var(--app-text-accent)] text-xs sm:text-sm">
+                    {m[title === 'Temporada' ? 'seasonScore' : 'careerScore']} pts
+                  </strong>
+                </div>
               </div>
-              <strong className="font-mono-numbers text-[var(--app-text-accent)]">
-                {m[title === 'Temporada' ? 'seasonScore' : 'careerScore']} pts
-              </strong>
+            );
+          })}
+          {displayed.length === 0 && (
+            <div className="text-center py-6 text-xs text-slate-400">
+              Nenhum treinador encontrado para o filtro selecionado.
             </div>
-          );
-        })}
-      </div>
-    </section>
-  );
+          )}
+        </div>
+      </section>
+    );
+  };
 
   return (
     <div className="flex-1 overflow-auto bg-[var(--app-bg-deep)] text-slate-100 p-4 sm:p-5 space-y-4 select-none pb-8 md:pb-5 min-h-0">
@@ -344,27 +375,62 @@ export const ManagersScreen: React.FC = () => {
       {/* Rankings e Filtro por Divisão (Visão Geral) */}
       {activeTab === 'overview' && (
         <>
-          <div className="flex flex-wrap items-center gap-2 pt-1 pb-1">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mr-1">Filtrar por Divisão:</span>
-            {[
-              { label: 'Todas as Ligas', val: 'all' as const },
-              { label: 'Série A', val: 1 },
-              { label: 'Série B', val: 2 },
-              { label: 'Série C', val: 3 },
-              { label: 'Série D', val: 4 },
-            ].map((btn) => (
-              <button
-                key={String(btn.val)}
-                onClick={() => setDivisionFilter(btn.val)}
-                className={`px-3 py-1 text-xs font-bold rounded-full transition-all cursor-pointer ${
-                  divisionFilter === btn.val
-                    ? 'bg-[var(--app-text-accent)] text-slate-950 shadow-sm'
-                    : 'bg-[var(--app-surface-1)] text-slate-300 hover:bg-[var(--app-surface-2)] border border-[var(--app-border-subtle)]'
-                }`}
-              >
-                {btn.label}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-1 pb-1 bg-[var(--app-surface-1)] p-3 rounded-lg border border-[var(--app-border-subtle)]">
+            {/* Filtro por Divisão */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mr-1">Divisão:</span>
+              {[
+                { label: 'Todas', val: 'all' as const },
+                { label: 'Série A', val: 1 },
+                { label: 'Série B', val: 2 },
+                { label: 'Série C', val: 3 },
+                { label: 'Série D', val: 4 },
+              ].map((btn) => (
+                <button
+                  key={String(btn.val)}
+                  onClick={() => setDivisionFilter(btn.val)}
+                  className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                    divisionFilter === btn.val
+                      ? 'bg-[var(--app-text-accent)] text-slate-950 shadow-sm'
+                      : 'bg-[var(--app-surface-2)] text-slate-300 hover:text-white border border-[var(--app-border-subtle)]'
+                  }`}
+                >
+                  {btn.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Busca por Nome de Treinador ou Clube & Limite de Exibição */}
+            <div className="flex flex-wrap items-center gap-2 flex-1 max-w-lg justify-end">
+              <input
+                type="text"
+                value={managerSearchQuery}
+                onChange={(e) => setManagerSearchQuery(e.target.value)}
+                placeholder="Buscar treinador ou clube..."
+                className="bg-[var(--app-surface-2)] border border-[var(--app-border-subtle)] text-slate-200 text-xs rounded px-2.5 py-1.5 focus:outline-none focus:border-[var(--app-border-highlight)] w-48 sm:w-56"
+              />
+
+              <div className="flex items-center space-x-1 text-xs">
+                <span className="text-slate-400 text-[11px] hidden sm:inline">Exibir:</span>
+                {[
+                  { label: 'Top 25', val: 25 as const },
+                  { label: 'Top 50', val: 50 as const },
+                  { label: 'Todos', val: 'all' as const },
+                ].map((opt) => (
+                  <button
+                    key={String(opt.val)}
+                    onClick={() => setDisplayLimit(opt.val)}
+                    className={`px-2 py-1 text-[11px] font-bold rounded transition-all cursor-pointer ${
+                      displayLimit === opt.val
+                        ? 'bg-[var(--app-surface-3)] text-[var(--app-text-accent)] border border-[var(--app-text-accent)]/50'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

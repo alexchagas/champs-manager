@@ -512,6 +512,8 @@ export interface MarketFilter {
   maxAge?: number;
   maxValue?: number;
   nameQuery?: string;
+  countryId?: number;
+  division?: number | 'all';
 }
 
 export interface MarketSearchResult {

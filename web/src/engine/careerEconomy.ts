@@ -14,6 +14,7 @@ import type {
   StandingRow
 } from '../types';
 import { sanitizePrematureChampionships } from './tournamentCompletion.ts';
+import { getAllClubs } from '../data/teamsDatabase.ts';
 
 export const REPUTATION_LEVEL_LABELS: Record<number, string> = {
   0: 'Municipal',
@@ -295,6 +296,45 @@ export function migrateCareer(state: GameState): GameState {
     });
     return { ...c, managerId: id, coach: name, boardPolicy: c.boardPolicy || (c.id % 3 === 0 ? 'ambitious' : c.id % 3 === 1 ? 'balanced' : 'cautious'), managerStrategy: managers[managers.length - 1].riskProfile, overdueWages: c.overdueWages || 0, boardActions: c.boardActions || [] } as Club;
   });
+
+  // Gera managers para os clubes das ligas nacionais e estaduais que não estão em state.clubs
+  // Engenharia reversa do Brasfoot: todo clube ativo da nação tem seu técnico no ranking
+  const existingManagerClubIds = new Set(managers.map(m => m.currentClubId));
+  const pool = getAllClubs();
+  const userCountry = state.clubs.find(c => c.id === state.userClubId)?.countryId || 29;
+
+  for (const c of pool) {
+    if (existingManagerClubIds.has(c.id)) continue;
+    // Se pertencer ao mesmo país do usuário e possuir divisão <= 4 ou tradição estadual
+    const cCountry = c.countryId || 29;
+    if (cCountry === userCountry && (c.division ?? 5) <= 4) {
+      existingManagerClubIds.add(c.id);
+      const id = `manager-club-${c.id}`;
+      const name = c.coach || `Técnico do ${c.name}`;
+      const repLevel = deriveClubReputationLevel(c);
+      managers.push({
+        id,
+        name,
+        kind: 'ai',
+        reputation: Math.max(10, repLevel * 20),
+        reputationLevel: repLevel,
+        prestigePoints: 0,
+        boardRating: 85,
+        fanRating: 75,
+        riskProfile: c.id % 3 === 0 ? 'aggressive' : c.id % 3 === 1 ? 'balanced' : 'cautious',
+        currentClubId: c.id,
+        available: false,
+        unemployedRounds: 0,
+        jobs: [{ clubId: c.id, clubName: c.name, startSeason: state.seasonYear, startRound: state.currentRound, wins: 0, draws: 0, losses: 0, points: 0, initialBalance: c.balance || 1000000, initialSquadValue: 1000000, initialExpectation: managerExpectation(c, pool), initialOverdueWages: 0 }],
+        titles: [],
+        events: [],
+        seasonScore: (c.reputation || 2) * 5,
+        careerScore: (c.reputation || 2) * 20,
+        scoreComponents: { results: 0, competitions: 0, squad: 0, finances: 0 }
+      });
+    }
+  }
+
   const migrated = {
     ...state,
     careerId,

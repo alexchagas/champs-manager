@@ -285,7 +285,7 @@ export function createNewGame(
 
   const stateDivisions = buildInitialStateDivisions(
     userClub,
-    clonedClubs,
+    basePool,
     seasonYear
   );
 
