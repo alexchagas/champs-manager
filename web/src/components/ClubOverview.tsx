@@ -37,6 +37,7 @@ import { ClubCrest } from './ClubCrest';
 import { getClubTheme } from '../theme/clubTheme';
 import { formatMatchDate } from '../utils/dateFormatter';
 import { COUNTRY_FLAGS } from '../data/countryFlags';
+import { getReputationLevelLabel } from '../engine/careerEconomy';
 
 export const ClubOverview: React.FC = () => {
   const { 
@@ -398,12 +399,23 @@ export const ClubOverview: React.FC = () => {
       titles: [],
     };
 
-  const boardRating = Math.max(0, Math.min(100, Math.round(humanManager.boardRating ?? 65)));
+  const isUnemployed = humanManager.available ?? false;
+  const boardRating = Math.max(0, Math.min(100, Math.round(humanManager.boardRating ?? 95)));
+  const fanRating = Math.max(0, Math.min(100, Math.round(humanManager.fanRating ?? 85)));
   const managerReputation = Math.max(0, Math.min(100, Math.round(humanManager.reputation ?? 50)));
+  const repLevel = humanManager.reputationLevel ?? 1;
+  const repLabel = getReputationLevelLabel(repLevel);
+  const repStars = '★'.repeat(Math.max(1, repLevel));
+
   const boardStatus = 
     boardRating >= 75 ? { label: 'Diretoria Segura', color: 'text-emerald-400 bg-emerald-950/70 border-emerald-600/40', dot: 'bg-emerald-400' } :
     boardRating >= 50 ? { label: 'Diretoria Estável', color: 'text-amber-300 bg-amber-950/70 border-amber-600/40', dot: 'bg-amber-400' } :
     { label: 'Diretoria em Risco', color: 'text-rose-400 bg-rose-950/70 border-rose-600/40', dot: 'bg-rose-500' };
+
+  const fanStatus = 
+    fanRating >= 70 ? { label: 'Torcida Empolgada', color: 'text-emerald-400 bg-emerald-950/70 border-emerald-600/40', dot: 'bg-emerald-400' } :
+    fanRating >= 40 ? { label: 'Torcida Exigente', color: 'text-amber-300 bg-amber-950/70 border-amber-600/40', dot: 'bg-amber-400' } :
+    { label: 'Torcida em Protesto', color: 'text-rose-400 bg-rose-950/70 border-rose-600/40', dot: 'bg-rose-500' };
 
   const profileLabel = 
     humanManager.riskProfile === 'aggressive' ? 'Ofensivo' :
@@ -445,17 +457,19 @@ export const ClubOverview: React.FC = () => {
 
               <div className="flex flex-col shrink-0 min-w-0">
                 <h1 className="text-sm sm:text-base font-black text-white leading-tight truncate max-w-[130px] sm:max-w-[180px]">
-                  {userClub.name}
+                  {isUnemployed ? 'Sem Clube' : userClub.name}
                 </h1>
                 <div className="flex items-center space-x-1.5 mt-0.5">
                   <span className="text-[10px] sm:text-[11px] font-bold text-[var(--app-text-accent)] uppercase tracking-wider">
-                    {gameState.divisionName || 'Série A'}
+                    {isUnemployed ? 'Técnico Desempregado' : (gameState.divisionName || 'Série A')}
                   </span>
-                  <span 
-                    className="w-1.5 h-1.5 rounded-full inline-block shrink-0" 
-                    style={{ backgroundColor: userClubTheme.primaryAccent }}
-                    title={`Cores do ${userClub.name}`}
-                  />
+                  {!isUnemployed && (
+                    <span 
+                      className="w-1.5 h-1.5 rounded-full inline-block shrink-0" 
+                      style={{ backgroundColor: userClubTheme.primaryAccent }}
+                      title={`Cores do ${userClub.name}`}
+                    />
+                  )}
                 </div>
               </div>
             </div>
@@ -472,24 +486,34 @@ export const ClubOverview: React.FC = () => {
                 </span>
               </div>
 
-              {/* Badges de Confiança da Diretoria, Reputação e Perfil */}
+              {/* Badges de Confiança da Diretoria, Confiança da Torcida e Reputação */}
               <div className="flex items-center flex-wrap gap-1.5 sm:gap-2 mt-1">
                 {/* Confiança da Diretoria */}
                 <span 
                   className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded font-bold border ${boardStatus.color}`}
-                  title={`Avaliação da Diretoria: ${boardRating}% (${boardStatus.label})`}
+                  title={`Confiança da Diretoria: ${boardRating}% (${boardStatus.label})`}
                 >
                   <span className={`w-1.5 h-1.5 rounded-full ${boardStatus.dot} animate-pulse`} />
-                  <span>Confiança: {boardRating}%</span>
+                  <span>Diretoria: {boardRating}%</span>
                 </span>
 
-                {/* Reputação */}
+                {/* Confiança da Torcida */}
+                <span 
+                  className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded font-bold border ${fanStatus.color}`}
+                  title={`Confiança da Torcida: ${fanRating}% (${fanStatus.label})`}
+                >
+                  <Users className="w-2.5 h-2.5 text-cyan-400" />
+                  <span>Torcida: {fanRating}%</span>
+                </span>
+
+                {/* Nível e Estrelas de Reputação */}
                 <span 
                   className="inline-flex items-center gap-1 text-[10px] text-[var(--app-text-accent)] bg-[var(--app-bg-deep)] border border-[var(--app-border-subtle)] px-1.5 py-0.5 rounded font-mono font-bold"
-                  title={`Reputação do Treinador: ${managerReputation}%`}
+                  title={`Reputação do Treinador: ${repStars} (${repLabel}) · ${managerReputation}%`}
                 >
                   <Sparkles className="w-2.5 h-2.5 text-amber-300" />
-                  <span>Rep: {managerReputation}%</span>
+                  <span className="text-amber-300">{repStars}</span>
+                  <span>{repLabel}</span>
                 </span>
 
                 {/* Perfil */}
@@ -498,9 +522,11 @@ export const ClubOverview: React.FC = () => {
                 </span>
 
                 {/* Força Média do Time */}
-                <span className="hidden lg:inline-flex text-[10px] text-slate-400 bg-[var(--app-surface-2)]/60 px-1.5 py-0.5 rounded font-semibold border border-[var(--app-border-subtle)]">
-                  Elenco: <strong className="text-[var(--app-text-accent)] ml-1">{userStrength.overall} Força</strong>
-                </span>
+                {!isUnemployed && (
+                  <span className="hidden lg:inline-flex text-[10px] text-slate-400 bg-[var(--app-surface-2)]/60 px-1.5 py-0.5 rounded font-semibold border border-[var(--app-border-subtle)]">
+                    Elenco: <strong className="text-[var(--app-text-accent)] ml-1">{userStrength.overall} Força</strong>
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -544,6 +570,29 @@ export const ClubOverview: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Banner de Modo Desempregado */}
+      {isUnemployed && (
+        <div className="bg-amber-950/50 border border-amber-600/50 rounded-lg p-3 text-amber-200 text-xs flex items-center justify-between gap-3 shadow-md">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-amber-400 font-bold uppercase text-[10px] px-2 py-0.5 bg-amber-900/80 rounded border border-amber-700/60 shrink-0">
+              Sem Clube
+            </span>
+            <span className="truncate">
+              Você está desempregado há <strong>{humanManager.unemployedRounds || 0}</strong> {(humanManager.unemployedRounds || 0) === 1 ? 'rodada' : 'rodadas'}. Avance as rodadas para acompanhar o futebol e aguardar convites oficiais.
+            </span>
+          </div>
+          <button
+            onClick={() => {
+              sound.playClick();
+              setScreen('managers');
+            }}
+            className="px-3 py-1 bg-amber-600 hover:bg-amber-500 font-bold text-slate-950 rounded text-xs shrink-0 cursor-pointer transition-all active:scale-95"
+          >
+            Central de Empregos
+          </button>
+        </div>
+      )}
 
       {/* PLANTÃO DA RODADA / HEADLINE TICKER */}
       {headlineArticle && (

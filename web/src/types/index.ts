@@ -456,8 +456,11 @@ export interface Manager {
   id: string;
   name: string;
   kind: 'human' | 'ai';
-  reputation: number;
-  boardRating: number;
+  reputation: number; // 0-100 percentage
+  reputationLevel?: number; // 0 to 5 stars (0: Municipal, 1: Estadual, 2: Regional, 3: Nacional, 4: Continental, 5: Mundial)
+  prestigePoints?: number; // internal prestige accumulator (nu in Brasfoot)
+  boardRating: number; // 0-100, default initial 95
+  fanRating?: number; // 0-100, default initial 85
   riskProfile: 'cautious' | 'balanced' | 'aggressive';
   currentClubId?: number;
   available: boolean;
@@ -467,7 +470,39 @@ export interface Manager {
   seasonScore: number;
   careerScore: number;
   scoreComponents: { results: number; competitions: number; squad: number; finances: number };
+  lastFiredClubId?: number | string;
+  lastDivision?: number;
+  unemployedRounds?: number;
 }
+
+export interface PendingDismissal {
+  clubId: number;
+  clubName: string;
+  clubCrest?: string;
+  reason: string;
+  newManagerName: string;
+  statsSummary?: string;
+  round: number;
+  seasonYear: number;
+}
+
+export interface ClubJobOffer {
+  clubId: number;
+  clubName: string;
+  clubCrest?: string;
+  division?: number;
+  divisionName?: string;
+  wage: number;
+  prestigeRequirement?: number;
+  expiresInRounds: number;
+  clubReputation?: number;
+  balance?: number;
+  stadiumCapacity?: number;
+  squadCount?: number;
+  avgStrength?: number;
+  tablePosition?: number;
+}
+
 
 export interface MarketFilter {
   position?: string;
@@ -547,6 +582,8 @@ export interface GameState {
   nationalCallups?: NationalCallup[];
   championshipHistory?: ChampionshipRecord[];
   pendingTournamentConclusion?: ChampionshipRecord;
+  pendingDismissal?: PendingDismissal;
+  clubJobOffers?: ClubJobOffer[];
 }
 
 export interface MatchClock { period: number; minute: number; added: number; elapsed: number }
