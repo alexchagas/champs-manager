@@ -201,7 +201,9 @@ export const ManagersScreen: React.FC = () => {
                     <span className="text-rose-200 font-semibold">Confirmar saída do clube?</span>
                     <button
                       onClick={() => {
-                        sound.playWarning();
+                        try {
+                          sound.playWarning?.();
+                        } catch (_) {}
                         setShowResignConfirm(false);
                         resignCurrentJob();
                       }}

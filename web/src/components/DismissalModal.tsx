@@ -11,7 +11,9 @@ interface Props {
 
 export const DismissalModal: React.FC<Props> = ({ dismissal, onClose }) => {
   useEffect(() => {
-    sound.playWarning();
+    try {
+      sound.playWarning?.();
+    } catch (_) {}
   }, []);
 
   return (
