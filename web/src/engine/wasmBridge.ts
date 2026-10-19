@@ -26,6 +26,7 @@ import {
   concludeRoundAuctionItem,
 } from './careerEconomy.ts';
 import { sortStandings } from '../data/calendarGenerator.ts';
+import { getAllClubs } from '../data/teamsDatabase.ts';
 import { addBreadcrumb, captureError } from '../observability/sentry.ts';
 
 let wasmInitialized = false;
@@ -103,6 +104,7 @@ function mergeCareerState(current: GameState, parsed: GameState): GameState {
     stateChampionshipName: current.stateChampionshipName,
     nationalLeagueName: current.nationalLeagueName,
     continentalCupName: current.continentalCupName,
+    currentSemester: parsed.currentSemester ?? current.currentSemester ?? ((parsed.currentRound ?? current.currentRound) <= 14 ? 1 : 2),
     nationalDivisions: parsed.nationalDivisions ?? current.nationalDivisions,
     stateDivisions: parsed.stateDivisions ?? current.stateDivisions,
     continentalCompetitions: parsed.continentalCompetitions ?? current.continentalCompetitions,
@@ -481,12 +483,46 @@ export function getFreeAgentsWasm(currentState: GameState): Player[] {
  */
 export function searchPlayersWasm(currentState: GameState, filter: MarketFilter): MarketSearchResult[] {
   if (currentState.schemaVersion === 2 || !wasmInitialized) {
-    // JS Fallback
+    // JS Fallback com acesso ao banco completo de clubes e atletas dos países ativos
     const results: MarketSearchResult[] = [];
     const userClubId = currentState.userClubId;
 
-    for (const club of currentState.clubs) {
+    // Mescla todos os clubes carregados na base com as versões ativas/modificadas do save
+    const clubsMap = new Map<number, Club>();
+    const basePool = getAllClubs();
+    for (const c of basePool) {
+      clubsMap.set(c.id, c);
+    }
+    for (const c of currentState.clubs) {
+      clubsMap.set(c.id, c);
+    }
+
+    const rawQuery = filter.nameQuery 
+      ? filter.nameQuery.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim() 
+      : '';
+
+    for (const club of clubsMap.values()) {
       if (club.id === userClubId) continue;
+
+      // Filtro por País
+      if (filter.countryId !== undefined && filter.countryId !== null && filter.countryId !== 0) {
+        const cCountry = club.countryId || 29;
+        if (cCountry !== filter.countryId) continue;
+      }
+
+      // Filtro por Divisão
+      if (filter.division !== undefined && filter.division !== 'all') {
+        const divNumber = Number(filter.division);
+        if (divNumber >= 1 && divNumber <= 4) {
+          if (club.division !== divNumber) continue;
+        } else if (divNumber >= 5) {
+          // Divisões de Acesso / Estaduais
+          if ((club.division ?? 5) < 5) continue;
+        }
+      }
+
+      if (!club.squad || club.squad.length === 0) continue;
+
       for (const p of club.squad) {
         if (filter.position && filter.position !== 'TODOS' && filter.position !== 'Todos' && p.position !== filter.position) {
           continue;
@@ -496,7 +532,10 @@ export function searchPlayersWasm(currentState: GameState, filter: MarketFilter)
         if (filter.minAge !== undefined && p.age < filter.minAge) continue;
         if (filter.maxAge !== undefined && p.age > filter.maxAge) continue;
         if (filter.maxValue !== undefined && p.marketValue > filter.maxValue) continue;
-        if (filter.nameQuery && !p.name.toLowerCase().includes(filter.nameQuery.toLowerCase().trim())) continue;
+        if (rawQuery) {
+          const pNorm = (p.name || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+          if (!pNorm.includes(rawQuery)) continue;
+        }
 
         results.push({
           player: p,
@@ -506,7 +545,7 @@ export function searchPlayersWasm(currentState: GameState, filter: MarketFilter)
         });
       }
     }
-    return results.sort((a, b) => b.player.strength - a.player.strength).slice(0, 150);
+    return results.sort((a, b) => b.player.strength - a.player.strength).slice(0, 300);
   }
 
   try {

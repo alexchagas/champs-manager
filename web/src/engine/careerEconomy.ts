@@ -1,5 +1,45 @@
-import type { Club, FinancialEntry, GameState, Manager, MatchFixture, Player, TransferOffer, WeeklyFinancialStatement, RoundAuctionPlayer } from '../types';
+import type { 
+  Club, 
+  FinancialEntry, 
+  GameState, 
+  Manager, 
+  MatchFixture, 
+  Player, 
+  TransferOffer, 
+  WeeklyFinancialStatement, 
+  RoundAuctionPlayer,
+  PendingDismissal,
+  ClubJobOffer,
+  ChampionshipRecord,
+  StandingRow
+} from '../types';
 import { sanitizePrematureChampionships } from './tournamentCompletion.ts';
+import { getAllClubs } from '../data/teamsDatabase.ts';
+
+export const REPUTATION_LEVEL_LABELS: Record<number, string> = {
+  0: 'Municipal',
+  1: 'Estadual',
+  2: 'Regional',
+  3: 'Nacional',
+  4: 'Continental',
+  5: 'Mundial',
+};
+
+export function getReputationLevelLabel(level: number): string {
+  return REPUTATION_LEVEL_LABELS[Math.max(0, Math.min(5, level))] || 'Estadual';
+}
+
+export function deriveClubReputationLevel(club?: Club): number {
+  if (!club) return 1;
+  if (club.reputation !== undefined && club.reputation >= 0 && club.reputation <= 5) {
+    return club.reputation;
+  }
+  const div = club.division ?? 1;
+  if (div === 1) return 3;
+  if (div === 2) return 2;
+  if (div === 3) return 1;
+  return 0;
+}
 
 const wage = (players: Player[]) => Math.round(players.reduce((n, p) => n + p.salary, 0) / 4);
 export const weeklyObligations = (c: Club) => wage(c.squad) + wage(c.youth || []) + Math.round(c.capacity * 0.7) + (c.loans || []).reduce((n, l) => n + Math.min(l.installmentAmount, l.remainingAmount), 0);
@@ -193,15 +233,28 @@ export function migrateCareer(state: GameState): GameState {
   };
 
   if (state.schemaVersion === 2 && state.managers?.length) {
+    const updatedManagers = state.managers.map(m => {
+      const c = state.clubs.find(club => club.id === m.currentClubId);
+      const repLevel = m.reputationLevel ?? deriveClubReputationLevel(c);
+      return {
+        ...m,
+        boardRating: m.boardRating ?? 95,
+        fanRating: m.fanRating ?? 85,
+        reputationLevel: repLevel,
+        prestigePoints: m.prestigePoints ?? 0,
+        unemployedRounds: m.unemployedRounds ?? 0,
+      };
+    });
     if (needsSaveMigration) {
       return {
         ...state,
         careerId,
         autoSaveMatchCounter,
         options: optionsWithAutoSave,
+        managers: updatedManagers,
       };
     }
-    return state;
+    return { ...state, managers: updatedManagers };
   }
   // Retain canonical Brasfoot contracts and calibrate transfer offers
   state = {
@@ -220,11 +273,68 @@ export function migrateCareer(state: GameState): GameState {
     const id = human ? 'manager-human-1' : `manager-club-${c.id}`;
     const name = human ? state.managerName : c.coach || 'Técnico interino';
     const squadValue = c.squad.reduce((n, p) => n + p.marketValue, 0);
-    managers.push({ id, name, kind: human ? 'human' : 'ai', reputation: 50, boardRating: 60,
+    const repLevel = deriveClubReputationLevel(c);
+    managers.push({ 
+      id, 
+      name, 
+      kind: human ? 'human' : 'ai', 
+      reputation: Math.max(10, repLevel * 20),
+      reputationLevel: repLevel,
+      prestigePoints: 0,
+      boardRating: 95,
+      fanRating: 85,
       riskProfile: c.id % 3 === 0 ? 'aggressive' : c.id % 3 === 1 ? 'balanced' : 'cautious',
-      currentClubId: c.id, available: false, jobs: [{ clubId: c.id, clubName: c.name, startSeason: state.seasonYear, startRound: state.currentRound, wins: 0, draws: 0, losses: 0, points: 0, initialBalance: c.balance, initialSquadValue: squadValue, initialExpectation: managerExpectation(c, state.clubs), initialOverdueWages: c.overdueWages || 0 }], titles: [], events: [], seasonScore: 0, careerScore: 0, scoreComponents: { results: 0, competitions: 0, squad: 0, finances: 0 } });
+      currentClubId: c.id, 
+      available: false, 
+      unemployedRounds: 0,
+      jobs: [{ clubId: c.id, clubName: c.name, startSeason: state.seasonYear, startRound: state.currentRound, wins: 0, draws: 0, losses: 0, points: 0, initialBalance: c.balance, initialSquadValue: squadValue, initialExpectation: managerExpectation(c, state.clubs), initialOverdueWages: c.overdueWages || 0 }], 
+      titles: [], 
+      events: [], 
+      seasonScore: 0, 
+      careerScore: 0, 
+      scoreComponents: { results: 0, competitions: 0, squad: 0, finances: 0 } 
+    });
     return { ...c, managerId: id, coach: name, boardPolicy: c.boardPolicy || (c.id % 3 === 0 ? 'ambitious' : c.id % 3 === 1 ? 'balanced' : 'cautious'), managerStrategy: managers[managers.length - 1].riskProfile, overdueWages: c.overdueWages || 0, boardActions: c.boardActions || [] } as Club;
   });
+
+  // Gera managers para os clubes das ligas nacionais e estaduais que não estão em state.clubs
+  // Engenharia reversa do Brasfoot: todo clube ativo da nação tem seu técnico no ranking
+  const existingManagerClubIds = new Set(managers.map(m => m.currentClubId));
+  const pool = getAllClubs();
+  const userCountry = state.clubs.find(c => c.id === state.userClubId)?.countryId || 29;
+
+  for (const c of pool) {
+    if (existingManagerClubIds.has(c.id)) continue;
+    // Se pertencer ao mesmo país do usuário e possuir divisão <= 4 ou tradição estadual
+    const cCountry = c.countryId || 29;
+    if (cCountry === userCountry && (c.division ?? 5) <= 4) {
+      existingManagerClubIds.add(c.id);
+      const id = `manager-club-${c.id}`;
+      const name = c.coach || `Técnico do ${c.name}`;
+      const repLevel = deriveClubReputationLevel(c);
+      managers.push({
+        id,
+        name,
+        kind: 'ai',
+        reputation: Math.max(10, repLevel * 20),
+        reputationLevel: repLevel,
+        prestigePoints: 0,
+        boardRating: 85,
+        fanRating: 75,
+        riskProfile: c.id % 3 === 0 ? 'aggressive' : c.id % 3 === 1 ? 'balanced' : 'cautious',
+        currentClubId: c.id,
+        available: false,
+        unemployedRounds: 0,
+        jobs: [{ clubId: c.id, clubName: c.name, startSeason: state.seasonYear, startRound: state.currentRound, wins: 0, draws: 0, losses: 0, points: 0, initialBalance: c.balance || 1000000, initialSquadValue: 1000000, initialExpectation: managerExpectation(c, pool), initialOverdueWages: 0 }],
+        titles: [],
+        events: [],
+        seasonScore: (c.reputation || 2) * 5,
+        careerScore: (c.reputation || 2) * 20,
+        scoreComponents: { results: 0, competitions: 0, squad: 0, finances: 0 }
+      });
+    }
+  }
+
   const migrated = {
     ...state,
     careerId,
@@ -327,6 +437,18 @@ export function scoreManagers(state: GameState, fixtures: MatchFixture[] = []): 
       }
     }
   }
+  if (state.standingsEstadual && state.standingsEstadual.length >= 4) {
+    const sorted = [...state.standingsEstadual].sort((a, b) => b.points - a.points || b.won - a.won || b.goalDiff - a.goalDiff);
+    for (const r of state.standingsEstadual) {
+      if (!divStandingsByClub.has(r.clubId)) divStandingsByClub.set(r.clubId, sorted);
+    }
+  }
+  if (state.standings && state.standings.length >= 4) {
+    const sorted = [...state.standings].sort((a, b) => b.points - a.points || b.won - a.won || b.goalDiff - a.goalDiff);
+    for (const r of state.standings) {
+      if (!divStandingsByClub.has(r.clubId)) divStandingsByClub.set(r.clubId, sorted);
+    }
+  }
 
   const managers = (state.managers || []).map((m) => {
     if (!m.currentClubId) return m;
@@ -352,15 +474,123 @@ export function scoreManagers(state: GameState, fixtures: MatchFixture[] = []): 
     let deltaPoints = 0;
     let deltaMatches = 0;
 
+    let boardDelta = 0;
+    let fanDelta = 0;
+
     if (directMatch) {
-      const own = directMatch.homeClubId === club.id ? directMatch.homeScore! : directMatch.awayScore!;
-      const opp = directMatch.homeClubId === club.id ? directMatch.awayScore! : directMatch.homeScore!;
+      const isAway = directMatch.awayClubId === club.id;
+      const own = isAway ? directMatch.awayScore! : directMatch.homeScore!;
+      const opp = isAway ? directMatch.homeScore! : directMatch.awayScore!;
       const matchPts = own > opp ? 3 : own === opp ? 1 : 0;
       deltaWins = matchPts === 3 ? 1 : 0;
       deltaDraws = matchPts === 1 ? 1 : 0;
       deltaLosses = matchPts === 0 ? 1 : 0;
       deltaPoints = matchPts;
       deltaMatches = 1;
+
+      const oppClubId = isAway ? directMatch.homeClubId : directMatch.awayClubId;
+      const oppClub = clubsMap.get(oppClubId);
+      const isBlowout = Math.abs(own - opp) >= 3;
+      const matchResult = own > opp ? 1 : own === opp ? 0 : 2; // 0=empate, 1=vitória, 2=derrota
+
+      const myStrength = club.level ?? Math.round(club.squad.reduce((s, p) => s + p.strength, 0) / Math.max(1, club.squad.length));
+      const oppStrength = oppClub ? (oppClub.level ?? Math.round(oppClub.squad.reduce((s, p) => s + p.strength, 0) / Math.max(1, oppClub.squad.length))) : myStrength;
+      const levelDiff = myStrength - oppStrength;
+
+      // Classificação na tabela (faixa n8 de 1 a 5)
+      const allDivRows = divStandingsByClub.get(club.id);
+      let n8 = 3; // padrão meio de tabela
+      if (allDivRows && allDivRows.length > 0) {
+        const pos = allDivRows.findIndex(r => r.clubId === club.id) + 1;
+        if (pos > 0) {
+          const total = allDivRows.length;
+          const reb = directMatch.competitionType === 'estadual' ? 2 : 4;
+          const classif = directMatch.competitionType === 'estadual' ? 2 : 4;
+          const margem = total >= 20 ? 4 : 2;
+
+          if (pos === 1) n8 = 1;
+          else if (pos <= classif) n8 = 2;
+          else if (pos <= total - (reb + margem)) n8 = 3;
+          else if (pos > total - reb) n8 = 5;
+          else n8 = 4;
+        }
+      }
+
+      // Passo 2: Fator Mando & Nível (best/al.java:218-232)
+      if (matchResult === 0) {
+        // Empate
+        if (levelDiff >= 0 && !isAway) {
+          boardDelta -= 1;
+          fanDelta -= 1;
+        } else if (levelDiff < 0) {
+          boardDelta += 1;
+        }
+      } else if (matchResult === 2) {
+        // Derrota
+        if (levelDiff >= 0 && !isAway) {
+          boardDelta -= 3;
+          fanDelta -= 3;
+        } else if (levelDiff >= 0 && isAway) {
+          boardDelta -= 1;
+        }
+      }
+
+      // Passo 4: Finanças Negativas (humano) (best/al.java:257, 307, 356, 405)
+      if (m.kind === 'human' && club.balance < 0) {
+        if (directMatch.competitionType === 'nacional') {
+          boardDelta -= 10;
+        } else {
+          boardDelta -= 5;
+        }
+      }
+
+      // Passo 5: Matriz de Variação da Confiança da Diretoria por Faixa n8 (1..5)
+      const idx = Math.max(0, Math.min(4, n8 - 1));
+      const comp = directMatch.competitionType;
+      const isContinental = comp === 'libertadores' || comp === 'sulamericana' || comp === 'champions' || comp === 'supermundial' || comp === 'intercontinental';
+      const isEstadual = comp === 'estadual';
+
+      if (isContinental) {
+        if (matchResult === 1) {
+          boardDelta += !isAway ? [5, 4, 3, 3, 3][idx] : [7, 6, 4, 4, 5][idx];
+        } else if (matchResult === 0) {
+          boardDelta += !isAway ? [2, 1, 0, -1, -3][idx] : [2, 1, 0, 0, -2][idx];
+        } else {
+          boardDelta += !isAway ? [-2, -2, -3, -3, -5][idx] : [-1, -1, -2, -2, -3][idx];
+        }
+      } else if (isEstadual) {
+        if (matchResult === 1) {
+          boardDelta += !isAway ? [2, 2, 1, 1, 1][idx] : [3, 2, 2, 2, 1][idx];
+        } else if (matchResult === 0) {
+          boardDelta += !isAway ? [1, 1, 0, 0, -1][idx] : [1, 1, 1, 0, -1][idx];
+        } else {
+          boardDelta += !isAway ? [-2, -2, -3, -3, -5][idx] : [-1, -1, -2, -2, -3][idx];
+        }
+      } else {
+        // Nacional / Copas
+        if (matchResult === 1) {
+          boardDelta += !isAway ? [5, 4, 1, 1, 0][idx] : [6, 5, 2, 2, 1][idx];
+        } else if (matchResult === 0) {
+          boardDelta += !isAway ? [2, 1, -1, -1, -3][idx] : [2, 1, 0, -1, -2][idx];
+        } else {
+          boardDelta += !isAway ? [-2, -2, -3, -5, -7][idx] : [-1, -1, -2, -4, -5][idx];
+        }
+      }
+
+      // Passo 6: Variação da Confiança da Torcida e Goleadas (best/al.java:475-517)
+      if (matchResult === 0) {
+        fanDelta += !isAway ? -1 : 1;
+      } else if (matchResult === 1) {
+        fanDelta += !isAway ? 3 : 4;
+        if (isBlowout) {
+          fanDelta += !isAway ? 4 : 5; // Total +7 (casa) ou +9 (fora)
+        }
+      } else {
+        fanDelta += !isAway ? -5 : -4;
+        if (isBlowout) {
+          fanDelta += !isAway ? -7 : -5; // Total -12 (casa) ou -9 (fora)
+        }
+      }
     } else {
       // Para clubes de ligas paralelas que avançaram suas rodadas
       const prevJobMatches = (job.wins || 0) + (job.draws || 0) + (job.losses || 0);
@@ -370,6 +600,9 @@ export function scoreManagers(state: GameState, fixtures: MatchFixture[] = []): 
         deltaLosses = Math.max(0, totalLosses - (job.losses || 0));
         deltaPoints = deltaWins * 3 + deltaDraws;
         deltaMatches = deltaWins + deltaDraws + deltaLosses;
+
+        boardDelta = (deltaWins * 3) - (deltaLosses * 3);
+        fanDelta = (deltaWins * 3) - (deltaLosses * 4);
       }
     }
 
@@ -405,8 +638,7 @@ export function scoreManagers(state: GameState, fixtures: MatchFixture[] = []): 
     const scoreComponents = { results, competitions, squad, finances };
     const seasonScore = results + competitions + squad + finances;
 
-    // Cálculo do boardRating com penalidades canônicas de salários e pressão de rebaixamento
-    let boardDelta = Math.round((deltaPoints - deltaMatches * job.initialExpectation) * 3);
+    // Penalidades extras de salários e elenco incompleto
     if ((club.overdueWages || 0) > job.initialOverdueWages) {
       boardDelta -= 5;
     }
@@ -414,25 +646,20 @@ export function scoreManagers(state: GameState, fixtures: MatchFixture[] = []): 
       boardDelta -= 8;
     }
 
-    // Pressão por posição de tabela na liga nacional
-    const allDivRows = divStandingsByClub.get(club.id);
-    if (allDivRows) {
-      const pos = allDivRows.findIndex((r) => r.clubId === club.id) + 1;
-      const myRow = allDivRows[pos - 1];
-      if (myRow && myRow.played >= 5) {
-        if (pos > allDivRows.length - 4) {
-          // Z4: diretoria e torcida em crise
-          boardDelta -= 2;
-        } else if (pos === 1) {
-          // Líder
-          boardDelta += 1;
-        }
-      }
+    const prevFan = m.fanRating ?? 85;
+    const newFanRating = Math.max(0, Math.min(100, prevFan + fanDelta));
+
+    // Passo 7: Contágio Popular (se fanRating < 20%, diretoria perde -3 extras)
+    if (newFanRating < 20) {
+      boardDelta -= 3;
     }
 
-    const boardRating = Math.max(0, Math.min(100, Math.round(m.boardRating + boardDelta)));
+    const prevBoard = m.boardRating ?? 95;
+    const newBoardRating = Math.max(0, Math.min(100, prevBoard + boardDelta));
+
     const careerScore = seasonScore + m.jobs.slice(0, -1).reduce((n, j) => n + (j.finalScore || 0), 0);
-    const reputation = Math.max(0, Math.min(100, Math.round(50 + careerScore / 10)));
+    const repLevel = m.reputationLevel ?? deriveClubReputationLevel(club);
+    const reputation = Math.max(0, Math.min(100, repLevel * 20));
 
     return {
       ...m,
@@ -440,8 +667,11 @@ export function scoreManagers(state: GameState, fixtures: MatchFixture[] = []): 
       seasonScore,
       careerScore,
       reputation,
+      reputationLevel: repLevel,
+      prestigePoints: m.prestigePoints ?? 0,
+      boardRating: newBoardRating,
+      fanRating: newFanRating,
       scoreComponents,
-      boardRating,
     };
   });
 
@@ -451,39 +681,55 @@ export function scoreManagers(state: GameState, fixtures: MatchFixture[] = []): 
 export function changeManagers(state: GameState): {
   state: GameState;
   dismissals: { club: Club; oldCoach: string; newCoach: string }[];
+  pendingDismissal?: PendingDismissal;
 } {
   let managers = [...(state.managers || [])];
   const dismissals: { club: Club; oldCoach: string; newCoach: string }[] = [];
   const clubRowsMap = buildClubRowsMap(state);
+  let dismissalForHuman: PendingDismissal | undefined;
 
   const clubs = state.clubs.map((club) => {
     const current = managers.find((m) => m.id === club.managerId);
     const row = findClubStandingRow(state, club.id, clubRowsMap);
+    const dismissThreshold = current?.kind === 'human' ? 10 : 15;
     if (
       !current ||
       !row ||
       row.played < 5 ||
-      current.boardRating >= 20 ||
+      current.boardRating >= dismissThreshold ||
       current.jobs[current.jobs.length - 1]?.startRound === state.currentRound
     ) {
       return club;
     }
 
+    const isHuman = current.kind === 'human';
+    let dismissReason = 'seus resultados não agradaram nem a torcida nem a diretoria.';
+    if (club.balance < 0) {
+      dismissReason = 'você estava levando o clube para o abismo financeiro.';
+    } else if ((current.fanRating ?? 85) < 20) {
+      dismissReason = 'a pressão da torcida estava grande pelos maus resultados.';
+    }
+
     // Demissão
     const end = current.jobs.length - 1;
+    const currentJob = current.jobs[end];
+
     managers = managers.map((m) =>
       m.id === current.id
         ? {
             ...m,
             currentClubId: undefined,
             available: true,
+            lastFiredClubId: club.id,
+            lastDivision: club.division ?? 1,
+            unemployedRounds: 0,
             jobs: m.jobs.map((j, i) =>
               i === end
                 ? {
                     ...j,
                     endSeason: state.seasonYear,
                     endRound: state.currentRound,
-                    reason: 'Demissão pela diretoria',
+                    reason: isHuman ? `Demissão: ${dismissReason}` : 'Demissão pela diretoria',
                     finalScore: m.seasonScore,
                   }
                 : j
@@ -496,6 +742,7 @@ export function changeManagers(state: GameState): {
     const next = managers.find((m) => m.available && m.kind === 'ai' && m.id !== current.id);
     const id = next?.id || `manager-ai-${club.id}-${state.seasonYear}-${state.currentRound}`;
     const name = next?.name || `Técnico ${club.name}`;
+    const repLevel = deriveClubReputationLevel(club);
     const job = {
       clubId: club.id,
       clubName: club.name,
@@ -518,7 +765,9 @@ export function changeManagers(state: GameState): {
               ...m,
               available: false,
               currentClubId: club.id,
-              boardRating: 55,
+              boardRating: 95,
+              fanRating: 85,
+              reputationLevel: repLevel,
               jobs: [...m.jobs, job],
               events: [...m.events, `Contratado pelo ${club.name} na rodada ${state.currentRound}`],
             }
@@ -529,11 +778,15 @@ export function changeManagers(state: GameState): {
         id,
         name,
         kind: 'ai',
-        reputation: 35,
-        boardRating: 55,
+        reputation: Math.max(10, repLevel * 20),
+        reputationLevel: repLevel,
+        prestigePoints: 0,
+        boardRating: 95,
+        fanRating: 85,
         riskProfile: 'balanced',
         currentClubId: club.id,
         available: false,
+        unemployedRounds: 0,
         jobs: [job],
         titles: [],
         events: [`Contratado pelo ${club.name} na rodada ${state.currentRound}`],
@@ -541,6 +794,19 @@ export function changeManagers(state: GameState): {
         careerScore: 0,
         scoreComponents: { results: 0, competitions: 0, squad: 0, finances: 0 },
       });
+    }
+
+    if (isHuman) {
+      dismissalForHuman = {
+        clubId: club.id,
+        clubName: club.name,
+        clubCrest: club.crestUrl || club.crestMiniUrl,
+        reason: dismissReason,
+        newManagerName: name,
+        statsSummary: currentJob ? `${currentJob.wins}V ${currentJob.draws}E ${currentJob.losses}D (${currentJob.points} pts)` : undefined,
+        round: state.currentRound,
+        seasonYear: state.seasonYear,
+      };
     }
 
     dismissals.push({ club, oldCoach: current.name, newCoach: name });
@@ -556,7 +822,16 @@ export function changeManagers(state: GameState): {
     };
   });
 
-  return { state: { ...state, clubs, managers }, dismissals };
+  return { 
+    state: { 
+      ...state, 
+      clubs, 
+      managers, 
+      pendingDismissal: dismissalForHuman || state.pendingDismissal 
+    }, 
+    dismissals, 
+    pendingDismissal: dismissalForHuman 
+  };
 }
 
 export function appointHuman(state: GameState, clubId: number): GameState {
@@ -573,7 +848,9 @@ export function appointHuman(state: GameState, clubId: number): GameState {
         ...m,
         available: false,
         currentClubId: clubId,
-        boardRating: 55,
+        boardRating: 95,
+        fanRating: 85,
+        unemployedRounds: 0,
         jobs: [...baseJobs, {
           clubId,
           clubName: club.name,
@@ -594,8 +871,385 @@ export function appointHuman(state: GameState, clubId: number): GameState {
     if (m.id === incumbent?.id) return { ...m, available: true, currentClubId: undefined, jobs: m.jobs.map((j, i) => i === m.jobs.length - 1 ? { ...j, endSeason: state.seasonYear, endRound: state.currentRound, reason: 'Substituído', finalScore: m.seasonScore } : j) };
     return m;
   }) as Manager[];
-  return { ...state, userClubId: clubId, activeScreen: state.calendar.some(f => (f.fixtureDateIndex ?? f.round) === state.currentRound && f.played) ? 'round_results' : 'overview', clubs: state.clubs.map(c => c.id === clubId ? { ...c, managerId: human.id, coach: human.name, managerStrategy: human.riskProfile } : c), managers };
+  return { 
+    ...state, 
+    userClubId: clubId, 
+    activeScreen: state.calendar.some(f => (f.fixtureDateIndex ?? f.round) === state.currentRound && f.played) ? 'round_results' : 'overview', 
+    clubs: state.clubs.map(c => c.id === clubId ? { ...c, managerId: human.id, coach: human.name, managerStrategy: human.riskProfile } : c), 
+    managers,
+    clubJobOffers: undefined,
+    pendingDismissal: undefined,
+  };
 }
+
+export function resignHumanManager(state: GameState): GameState {
+  const human = state.managers?.find(m => m.id === state.humanManagerId);
+  if (!human || !human.currentClubId) return state;
+
+  const currentClub = state.clubs.find(c => c.id === human.currentClubId);
+  if (!currentClub) return state;
+
+  const end = human.jobs.length - 1;
+  const nextAi = state.managers?.find(m => m.available && m.kind === 'ai' && m.id !== human.id);
+  const aiId = nextAi?.id || `manager-ai-${currentClub.id}-${state.seasonYear}-${state.currentRound}`;
+  const aiName = nextAi?.name || `Técnico ${currentClub.name}`;
+  const repLevel = deriveClubReputationLevel(currentClub);
+
+  const updatedManagers = (state.managers || []).map(m => {
+    if (m.id === human.id) {
+      return {
+        ...m,
+        currentClubId: undefined,
+        available: true,
+        unemployedRounds: 0,
+        jobs: m.jobs.map((j, i) =>
+          i === end
+            ? {
+                ...j,
+                endSeason: state.seasonYear,
+                endRound: state.currentRound,
+                reason: 'Pediu demissão',
+                finalScore: m.seasonScore,
+              }
+            : j
+        ),
+        events: [...m.events, `Pediu demissão do ${currentClub.name} na rodada ${state.currentRound}`],
+      };
+    }
+    if (m.id === aiId) {
+      return {
+        ...m,
+        available: false,
+        currentClubId: currentClub.id,
+        boardRating: 95,
+        fanRating: 85,
+        reputationLevel: repLevel,
+        jobs: [...m.jobs, {
+          clubId: currentClub.id,
+          clubName: currentClub.name,
+          startSeason: state.seasonYear,
+          startRound: state.currentRound,
+          wins: 0,
+          draws: 0,
+          losses: 0,
+          points: 0,
+          initialBalance: currentClub.balance,
+          initialSquadValue: currentClub.squad.reduce((s, p) => s + p.marketValue, 0),
+          initialExpectation: managerExpectation(currentClub, state.clubs),
+          initialOverdueWages: currentClub.overdueWages || 0,
+        }],
+        events: [...m.events, `Contratado pelo ${currentClub.name} na rodada ${state.currentRound}`],
+      };
+    }
+    return m;
+  });
+
+  const updatedClubs = state.clubs.map(c => {
+    if (c.id === currentClub.id) {
+      return {
+        ...c,
+        managerId: aiId,
+        coach: aiName,
+      };
+    }
+    return c;
+  });
+
+  return {
+    ...state,
+    clubs: updatedClubs,
+    managers: updatedManagers,
+    clubJobOffers: undefined,
+  };
+}
+
+export function generateUnemployedJobOffers(state: GameState, human: Manager): ClubJobOffer[] {
+  if (!human.available || (human.unemployedRounds ?? 0) < 1) {
+    return [];
+  }
+
+  // Roleta probabilística do Brasfoot (best/Z.java:1005 / f/s.java:1409)
+  const lastDiv = human.lastDivision ?? 1;
+  const rounds = human.unemployedRounds ?? 1;
+  const roll = Math.random();
+  if (lastDiv === 1 && rounds < 3 && roll < 0.20) {
+    return [];
+  }
+
+  let targetDivisions: number[] = [2, 3];
+  if (lastDiv === 1) {
+    targetDivisions = roll < 0.70 ? [2, 3] : [3];
+  } else if (lastDiv === 2) {
+    targetDivisions = [2, 3, 4];
+  } else {
+    targetDivisions = [3, 4];
+  }
+
+  const firedClubId = human.lastFiredClubId;
+  const clubRowsMap = buildClubRowsMap(state);
+
+  const candidates: { club: Club; pos: number; total: number }[] = [];
+
+  for (const div of targetDivisions) {
+    const divClubs = state.clubs.filter(c => c.division === div && c.id !== firedClubId);
+    if (divClubs.length === 0) continue;
+
+    let divStandings: StandingRow[] = [];
+    if (div === 1 && state.standingsNacional) divStandings = state.standingsNacional;
+    else if (state.nationalDivisions) {
+      const nd = state.nationalDivisions.find(d => d.division === div);
+      if (nd?.standings) divStandings = nd.standings;
+    }
+
+    divClubs.forEach(club => {
+      let pos = 15;
+      let total = 20;
+      if (divStandings.length > 0) {
+        total = divStandings.length;
+        const found = divStandings.findIndex(r => r.clubId === club.id);
+        if (found >= 0) pos = found + 1;
+      } else {
+        const row = findClubStandingRow(state, club.id, clubRowsMap);
+        if (row) {
+          pos = 15;
+        }
+      }
+
+      // Últimos 6 lugares da tabela (best/f/s.java:1409)
+      if (pos >= Math.max(1, total - 6)) {
+        candidates.push({ club, pos, total });
+      }
+    });
+  }
+
+  // Embaralha e seleciona de 2 a 5 propostas
+  const shuffled = [...candidates].sort(() => Math.random() - 0.5);
+  const selected = shuffled.slice(0, Math.min(5, Math.max(2, shuffled.length)));
+
+  return selected.map(({ club, pos }) => {
+    const wage = Math.round(30_000 + (club.reputation || 2) * 20_000 + Math.random() * 15_000);
+    const avgStrength = Math.round(club.squad.reduce((s, p) => s + p.strength, 0) / Math.max(1, club.squad.length));
+    return {
+      clubId: club.id,
+      clubName: club.name,
+      clubCrest: club.crestUrl || club.crestMiniUrl,
+      division: club.division,
+      divisionName: club.divisionName || `Série ${club.division === 1 ? 'A' : club.division === 2 ? 'B' : club.division === 3 ? 'C' : 'D'}`,
+      wage,
+      expiresInRounds: 3,
+      clubReputation: club.reputation,
+      balance: club.balance,
+      stadiumCapacity: club.capacity,
+      squadCount: club.squad.length,
+      avgStrength,
+      tablePosition: pos,
+    };
+  });
+}
+
+export function generateEmployedJobOffers(state: GameState, human: Manager): ClubJobOffer[] {
+  if (human.available || !human.currentClubId) return [];
+
+  const currentClub = state.clubs.find(c => c.id === human.currentClubId);
+  const titlesThisSeason = (state.championshipHistory || []).filter(
+    h => h.seasonYear === state.seasonYear && h.championClubId === human.currentClubId
+  );
+  const hasGoodSeason = (human.boardRating ?? 95) >= 75 || titlesThisSeason.length > 0;
+  if (!hasGoodSeason) return [];
+
+  const currentDiv = currentClub?.division ?? 1;
+  const repLevel = human.reputationLevel ?? 3;
+
+  // Clubes entre 3º e 6º lugar (best/ay.java:211 & f/s.java:1413)
+  const eligibleDivisions = currentDiv > 1 ? [currentDiv, currentDiv - 1] : [1];
+  const candidates: { club: Club; pos: number }[] = [];
+
+  for (const div of eligibleDivisions) {
+    let divStandings: StandingRow[] = [];
+    if (div === 1 && state.standingsNacional) divStandings = state.standingsNacional;
+    else if (state.nationalDivisions) {
+      const nd = state.nationalDivisions.find(d => d.division === div);
+      if (nd?.standings) divStandings = nd.standings;
+    }
+
+    if (divStandings.length >= 6) {
+      for (let pos = 3; pos <= 6; pos++) {
+        const row = divStandings[pos - 1];
+        if (row && row.clubId !== human.currentClubId) {
+          const club = state.clubs.find(c => c.id === row.clubId);
+          if (club) candidates.push({ club, pos });
+        }
+      }
+    }
+  }
+
+  // Se reputação >= 4 (Continental ou Mundial), permite convites do exterior
+  if (repLevel >= 4) {
+    const foreignClubs = state.clubs.filter(c => (c.countryId || 29) !== 29 && c.id !== human.currentClubId);
+    foreignClubs.slice(0, 2).forEach(club => {
+      candidates.push({ club, pos: 4 });
+    });
+  }
+
+  const shuffled = [...candidates].sort(() => Math.random() - 0.5);
+  const selected = shuffled.slice(0, Math.min(4, Math.max(2, shuffled.length)));
+
+  return selected.map(({ club, pos }) => {
+    const wage = Math.round(60_000 + (club.reputation || 3) * 35_000 + Math.random() * 25_000);
+    const avgStrength = Math.round(club.squad.reduce((s, p) => s + p.strength, 0) / Math.max(1, club.squad.length));
+    return {
+      clubId: club.id,
+      clubName: club.name,
+      clubCrest: club.crestUrl || club.crestMiniUrl,
+      division: club.division,
+      divisionName: club.divisionName || (club.countryId !== 29 ? 'Exterior' : `Série ${club.division === 1 ? 'A' : club.division === 2 ? 'B' : 'C'}`),
+      wage,
+      expiresInRounds: 2,
+      clubReputation: club.reputation,
+      balance: club.balance,
+      stadiumCapacity: club.capacity,
+      squadCount: club.squad.length,
+      avgStrength,
+      tablePosition: pos,
+    };
+  });
+}
+
+export function getOpenJobVacancies(state: GameState, human: Manager): ClubJobOffer[] {
+  const repLevel = human.reputationLevel ?? 1;
+  const currentClubId = human.currentClubId;
+
+  // Filtro por reputação fiel ao Brasfoot (a/gE.java):
+  const maxRepStars = repLevel >= 5 ? 5 : repLevel === 4 ? 4 : repLevel >= 2 ? 3 : repLevel === 1 ? 2 : 1;
+
+  const eligibleClubs = state.clubs.filter(c => {
+    if (c.id === currentClubId) return false;
+    const clubStars = c.reputation ?? (c.division === 1 ? 4 : 2);
+    if (clubStars > maxRepStars) return false;
+    return true;
+  });
+
+  const vacancies: { club: Club; pos: number }[] = [];
+
+  for (const club of eligibleClubs) {
+    let divStandings: StandingRow[] = [];
+    if (club.division === 1 && state.standingsNacional) divStandings = state.standingsNacional;
+    else if (state.nationalDivisions) {
+      const nd = state.nationalDivisions.find(d => d.division === club.division);
+      if (nd?.standings) divStandings = nd.standings;
+    }
+
+    let pos = 12;
+    let total = 20;
+    if (divStandings.length > 0) {
+      total = divStandings.length;
+      const idx = divStandings.findIndex(r => r.clubId === club.id);
+      if (idx >= 0) pos = idx + 1;
+    }
+
+    if (pos >= Math.floor(total / 2)) {
+      vacancies.push({ club, pos });
+    }
+  }
+
+  const selected = vacancies.sort((a, b) => b.pos - a.pos).slice(0, 10);
+  return selected.map(({ club, pos }) => {
+    const wage = Math.round(25_000 + (club.reputation || 2) * 15_000);
+    const avgStrength = Math.round(club.squad.reduce((s, p) => s + p.strength, 0) / Math.max(1, club.squad.length));
+    return {
+      clubId: club.id,
+      clubName: club.name,
+      clubCrest: club.crestUrl || club.crestMiniUrl,
+      division: club.division,
+      divisionName: club.divisionName || `Série ${club.division === 1 ? 'A' : club.division === 2 ? 'B' : club.division === 3 ? 'C' : 'D'}`,
+      wage,
+      expiresInRounds: 99,
+      clubReputation: club.reputation,
+      balance: club.balance,
+      stadiumCapacity: club.capacity,
+      squadCount: club.squad.length,
+      avgStrength,
+      tablePosition: pos,
+    };
+  });
+}
+
+export function applyCompetitionTitleBonus(
+  state: GameState,
+  record: ChampionshipRecord
+): GameState {
+  const managers = (state.managers || []).map(m => {
+    if (!m.currentClubId) return m;
+    const isChamp = m.currentClubId === record.championClubId;
+    const isRunner = m.currentClubId === record.runnerUpClubId;
+    if (!isChamp && !isRunner) return m;
+
+    let fanBonus = 0;
+    let boardBonus = 0;
+    let prestigeBonus = 0;
+    const compType = record.competitionType;
+
+    if (isChamp) {
+      if (compType === 'nacional') {
+        const isSerieA = (record.competitionName || '').includes('Série A');
+        if (isSerieA) {
+          fanBonus = 40;
+          boardBonus = 30;
+          prestigeBonus = 600;
+        } else {
+          fanBonus = 20;
+          boardBonus = 10;
+          prestigeBonus = 50;
+        }
+      } else if (compType === 'estadual') {
+        fanBonus = 20;
+        boardBonus = 15;
+        prestigeBonus = 30;
+      } else if (compType === 'copa') {
+        fanBonus = 30;
+        boardBonus = 30;
+        prestigeBonus = 500;
+      } else if (compType === 'libertadores' || compType === 'champions') {
+        fanBonus = 30;
+        boardBonus = 30;
+        prestigeBonus = 6000;
+      } else if (compType === 'sulamericana') {
+        fanBonus = 30;
+        boardBonus = 30;
+        prestigeBonus = 2500;
+      } else if (compType === 'mundial' || compType === 'supermundial' || compType === 'intercontinental') {
+        fanBonus = 30;
+        boardBonus = 30;
+        prestigeBonus = 10000;
+      } else {
+        fanBonus = 10;
+        boardBonus = 10;
+        prestigeBonus = 100;
+      }
+    } else if (isRunner) {
+      if (compType === 'nacional') prestigeBonus = 150;
+      else if (compType === 'estadual') prestigeBonus = 5;
+      else if (compType === 'copa') prestigeBonus = 150;
+      else if (compType === 'libertadores' || compType === 'champions') prestigeBonus = 1000;
+      else if (compType === 'sulamericana') prestigeBonus = 400;
+      else if (compType === 'mundial' || compType === 'supermundial' || compType === 'intercontinental') prestigeBonus = 1000;
+    }
+
+    const newBoard = Math.min(100, (m.boardRating ?? 95) + boardBonus);
+    const newFan = Math.min(100, (m.fanRating ?? 85) + fanBonus);
+    const newPrestige = (m.prestigePoints ?? 0) + prestigeBonus;
+
+    return {
+      ...m,
+      boardRating: newBoard,
+      fanRating: newFan,
+      prestigePoints: newPrestige,
+    };
+  });
+
+  return { ...state, managers };
+}
+
 
 export function runAiMarket(state: GameState): GameState {
   let clubs = [...state.clubs];
@@ -747,9 +1401,48 @@ export function rolloverManagers(state: GameState): GameState {
     }
 
     const careerScore = m.careerScore + titleBonus;
-    const reputation = Math.max(0, Math.min(100, Math.round(50 + careerScore / 10)));
-    const boardRating = Math.max(0, Math.min(100, Math.round((m.boardRating ?? 60) + 10)));
-    return { ...m, jobs: [...m.jobs.slice(0, -1), old, next], titles: earnedTitles.length > 0 ? [...m.titles, ...earnedTitles] : m.titles, careerScore, seasonScore: 0, scoreComponents: { results: 0, competitions: 0, squad: 0, finances: 0 }, reputation, boardRating };
+
+    // Atualização e Decaimento no Fim da Temporada (al.kk() em al.java:1109)
+    let nc = m.reputationLevel ?? deriveClubReputationLevel(c);
+    let nu = m.prestigePoints ?? 0;
+
+    if (nc === 5) {
+      nu -= 6000;
+      if (nu < -20000) { nc = 4; nu = 0; }
+    } else if (nc === 4) {
+      nu -= 600;
+      if (nu < -3000) { nc = 3; nu = 0; }
+    } else if (nc === 3) {
+      nu -= 50;
+      if (nu < -500) { nc = 2; nu = 0; }
+    } else if (nc === 2) {
+      nu -= 5;
+      if (nu < -50) { nc = 1; nu = 0; }
+    }
+
+    if (nu > 22000) nc = Math.max(nc, 5);
+    else if (nu > 10000) nc = Math.max(nc, 4);
+    else if (nu > 1000) nc = Math.max(nc, 3);
+    else if (nu > 100) nc = Math.max(nc, 2);
+    else if (nu > 10) nc = Math.max(nc, 1);
+
+    const reputation = Math.max(0, Math.min(100, nc * 20));
+    const boardRating = Math.max(0, Math.min(100, Math.round((m.boardRating ?? 95) + 50)));
+    const fanRating = Math.max(0, Math.min(100, Math.round((m.fanRating ?? 85) + 50)));
+
+    return { 
+      ...m, 
+      jobs: [...m.jobs.slice(0, -1), old, next], 
+      titles: earnedTitles.length > 0 ? [...m.titles, ...earnedTitles] : m.titles, 
+      careerScore, 
+      seasonScore: 0, 
+      scoreComponents: { results: 0, competitions: 0, squad: 0, finances: 0 }, 
+      reputation,
+      reputationLevel: nc,
+      prestigePoints: nu,
+      boardRating,
+      fanRating
+    };
   });
 
   // Roll contracts: player ages + 1, contractYears - 1

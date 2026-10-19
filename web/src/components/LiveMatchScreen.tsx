@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import confetti from 'canvas-confetti';
 import { useGame } from '../state/GameContext';
 import { MatchLineupPanel } from './MatchLineupPanel';
@@ -102,10 +102,6 @@ export const LiveMatchScreen: React.FC = () => {
   const seenEvents = useRef(session?.events.length ?? 0);
   // "Simular até o fim": não reapresenta lances que já passaram (animações de pênalti, sons em cascata)
   const skipPresentationRef = useRef(false);
-  const simulateToEnd = () => {
-    skipPresentationRef.current = true;
-    dispatchMatch({ type: 'fast_forward' });
-  };
   const pending = session?.pendingDecision;
   const finished = session?.phase === 'full_time' || session?.phase === 'committed';
 
@@ -172,6 +168,27 @@ export const LiveMatchScreen: React.FC = () => {
     takerName: string;
     index: number;
   }>>([]);
+  const shootoutTimersRef = useRef<number[]>([]);
+  const isAnimatingKickRef = useRef<number | null>(null);
+
+  const clearShootoutTimers = useCallback(() => {
+    shootoutTimersRef.current.forEach(id => window.clearTimeout(id));
+    shootoutTimersRef.current = [];
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearShootoutTimers();
+    };
+  }, [clearShootoutTimers]);
+
+  const simulateToEnd = () => {
+    skipPresentationRef.current = true;
+    clearShootoutTimers();
+    isAnimatingKickRef.current = null;
+    setCurrentShootoutKick(null);
+    dispatchMatch({ type: 'fast_forward' });
+  };
 
   const handleCloseUserPenaltyModal = () => {
     setUserPenaltyKick(null);
@@ -357,16 +374,37 @@ export const LiveMatchScreen: React.FC = () => {
   // Automated Shootout Orchestrator with Brasfoot timing & anti-spoiler suspense
   useEffect(() => {
     if (!session || gameState.activeScreen !== 'live_match' || viewedClubId !== null) return;
-    if (session.phase !== 'shootout' || finished) return;
 
     const shootoutEvents = session.events.filter(e => e.type === 'shootout_kick');
     const revealedCount = revealedShootoutKicks.length;
+    const isShootoutActive = session.phase === 'shootout';
+    const isMatchEnded = finished || session.phase === 'full_time' || session.phase === 'committed';
 
-    // If currently animating a kick, wait for it to complete
-    if (currentShootoutKick) return;
+    // Se o jogo acabou ou não está em shootout e todos os chutes já foram exibidos:
+    if (!isShootoutActive && (!session.penaltyAttempts.some(Boolean) || isMatchEnded)) {
+      if (revealedCount >= shootoutEvents.length) {
+        clearShootoutTimers();
+        isAnimatingKickRef.current = null;
+        if (currentShootoutKick) setCurrentShootoutKick(null);
+        return;
+      }
+    }
 
-    // If there is an unrevealed kick produced by the engine:
+    if (session.paused) {
+      clearShootoutTimers();
+      isAnimatingKickRef.current = null;
+      if (currentShootoutKick) setCurrentShootoutKick(null);
+      return;
+    }
+
+    // Se há um chute gerado pela engine ainda não revelado (inclui o chute decisivo que encerra o jogo):
     if (revealedCount < shootoutEvents.length) {
+      // Se este chute exato já está em processo de animação, não reinicie!
+      if (isAnimatingKickRef.current === revealedCount) return;
+
+      clearShootoutTimers();
+      isAnimatingKickRef.current = revealedCount;
+
       const nextKick = shootoutEvents[revealedCount];
       const side = (nextKick.team === 'home' ? 0 : 1) as 0 | 1;
       const oppSide = (1 - side) as 0 | 1;
@@ -377,7 +415,13 @@ export const LiveMatchScreen: React.FC = () => {
       const player = teamData?.players.find(p => p.id === nextKick.scorerId || p.name === takerName) ?? teamData?.players[0];
       const gk = oppTeamData?.players.find(p => oppTeamData.onFieldRoleByPlayerId[String(p.id)] === 'GOL' || p.position === 'GOL') ?? oppTeamData?.players[0];
 
-      // Stage 1: Aim / Approaching (1200ms) - Placar inalterado
+      // Ajuste de timing de acordo com a velocidade (1x = 100%, 2x = 65%, 5x = 35%)
+      const speedMult = session.speed === 5 ? 0.35 : session.speed === 2 ? 0.65 : 1.0;
+      const aimMs = Math.round(1200 * speedMult);
+      const kickMs = Math.round(400 * speedMult);
+      const outcomeMs = Math.round(1400 * speedMult);
+
+      // Stage 1: Aim / Approaching - Placar inalterado
       setCurrentShootoutKick({
         index: revealedCount,
         side,
@@ -392,13 +436,13 @@ export const LiveMatchScreen: React.FC = () => {
       sound.playWhistle(true);
       sound.playHeartbeat();
 
-      const kickTimer = window.setTimeout(() => {
-        // Stage 2: Kick (400ms)
+      const t1 = window.setTimeout(() => {
+        // Stage 2: Kick
         setCurrentShootoutKick(prev => prev ? { ...prev, step: 'kick' } : null);
         sound.playKick();
 
-        const outcomeTimer = window.setTimeout(() => {
-          // Stage 3: Outcome (1400ms) - Placar atualiza neste instante exato!
+        const t2 = window.setTimeout(() => {
+          // Stage 3: Outcome - Placar atualiza neste instante exato!
           const outcomeNarrative = isGoal
             ? `GOOOOOOOL! ${takerName} soltou a bomba no canto e estufou as redes contra ${gk?.name || 'o goleiro'}!`
             : `DEFEEEEEENDEU O GOLEIRO! ${gk?.name || 'O goleiro'} adivinhou a intenção e operou um verdadeiro milagre contra ${takerName}!`;
@@ -419,43 +463,54 @@ export const LiveMatchScreen: React.FC = () => {
           }
 
           // Revela a pontuação apenas agora!
-          setRevealedShootoutKicks(prev => [
-            ...prev,
-            { side, isGoal, takerName, index: revealedCount }
-          ]);
+          setRevealedShootoutKicks(prev => {
+            if (prev.some(k => k.index === revealedCount)) return prev;
+            return [...prev, { side, isGoal, takerName, index: revealedCount }];
+          });
 
-          const nextTimer = window.setTimeout(() => {
+          // Stage 4: Limpa o banner e avança para a próxima cobrança se o jogo não encerrou
+          const t3 = window.setTimeout(() => {
             setCurrentShootoutKick(null);
-            // Se o jogo ainda não acabou na engine, dispara o próximo chute
+            isAnimatingKickRef.current = null;
             if (session.phase === 'shootout' && !session.paused) {
               dispatchMatch({ type: 'advance' });
             }
-          }, 1400);
+          }, outcomeMs);
 
-          return () => window.clearTimeout(nextTimer);
-        }, 400);
+          shootoutTimersRef.current.push(t3);
+        }, kickMs);
 
-        return () => window.clearTimeout(outcomeTimer);
-      }, 1200);
+        shootoutTimersRef.current.push(t2);
+      }, aimMs);
 
-      return () => window.clearTimeout(kickTimer);
-    } else if (revealedCount === shootoutEvents.length && session.phase === 'shootout') {
-      // Nenhum chute pendente na fila, dispara o próximo após 800ms
+      shootoutTimersRef.current.push(t1);
+
+    } else if (revealedCount === shootoutEvents.length && isShootoutActive && !isMatchEnded) {
+      // Nenhum chute pendente na fila, dispara o próximo após um breve intervalo
+      if (isAnimatingKickRef.current !== null) return;
+      
+      const speedMult = session.speed === 5 ? 0.35 : session.speed === 2 ? 0.65 : 1.0;
+      const pauseMs = Math.round(800 * speedMult);
+
+      clearShootoutTimers();
       const startTimer = window.setTimeout(() => {
-        dispatchMatch({ type: 'advance' });
-      }, 800);
-      return () => window.clearTimeout(startTimer);
+        if (!session.paused && session.phase === 'shootout') {
+          dispatchMatch({ type: 'advance' });
+        }
+      }, pauseMs);
+      shootoutTimersRef.current.push(startTimer);
     }
   }, [
     session?.events.length, 
     session?.phase, 
     session?.paused,
+    session?.speed,
     revealedShootoutKicks.length, 
-    currentShootoutKick, 
     finished, 
     gameState.activeScreen, 
     viewedClubId, 
-    dispatchMatch
+    dispatchMatch,
+    clearShootoutTimers
   ]);
 
   // Keyboard shortcuts
@@ -1619,10 +1674,20 @@ export const LiveMatchScreen: React.FC = () => {
   const renderShootoutArena = () => {
     if (!session || (session.phase !== 'shootout' && !session.penaltyAttempts.some(Boolean))) return null;
 
-    const homeKicks = revealedShootoutKicks.filter(k => k.side === 0);
-    const awayKicks = revealedShootoutKicks.filter(k => k.side === 1);
-    const maxKicks = Math.max(5, homeKicks.length, awayKicks.length);
     const isFinished = finished || session.phase === 'full_time' || session.phase === 'committed';
+    const displayedKicks = isFinished
+      ? session.events
+          .filter(e => e.type === 'shootout_kick')
+          .map((e, idx) => ({
+            side: (e.team === 'home' ? 0 : 1) as 0 | 1,
+            isGoal: e.description?.includes('gol') || false,
+            takerName: e.scorerName || e.description?.split(':')[0] || 'Cobrador',
+            index: idx,
+          }))
+      : revealedShootoutKicks;
+    const homeKicks = displayedKicks.filter(k => k.side === 0);
+    const awayKicks = displayedKicks.filter(k => k.side === 1);
+    const maxKicks = Math.max(5, homeKicks.length, awayKicks.length);
     const winnerSide = isFinished && session.penaltyScore[0] !== session.penaltyScore[1]
       ? (session.penaltyScore[0] > session.penaltyScore[1] ? 0 : 1)
       : null;

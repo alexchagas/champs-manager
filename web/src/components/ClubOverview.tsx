@@ -37,6 +37,7 @@ import { ClubCrest } from './ClubCrest';
 import { getClubTheme } from '../theme/clubTheme';
 import { formatMatchDate } from '../utils/dateFormatter';
 import { COUNTRY_FLAGS } from '../data/countryFlags';
+import { getReputationLevelLabel } from '../engine/careerEconomy';
 
 export const ClubOverview: React.FC = () => {
   const { 
@@ -129,31 +130,51 @@ export const ClubOverview: React.FC = () => {
   const standingsList = displayedStandings || gameState.standings;
 
   const availableCompetitionTabs = useMemo(() => {
-    const list: { id: string; label: string; isCurrent: boolean; badge?: string; tier?: number }[] = [];
+    interface CompetitionTabItem {
+      id: string;
+      label: string;
+      isCurrent: boolean;
+      badge?: string;
+      tier?: number;
+      category: 'current' | 'state' | 'national' | 'continental' | 'copa' | 'international';
+    }
+    const list: CompetitionTabItem[] = [];
+
+    // 1. Estadual do clube do usuário
     if (gameState.standingsEstadual && gameState.standingsEstadual.length > 0) {
       const isTier2 = gameState.stateTier === 2;
       list.push({
         id: 'estadual',
         label: gameState.stateChampionshipName ? gameState.stateChampionshipName.split('(')[0].trim() : 'Estadual',
-        badge: isTier2 ? '2ª Divisão' : '1ª Divisão', // badge: '1ª Divisão'
+        badge: isTier2 ? '2ª Divisão' : '1ª Divisão',
         tier: isTier2 ? 2 : 1,
         isCurrent: currentCompetition === 'estadual',
+        category: 'state',
       });
     }
+
+    // 2. Outras Divisões Estaduais e outros Estados do Brasil
     if (gameState.stateDivisions && gameState.stateDivisions.length > 0) {
-      gameState.stateDivisions.forEach(sDiv => {
+      const sortedStateDivs = [...gameState.stateDivisions].sort((a, b) => 
+        a.leagueName.localeCompare(b.leagueName) || (a.division || 1) - (b.division || 1)
+      );
+      sortedStateDivs.forEach(sDiv => {
         list.push({
           id: sDiv.id,
           label: sDiv.leagueName,
-          badge: sDiv.division === 1 ? '1ª Divisão' : '2ª Divisão', // badge: '2ª Divisão'
+          badge: sDiv.division === 1 ? '1ª Divisão' : '2ª Divisão',
           tier: sDiv.division,
           isCurrent: false,
+          category: 'state',
         });
       });
     }
+
+    // 3. Campeonato Nacional
     if (gameState.standingsNacional && gameState.standingsNacional.length > 0) {
+      const userDiv = userClub.division ?? 1;
       const divisionLetter = userClub.countryId === 29
-        ? (userClub.division === 1 ? 'A' : userClub.division === 2 ? 'B' : userClub.division === 3 ? 'C' : userClub.division >= 4 ? 'D' : '')
+        ? (userDiv === 1 ? 'A' : userDiv === 2 ? 'B' : userDiv === 3 ? 'C' : userDiv >= 4 ? 'D' : '')
         : '';
       const nationalLabel = divisionLetter
         ? `Brasileirão Série ${divisionLetter}`
@@ -162,13 +183,17 @@ export const ClubOverview: React.FC = () => {
         id: 'nacional',
         label: nationalLabel,
         isCurrent: currentCompetition === 'nacional',
+        category: currentCompetition === 'nacional' ? 'current' : 'national',
       });
     }
+
+    // 4. Copas e Continentais
     if (gameState.standingsContinental && gameState.standingsContinental.length > 0) {
       list.push({
         id: 'continental',
         label: gameState.continentalCupName || 'Libertadores',
         isCurrent: currentCompetition === 'libertadores' || currentCompetition === 'sulamericana' || currentCompetition === 'champions',
+        category: (currentCompetition === 'libertadores' || currentCompetition === 'sulamericana' || currentCompetition === 'champions') ? 'current' : 'continental',
       });
     }
     if (gameState.continentalCompetitions && gameState.continentalCompetitions.length > 0) {
@@ -177,6 +202,7 @@ export const ClubOverview: React.FC = () => {
           id: sisterContinental.id,
           label: sisterContinental.leagueName,
           isCurrent: false,
+          category: 'continental',
         });
       });
     }
@@ -186,17 +212,23 @@ export const ClubOverview: React.FC = () => {
         id: 'copa',
         label: userClub.countryId === 29 ? 'Copa do Brasil' : 'Copa Nacional',
         isCurrent: currentCompetition === 'copa',
+        category: currentCompetition === 'copa' ? 'current' : 'copa',
       });
     }
+
+    // 5. Outras Divisões Nacionais
     if (gameState.nationalDivisions && gameState.nationalDivisions.length > 0) {
       gameState.nationalDivisions.forEach(div => {
         list.push({
           id: div.id,
           label: div.leagueName,
           isCurrent: false,
+          category: 'national',
         });
       });
     }
+
+    // 6. Ligas Internacionais
     if (gameState.otherLeagues && gameState.otherLeagues.length > 0) {
       gameState.otherLeagues.forEach(other => {
         const flag = COUNTRY_FLAGS[other.countryId] || other.countryFlag || '🌐';
@@ -207,6 +239,7 @@ export const ClubOverview: React.FC = () => {
           id: other.id,
           label,
           isCurrent: false,
+          category: 'international',
         });
       });
     }
@@ -398,12 +431,23 @@ export const ClubOverview: React.FC = () => {
       titles: [],
     };
 
-  const boardRating = Math.max(0, Math.min(100, Math.round(humanManager.boardRating ?? 65)));
+  const isUnemployed = humanManager.available ?? false;
+  const boardRating = Math.max(0, Math.min(100, Math.round(humanManager.boardRating ?? 95)));
+  const fanRating = Math.max(0, Math.min(100, Math.round(humanManager.fanRating ?? 85)));
   const managerReputation = Math.max(0, Math.min(100, Math.round(humanManager.reputation ?? 50)));
+  const repLevel = humanManager.reputationLevel ?? 1;
+  const repLabel = getReputationLevelLabel(repLevel);
+  const repStars = '★'.repeat(Math.max(1, repLevel));
+
   const boardStatus = 
     boardRating >= 75 ? { label: 'Diretoria Segura', color: 'text-emerald-400 bg-emerald-950/70 border-emerald-600/40', dot: 'bg-emerald-400' } :
     boardRating >= 50 ? { label: 'Diretoria Estável', color: 'text-amber-300 bg-amber-950/70 border-amber-600/40', dot: 'bg-amber-400' } :
     { label: 'Diretoria em Risco', color: 'text-rose-400 bg-rose-950/70 border-rose-600/40', dot: 'bg-rose-500' };
+
+  const fanStatus = 
+    fanRating >= 70 ? { label: 'Torcida Empolgada', color: 'text-emerald-400 bg-emerald-950/70 border-emerald-600/40', dot: 'bg-emerald-400' } :
+    fanRating >= 40 ? { label: 'Torcida Exigente', color: 'text-amber-300 bg-amber-950/70 border-amber-600/40', dot: 'bg-amber-400' } :
+    { label: 'Torcida em Protesto', color: 'text-rose-400 bg-rose-950/70 border-rose-600/40', dot: 'bg-rose-500' };
 
   const profileLabel = 
     humanManager.riskProfile === 'aggressive' ? 'Ofensivo' :
@@ -445,17 +489,19 @@ export const ClubOverview: React.FC = () => {
 
               <div className="flex flex-col shrink-0 min-w-0">
                 <h1 className="text-sm sm:text-base font-black text-white leading-tight truncate max-w-[130px] sm:max-w-[180px]">
-                  {userClub.name}
+                  {isUnemployed ? 'Sem Clube' : userClub.name}
                 </h1>
                 <div className="flex items-center space-x-1.5 mt-0.5">
                   <span className="text-[10px] sm:text-[11px] font-bold text-[var(--app-text-accent)] uppercase tracking-wider">
-                    {gameState.divisionName || 'Série A'}
+                    {isUnemployed ? 'Técnico Desempregado' : (gameState.divisionName || 'Série A')}
                   </span>
-                  <span 
-                    className="w-1.5 h-1.5 rounded-full inline-block shrink-0" 
-                    style={{ backgroundColor: userClubTheme.primaryAccent }}
-                    title={`Cores do ${userClub.name}`}
-                  />
+                  {!isUnemployed && (
+                    <span 
+                      className="w-1.5 h-1.5 rounded-full inline-block shrink-0" 
+                      style={{ backgroundColor: userClubTheme.primaryAccent }}
+                      title={`Cores do ${userClub.name}`}
+                    />
+                  )}
                 </div>
               </div>
             </div>
@@ -472,24 +518,34 @@ export const ClubOverview: React.FC = () => {
                 </span>
               </div>
 
-              {/* Badges de Confiança da Diretoria, Reputação e Perfil */}
+              {/* Badges de Confiança da Diretoria, Confiança da Torcida e Reputação */}
               <div className="flex items-center flex-wrap gap-1.5 sm:gap-2 mt-1">
                 {/* Confiança da Diretoria */}
                 <span 
                   className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded font-bold border ${boardStatus.color}`}
-                  title={`Avaliação da Diretoria: ${boardRating}% (${boardStatus.label})`}
+                  title={`Confiança da Diretoria: ${boardRating}% (${boardStatus.label})`}
                 >
                   <span className={`w-1.5 h-1.5 rounded-full ${boardStatus.dot} animate-pulse`} />
-                  <span>Confiança: {boardRating}%</span>
+                  <span>Diretoria: {boardRating}%</span>
                 </span>
 
-                {/* Reputação */}
+                {/* Confiança da Torcida */}
+                <span 
+                  className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded font-bold border ${fanStatus.color}`}
+                  title={`Confiança da Torcida: ${fanRating}% (${fanStatus.label})`}
+                >
+                  <Users className="w-2.5 h-2.5 text-cyan-400" />
+                  <span>Torcida: {fanRating}%</span>
+                </span>
+
+                {/* Nível e Estrelas de Reputação */}
                 <span 
                   className="inline-flex items-center gap-1 text-[10px] text-[var(--app-text-accent)] bg-[var(--app-bg-deep)] border border-[var(--app-border-subtle)] px-1.5 py-0.5 rounded font-mono font-bold"
-                  title={`Reputação do Treinador: ${managerReputation}%`}
+                  title={`Reputação do Treinador: ${repStars} (${repLabel}) · ${managerReputation}%`}
                 >
                   <Sparkles className="w-2.5 h-2.5 text-amber-300" />
-                  <span>Rep: {managerReputation}%</span>
+                  <span className="text-amber-300">{repStars}</span>
+                  <span>{repLabel}</span>
                 </span>
 
                 {/* Perfil */}
@@ -498,9 +554,11 @@ export const ClubOverview: React.FC = () => {
                 </span>
 
                 {/* Força Média do Time */}
-                <span className="hidden lg:inline-flex text-[10px] text-slate-400 bg-[var(--app-surface-2)]/60 px-1.5 py-0.5 rounded font-semibold border border-[var(--app-border-subtle)]">
-                  Elenco: <strong className="text-[var(--app-text-accent)] ml-1">{userStrength.overall} Força</strong>
-                </span>
+                {!isUnemployed && (
+                  <span className="hidden lg:inline-flex text-[10px] text-slate-400 bg-[var(--app-surface-2)]/60 px-1.5 py-0.5 rounded font-semibold border border-[var(--app-border-subtle)]">
+                    Elenco: <strong className="text-[var(--app-text-accent)] ml-1">{userStrength.overall} Força</strong>
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -544,6 +602,29 @@ export const ClubOverview: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Banner de Modo Desempregado */}
+      {isUnemployed && (
+        <div className="bg-amber-950/50 border border-amber-600/50 rounded-lg p-3 text-amber-200 text-xs flex items-center justify-between gap-3 shadow-md">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-amber-400 font-bold uppercase text-[10px] px-2 py-0.5 bg-amber-900/80 rounded border border-amber-700/60 shrink-0">
+              Sem Clube
+            </span>
+            <span className="truncate">
+              Você está desempregado há <strong>{(humanManager as any)?.unemployedRounds || 0}</strong> {((humanManager as any)?.unemployedRounds || 0) === 1 ? 'rodada' : 'rodadas'}. Avance as rodadas para acompanhar o futebol e aguardar convites oficiais.
+            </span>
+          </div>
+          <button
+            onClick={() => {
+              sound.playClick();
+              setScreen('managers');
+            }}
+            className="px-3 py-1 bg-amber-600 hover:bg-amber-500 font-bold text-slate-950 rounded text-xs shrink-0 cursor-pointer transition-all active:scale-95"
+          >
+            Central de Empregos
+          </button>
+        </div>
+      )}
 
       {/* PLANTÃO DA RODADA / HEADLINE TICKER */}
       {headlineArticle && (
@@ -653,11 +734,63 @@ export const ClubOverview: React.FC = () => {
                   }}
                   className="w-full appearance-none bg-[var(--app-surface-3)] hover:bg-[var(--app-surface-2)] text-white text-[11px] sm:text-xs font-bold py-1.5 pl-2.5 pr-8 rounded-md border border-[var(--app-border-subtle)] hover:border-[var(--app-text-accent)] focus:outline-none focus:border-[var(--app-text-accent)] cursor-pointer truncate shadow-xs transition-colors"
                 >
-                  {availableCompetitionTabs.map(comp => (
-                    <option key={comp.id} value={comp.id} className="bg-[var(--app-bg-deep)] text-white py-1">
-                      {comp.label} {comp.badge ? `• ${comp.badge}` : ''} {comp.isCurrent ? '⭐ (Em Andamento)' : ''}
-                    </option>
-                  ))}
+                  {/* Sua Competição Atual */}
+                  {availableCompetitionTabs.some(c => c.isCurrent) && (
+                    <optgroup label="Sua Competição (Em Andamento)" className="bg-[var(--app-surface-1)] text-[var(--app-text-accent)] font-bold">
+                      {availableCompetitionTabs.filter(c => c.isCurrent).map(comp => (
+                        <option key={`current-${comp.id}`} value={comp.id} className="bg-[var(--app-bg-deep)] text-white font-normal py-1">
+                          {comp.label} {comp.badge ? `• ${comp.badge}` : ''} ⭐
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+
+                  {/* Campeonatos Estaduais (1ª e 2ª Divisões) */}
+                  {availableCompetitionTabs.some(c => c.category === 'state') && (
+                    <optgroup label="Campeonatos Estaduais (1ª e 2ª Divisões)" className="bg-[var(--app-surface-1)] text-amber-400 font-bold">
+                      {availableCompetitionTabs
+                        .filter(c => c.category === 'state')
+                        .sort((a, b) => a.label.localeCompare(b.label) || (a.tier || 1) - (b.tier || 1))
+                        .map(comp => (
+                          <option key={comp.id} value={comp.id} className="bg-[var(--app-bg-deep)] text-white font-normal py-1">
+                            {comp.label} {comp.badge ? `• ${comp.badge}` : ''} {comp.isCurrent ? '⭐' : ''}
+                          </option>
+                        ))}
+                    </optgroup>
+                  )}
+
+                  {/* Campeonato Nacional e Divisões */}
+                  {availableCompetitionTabs.some(c => c.category === 'national') && (
+                    <optgroup label="Campeonato Nacional (Séries A, B, C, D)" className="bg-[var(--app-surface-1)] text-emerald-400 font-bold">
+                      {availableCompetitionTabs.filter(c => c.category === 'national').map(comp => (
+                        <option key={comp.id} value={comp.id} className="bg-[var(--app-bg-deep)] text-white font-normal py-1">
+                          {comp.label} {comp.badge ? `• ${comp.badge}` : ''}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+
+                  {/* Copas & Torneios Continentais */}
+                  {availableCompetitionTabs.some(c => c.category === 'continental' || c.category === 'copa') && (
+                    <optgroup label="Copas & Torneios Continentais" className="bg-[var(--app-surface-1)] text-sky-400 font-bold">
+                      {availableCompetitionTabs.filter(c => c.category === 'continental' || c.category === 'copa').map(comp => (
+                        <option key={comp.id} value={comp.id} className="bg-[var(--app-bg-deep)] text-white font-normal py-1">
+                          {comp.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+
+                  {/* Ligas Internacionais */}
+                  {availableCompetitionTabs.some(c => c.category === 'international') && (
+                    <optgroup label="Ligas Internacionais" className="bg-[var(--app-surface-1)] text-purple-400 font-bold">
+                      {availableCompetitionTabs.filter(c => c.category === 'international').map(comp => (
+                        <option key={comp.id} value={comp.id} className="bg-[var(--app-bg-deep)] text-white font-normal py-1">
+                          {comp.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
                 <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               </div>

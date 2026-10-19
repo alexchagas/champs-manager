@@ -1,7 +1,7 @@
 import type { Club, StandingRow, OtherLeagueStandings, LeagueInfo } from '../types/index.ts';
 import { generateLeagueCalendar, initializeStandings, sortStandings, sortClubsByMeritocracy } from '../data/calendarGenerator.ts';
-import { getLeaguesByCountry, getClubsByLeague, getAllLeagues } from '../data/teamsDatabase.ts';
-import { getStateDivisionInfo, getUserStateDivision, getStateLeagueRule } from '../data/stateLeagueFormulas.ts';
+import { getLeaguesByCountry, getClubsByLeague, getAllLeagues, getAllClubs } from '../data/teamsDatabase.ts';
+import { getStateDivisionInfo, getUserStateDivision, getStateLeagueRule, STATE_LEAGUE_RULES } from '../data/stateLeagueFormulas.ts';
 import { getDivisionConfig, formatGroupLabel } from '../data/leagueConfigurations.ts';
 import {
   getContinentalTournamentField,
@@ -249,47 +249,124 @@ export function buildInitialStateDivisions(
 ): OtherLeagueStandings[] {
   const sourceCountryId = sourceClub.countryId || 29;
   if (sourceCountryId !== 29) return [];
-  const stateCode = sourceClub.stateCode;
-  if (!stateCode) return [];
+  const userStateCode = (sourceClub.stateCode || '').toUpperCase();
+  if (!userStateCode) return [];
 
+  const pool = allAvailableClubs && allAvailableClubs.length > 0 ? allAvailableClubs : getAllClubs();
+  const results: OtherLeagueStandings[] = [];
+
+  // 1. Divisão paralela do próprio estado do usuário (ex: Série A2 se usuário está na A1)
   const userStateDiv = getUserStateDivision(
     sourceClub,
-    allAvailableClubs,
+    pool,
     seasonYear,
     promotedStateClubIds,
     relegatedStateClubIds
   );
 
-  if (!userStateDiv.parallelTier) return [];
+  if (userStateDiv.parallelTier) {
+    const parallel = userStateDiv.parallelTier;
+    const fieldClubs = parallel.fieldClubs;
+    const totalTeams = fieldClubs.length;
+    if (totalTeams >= 4) {
+      const stateRule = getStateLeagueRule(userStateCode);
+      const isFormula7 = parallel.tier === 1 && stateRule?.formulaId === 7 && totalTeams === 16;
+      const groupCount = isFormula7 ? 4 : 1;
+      // No 1º semestre, estaduais rodam calendário compatível com as 14 semanas (turno único)
+      const totalRounds = isFormula7 ? 12 : Math.min(15, totalTeams - 1);
 
-  const parallel = userStateDiv.parallelTier;
-  const fieldClubs = parallel.fieldClubs;
-  const totalTeams = fieldClubs.length;
-  if (totalTeams < 4) return [];
+      const standings = preSimulateLeagueRounds(
+        fieldClubs,
+        0,
+        2000 + (sourceClub.stateId || 1) * 17 + parallel.tier * 31,
+        groupCount
+      );
 
-  const stateRule = getStateLeagueRule(stateCode);
-  const isFormula7 = parallel.tier === 1 && stateRule?.formulaId === 7 && totalTeams === 16;
-  const groupCount = isFormula7 ? 4 : 1;
-  const totalRounds = isFormula7 ? 12 : (totalTeams - 1) * 2;
+      results.push({
+        id: `state-${userStateCode.toLowerCase()}-div${parallel.tier}`,
+        countryId: 29,
+        countryName: 'Brasil',
+        leagueName: parallel.leagueName,
+        division: parallel.tier,
+        seasonLabel: `${seasonYear}`,
+        currentRound: 0,
+        totalRounds,
+        standings,
+      });
+    }
+  }
 
-  const standings = preSimulateLeagueRounds(
-    fieldClubs,
-    0,
-    2000 + (sourceClub.stateId || 1) * 17 + parallel.tier * 31,
-    groupCount
-  );
+  // 2. Todos os outros Campeonatos Estaduais do Brasil (1ª e 2ª Divisões de todas as federações)
+  // Engenharia reversa de best/w.java (dZ()): instancia todas as divisões estaduais ativas no 1º semestre
+  const allStateCodes = Object.keys(STATE_LEAGUE_RULES);
+  for (const sCode of allStateCodes) {
+    if (sCode === userStateCode) continue;
 
-  return [{
-    id: `state-${stateCode.toLowerCase()}-div${parallel.tier}`,
-    countryId: 29,
-    countryName: 'Brasil',
-    leagueName: parallel.leagueName,
-    division: parallel.tier,
-    seasonLabel: `${seasonYear}`,
-    currentRound: 0,
-    totalRounds,
-    standings,
-  }];
+    const stateRule = getStateLeagueRule(sCode);
+    const divInfo = getStateDivisionInfo(sCode, pool);
+    const rawClubs = pool.filter(c => c.countryId === 29 && (c.stateCode || '').toUpperCase() === sCode);
+    if (rawClubs.length < 4) continue;
+
+    const sortedClubs = sortClubsByMeritocracy(rawClubs);
+    const targetEliteCount = Math.min(sortedClubs.length, stateRule.nTimes);
+    const fieldClubs = sortedClubs.slice(0, targetEliteCount);
+    if (fieldClubs.length < 4) continue;
+
+    const isFormula7 = stateRule.formulaId === 7 && fieldClubs.length === 16;
+    const groupCount = isFormula7 ? 4 : 1;
+    const totalRounds = isFormula7 ? 12 : Math.min(15, fieldClubs.length - 1);
+
+    const stateSeed = 2000 + (sCode.charCodeAt(0) * 31 + sCode.charCodeAt(1)) + seasonYear;
+    const standings = preSimulateLeagueRounds(
+      fieldClubs,
+      0,
+      stateSeed,
+      groupCount
+    );
+
+    results.push({
+      id: `state-${sCode.toLowerCase()}`,
+      countryId: 29,
+      countryName: 'Brasil',
+      leagueName: divInfo.tier1.leagueName,
+      division: 1,
+      seasonLabel: `${seasonYear}`,
+      currentRound: 0,
+      totalRounds,
+      standings,
+    });
+
+    // 2.1 Segunda Divisão (Acesso) para federações com clubes adicionais (ex: Paulistão A2, Carioca A2, etc.)
+    if (divInfo.hasSecondDivision && divInfo.tier2) {
+      const remainingClubs = sortedClubs.slice(targetEliteCount);
+      if (remainingClubs.length >= 4) {
+        const targetA2Count = Math.min(16, remainingClubs.length);
+        const tier2Clubs = remainingClubs.slice(0, targetA2Count);
+        const tier2Rounds = Math.min(15, tier2Clubs.length - 1);
+        const tier2Seed = 3000 + (sCode.charCodeAt(0) * 31 + sCode.charCodeAt(1)) + seasonYear;
+        const tier2Standings = preSimulateLeagueRounds(
+          tier2Clubs,
+          0,
+          tier2Seed,
+          1
+        );
+
+        results.push({
+          id: `state-${sCode.toLowerCase()}-div2`,
+          countryId: 29,
+          countryName: 'Brasil',
+          leagueName: divInfo.tier2.leagueName,
+          division: 2,
+          seasonLabel: `${seasonYear}`,
+          currentRound: 0,
+          totalRounds: tier2Rounds,
+          standings: tier2Standings,
+        });
+      }
+    }
+  }
+
+  return results;
 }
 
 /**
@@ -446,9 +523,12 @@ export function advanceOtherLeaguesProgress(
     let targetRound = entry.currentRound;
 
     if (context && isMainBrazil) {
+      const isFirstSemester = context.currentSemester === 1 
+        || (context.currentSemester == null && (context.currentRound == null || context.currentRound <= 14));
+
       if (entry.id.startsWith('state-')) {
-        // Estaduais (1º semestre: semanas 0 a 13)
-        if (context.currentSemester === 1) {
+        // Estaduais (1º semestre: semanas 0 a 14)
+        if (isFirstSemester) {
           const stateProgress = Math.min(1.0, Math.max(0.0, (context.currentRound || 1) / 14));
           targetRound = Math.min(entry.totalRounds, Math.round(entry.totalRounds * stateProgress));
         } else {
@@ -457,7 +537,7 @@ export function advanceOtherLeaguesProgress(
         }
       } else if (entry.id.startsWith('league-29-div')) {
         // Séries nacionais (A, B, C, D) no Brasil (2º semestre: a partir da semana 14)
-        if (context.currentSemester === 1) {
+        if (isFirstSemester) {
           targetRound = 0;
         } else {
           const natProgress = Math.min(
@@ -468,7 +548,7 @@ export function advanceOtherLeaguesProgress(
         }
       } else if (entry.id === 'continental-sister') {
         // Fase de grupos continental (2º semestre: semanas 16 a 26 = 6 rodadas)
-        if (context.currentSemester === 1) {
+        if (isFirstSemester) {
           targetRound = 0;
         } else {
           const contRound = Math.max(0, (context.currentRound || 14) - 14);

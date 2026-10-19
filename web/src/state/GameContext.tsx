@@ -23,7 +23,12 @@ import {
   appointHuman, 
   runAiMarket, 
   rolloverManagers,
-  automaticMatchBench 
+  automaticMatchBench,
+  applyCompetitionTitleBonus,
+  generateUnemployedJobOffers,
+  generateEmployedJobOffers,
+  getOpenJobVacancies,
+  resignHumanManager,
 } from '../engine/careerEconomy';
 import { applySavedClubEdits } from '../data/editorPersistence';
 import {
@@ -168,6 +173,10 @@ interface GameContextType {
   markAllNewsAsRead: () => void;
   startNextSeason: () => void;
   dismissTournamentConclusion: () => void;
+  dismissPendingDismissal: () => void;
+  acceptClubJobOffer: (clubId: number) => void;
+  rejectAllClubJobOffers: () => void;
+  resignCurrentJob: () => void;
   applyDevState?: (updater: GameState | ((prev: GameState) => GameState)) => void;
 }
 
@@ -344,15 +353,20 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setGameState(prev => ({ ...prev, activeScreen: screen, activeMatch: prev.activeMatch ? { ...prev.activeMatch, paused: true } : undefined }));
   };
 
-  const userClub = gameState.clubs.find((c) => c.id === gameState.userClubId) || gameState.clubs[0];
+  const humanManager = gameState.managers?.find(m => m.id === gameState.humanManagerId) || gameState.managers?.find(m => m.kind === 'human');
+  const isHumanUnemployed = humanManager?.available ?? false;
+
+  const userClub = (!isHumanUnemployed && gameState.clubs.find((c) => c.id === gameState.userClubId)) || gameState.clubs.find((c) => c.id === gameState.userClubId) || gameState.clubs[0];
 
   const currentRoundFixtures = gameState.calendar.filter(
     (f) => (f.fixtureDateIndex ?? f.round) === gameState.currentRound
   );
 
-  const userFixture = currentRoundFixtures.find(
-    (f) => f.homeClubId === userClub.id || f.awayClubId === userClub.id
-  );
+  const userFixture = !isHumanUnemployed
+    ? currentRoundFixtures.find(
+        (f) => f.homeClubId === userClub.id || f.awayClubId === userClub.id
+      )
+    : undefined;
 
   const nextOpponentId = userFixture
     ? userFixture.homeClubId === userClub.id
@@ -746,9 +760,11 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const progressRatio = Math.min(1.0, closed.currentRound / currentLastSlot);
       const isMainBrazil = (closed.clubs.find(c => c.id === closed.userClubId)?.countryId || 29) === 29;
 
+      const safeSemester: 1 | 2 = closed.currentSemester ?? (closed.currentRound <= 14 ? 1 : 2);
+
       const updatedNationalDivisions = closed.nationalDivisions && closed.nationalDivisions.length > 0
         ? advanceOtherLeaguesProgress(closed.nationalDivisions, progressRatio, closed.clubs, isMainBrazil, {
-            currentSemester: closed.currentSemester,
+            currentSemester: safeSemester,
             currentRound: closed.currentRound,
             totalRounds: currentLastSlot,
           })
@@ -756,7 +772,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const updatedStateDivisions = closed.stateDivisions && closed.stateDivisions.length > 0
         ? advanceOtherLeaguesProgress(closed.stateDivisions, progressRatio, closed.clubs, true, {
-            currentSemester: closed.currentSemester,
+            currentSemester: safeSemester,
             currentRound: closed.currentRound,
             totalRounds: currentLastSlot,
           })
@@ -764,7 +780,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const updatedContinentalCompetitions = closed.continentalCompetitions && closed.continentalCompetitions.length > 0
         ? advanceOtherLeaguesProgress(closed.continentalCompetitions, progressRatio, closed.clubs, true, {
-            currentSemester: closed.currentSemester,
+            currentSemester: safeSemester,
             currentRound: closed.currentRound,
             totalRounds: currentLastSlot,
           })
@@ -772,7 +788,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const updatedOtherLeagues = closed.otherLeagues && closed.otherLeagues.length > 0
         ? advanceOtherLeaguesProgress(closed.otherLeagues, progressRatio, closed.clubs, isMainBrazil, {
-            currentSemester: closed.currentSemester,
+            currentSemester: safeSemester,
             currentRound: closed.currentRound,
             totalRounds: currentLastSlot,
           })
@@ -788,12 +804,12 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
 
       const rated = scoreManagers(stateWithLeagues, fixtures);
-      const { state: managed, dismissals } = changeManagers(rated);
-      const completed = closed.activeMatch!;
-      const injuries = [completed, ...completed.parallelMatches].flatMap(session => session.teams.flatMap(team => {
+      const { state: managed, dismissals, pendingDismissal } = changeManagers(rated);
+      const completed = closed.activeMatch;
+      const injuries = completed ? [completed, ...completed.parallelMatches].flatMap(session => session.teams.flatMap(team => {
         const club = managed.clubs.find(c => c.id === team.clubId)!;
         return team.injuredIds.map(id => ({ club, player: club.squad.find(p => p.id === id)! }));
-      }));
+      })) : [];
       const articles = generateWeeklyNews(managed, fixtures, injuries, dismissals);
       const count = (latest.autoSaveMatchCounter || 0) + 1;
 
@@ -802,6 +818,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         newsFeed: [...articles, ...(latest.newsFeed || [])].slice(0, 40),
         autoSaveMatchCounter: latest.options.autoSaveMode === 'every_3_matches' && count >= 3 ? 0 : count,
         activeScreen: 'round_results',
+        pendingDismissal: pendingDismissal || managed.pendingDismissal,
       });
       
       const newlyCompleted = detectNewlyCompletedCompetitions(final);
@@ -814,6 +831,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         for (const record of newlyCompleted) {
           history.push(record);
+          stateWithTitles = applyCompetitionTitleBonus(stateWithTitles, record);
           const champNews = createChampionshipNews(record, final.currentRound);
           news = [...champNews, ...news];
           if ((record.championClubId === final.userClubId || record.runnerUpClubId === final.userClubId) && record.userPrizeMoney) {
@@ -826,7 +844,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         stateWithTitles = {
-          ...final,
+          ...stateWithTitles,
           clubs,
           championshipHistory: history,
           newsFeed: news.slice(0, 50),
@@ -834,10 +852,15 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
       }
 
-      setGameState(stateWithTitles);
+      const finalState = {
+        ...stateWithTitles,
+        pendingDismissal: pendingDismissal || managed.pendingDismissal || stateWithTitles.pendingDismissal,
+      };
+
+      setGameState(finalState);
       setMatchError('');
       const mode = latest.options.autoSaveMode;
-      if (mode === 'every_match' || mode === 'legacy_continuous' || (mode === 'every_3_matches' && count >= 3)) void performAutoSave(stateWithTitles);
+      if (mode === 'every_match' || mode === 'legacy_continuous' || (mode === 'every_3_matches' && count >= 3)) void performAutoSave(finalState);
     } catch (error) { setMatchError(String(error instanceof Error ? error.message : error)); }
   };
 
@@ -976,6 +999,28 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ...prev,
       pendingTournamentConclusion: undefined,
     }));
+  };
+
+  const dismissPendingDismissal = () => {
+    setGameState(prev => ({
+      ...prev,
+      pendingDismissal: undefined,
+    }));
+  };
+
+  const acceptClubJobOffer = (clubId: number) => {
+    setGameState(prev => appointHuman(prev, clubId));
+  };
+
+  const rejectAllClubJobOffers = () => {
+    setGameState(prev => ({
+      ...prev,
+      clubJobOffers: undefined,
+    }));
+  };
+
+  const resignCurrentJob = () => {
+    setGameState(prev => resignHumanManager(prev));
   };
 
   const startNextSeason = () => {
@@ -1194,6 +1239,34 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         )
       : gameState.otherLeagues;
 
+    const processCareerAdvance = (st: GameState): GameState => {
+      const human = st.managers?.find(m => m.id === st.humanManagerId) || st.managers?.find(m => m.kind === 'human');
+      let next = st;
+      if (human?.available) {
+        const updatedHuman = { ...human, unemployedRounds: (human.unemployedRounds || 0) + 1 };
+        next = {
+          ...next,
+          managers: (next.managers || []).map(m => m.id === human.id ? updatedHuman : m),
+        };
+        if (!next.clubJobOffers || next.clubJobOffers.length === 0) {
+          const offers = generateUnemployedJobOffers(next, updatedHuman);
+          if (offers.length > 0) {
+            next = { ...next, clubJobOffers: offers };
+          }
+        }
+      } else if (human && human.currentClubId) {
+        const isMidSeason = next.currentRound === 19 || next.currentRound === 20;
+        const isEndSeason = next.currentRound >= 38;
+        if ((isMidSeason || isEndSeason) && (!next.clubJobOffers || next.clubJobOffers.length === 0)) {
+          const offers = generateEmployedJobOffers(next, human);
+          if (offers.length > 0) {
+            next = { ...next, clubJobOffers: offers };
+          }
+        }
+      }
+      return next;
+    };
+
     if (isWasmReady()) {
       const wasmUpdated = advanceToNextRoundWasm(gameState);
       if (wasmUpdated) {
@@ -1212,8 +1285,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           otherLeagues: updatedOtherLeagues,
         }, []);
         const { state: managedState } = changeManagers(scoredState);
+        const careerAdvanced = processCareerAdvance(managedState);
         setGameState(runAiMarket({ 
-          ...managedState,
+          ...careerAdvanced,
           activeMatch: undefined, 
           activeMatchFixtureId: undefined, 
           activeScreen: 'overview' 
@@ -1238,8 +1312,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         otherLeagues: updatedOtherLeagues,
       }, []);
       const { state: managedState } = changeManagers(scoredState);
+      const careerAdvanced = processCareerAdvance(managedState);
       return runAiMarket({
-        ...managedState,
+        ...careerAdvanced,
         activeMatch: undefined,
         activeMatchFixtureId: undefined,
         activeScreen: 'overview',
@@ -1781,6 +1856,10 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         markAllNewsAsRead,
         startNextSeason,
         dismissTournamentConclusion,
+        dismissPendingDismissal,
+        acceptClubJobOffer,
+        rejectAllClubJobOffers,
+        resignCurrentJob,
         applyDevState: setGameState,
       }}
     >

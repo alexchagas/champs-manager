@@ -64,22 +64,43 @@ export function sanitizePrematureChampionships(state: GameState): GameState {
     return state;
   }
 
+  // 1. Sanitize premature Copa records
   const cupMatches = state.calendar.filter(f => f.competitionType === 'copa');
-  if (cupMatches.length === 0) return state;
+  if (cupMatches.length > 0) {
+    const isTwoLegged = cupMatches.some(f => f.leg === 1);
+    const finals = cupMatches.filter(f => f.stage === 'Final' || (!isTwoLegged && f.round === 4));
+    const finalsCompleted = finals.length > 0 && finals.every(f => f.played && f.homeClubId > 0 && f.awayClubId > 0);
 
-  const isTwoLegged = cupMatches.some(f => f.leg === 1);
-  const finals = cupMatches.filter(f => f.stage === 'Final' || (!isTwoLegged && f.round === 4));
-  const finalsCompleted = finals.length > 0 && finals.every(f => f.played && f.homeClubId > 0 && f.awayClubId > 0);
+    // If Copa matches exist in calendar but the final is not completed, remove any premature copa record for this season
+    const hasPrematureCopa = !finalsCompleted && state.championshipHistory.some(r => r.competitionType === 'copa' && r.seasonYear === state.seasonYear);
 
-  // If Copa matches exist in calendar but the final is not completed, remove any premature copa record for this season
-  const hasPrematureCopa = !finalsCompleted && state.championshipHistory.some(r => r.competitionType === 'copa' && r.seasonYear === state.seasonYear);
+    if (hasPrematureCopa) {
+      state = {
+        ...state,
+        championshipHistory: state.championshipHistory.filter(r => !(r.competitionType === 'copa' && r.seasonYear === state.seasonYear)),
+        pendingTournamentConclusion: state.pendingTournamentConclusion?.competitionType === 'copa' ? undefined : state.pendingTournamentConclusion,
+      };
+    }
+  }
 
-  if (hasPrematureCopa) {
-    return {
-      ...state,
-      championshipHistory: state.championshipHistory.filter(r => !(r.competitionType === 'copa' && r.seasonYear === state.seasonYear)),
-      pendingTournamentConclusion: state.pendingTournamentConclusion?.competitionType === 'copa' ? undefined : state.pendingTournamentConclusion,
-    };
+  // 2. Sanitize premature Estadual records (cannot conclude in early rounds while calendar matches are unplayed)
+  const estadualMatches = state.calendar.filter(f => f.competitionType === 'estadual');
+  const hasPendingEstadual = estadualMatches.length > 0 && estadualMatches.some(f => !f.played);
+  const isEarlyRound = state.currentSemester === 1 || (state.currentRound != null && state.currentRound <= 14);
+
+  if (hasPendingEstadual && isEarlyRound) {
+    const hasPrematureEstadual = state.championshipHistory.some(
+      r => r.competitionType === 'estadual' && r.seasonYear === state.seasonYear
+    );
+    if (hasPrematureEstadual) {
+      state = {
+        ...state,
+        championshipHistory: state.championshipHistory.filter(
+          r => !(r.competitionType === 'estadual' && r.seasonYear === state.seasonYear)
+        ),
+        pendingTournamentConclusion: state.pendingTournamentConclusion?.competitionType === 'estadual' ? undefined : state.pendingTournamentConclusion,
+      };
+    }
   }
 
   return state;
@@ -552,20 +573,24 @@ export function detectNewlyCompletedCompetitions(rawState: GameState): Champions
     }
   }
 
-  // 6. DIVISÕES ESTADUAIS PARALELAS (ex: Série A2 / Segunda Divisão Estadual)
+  // 6. DIVISÕES ESTADUAIS PARALELAS (ex: Série A2 / Segunda Divisão Estadual e outros Estados)
   if (state.stateDivisions && state.stateDivisions.length > 0) {
-    const allEstadualPlayed = calendar.filter(f => f.competitionType === 'estadual').every(f => f.played);
-    const seasonEnded = isSeasonComplete(state) || allEstadualPlayed;
+    const estadualMatches = calendar.filter(f => f.competitionType === 'estadual');
+    const hasEstadualInCalendar = estadualMatches.length > 0;
+    const allEstadualPlayed = hasEstadualInCalendar && estadualMatches.every(f => f.played);
+    const isEstadualPeriodDone = (state.currentSemester === 2) || (state.currentRound > 14) || allEstadualPlayed;
 
-    for (const d of state.stateDivisions) {
-      if (!d.standings || d.standings.length < 2) continue;
-      const isComplete = d.currentRound >= d.totalRounds || seasonEnded;
-      if (!isComplete) continue;
+    // Se o calendário do usuário ainda tiver jogos do estadual no 1º semestre, nenhum estadual pode ser concluído prematuramente
+    if (!hasEstadualInCalendar || isEstadualPeriodDone || isSeasonComplete(state)) {
+      for (const d of state.stateDivisions) {
+        if (!d.standings || d.standings.length < 2) continue;
+        const isComplete = (d.currentRound >= d.totalRounds && isEstadualPeriodDone) || isSeasonComplete(state);
+        if (!isComplete) continue;
 
-      const divRecordId = `${seasonYear}-estadual-div${d.division}`;
-      const compName = d.leagueName;
+        const divRecordId = `${seasonYear}-${d.id}`;
+        const compName = d.leagueName;
 
-      if (isAlreadyRecorded(divRecordId, compName)) continue;
+        if (isAlreadyRecorded(divRecordId, compName)) continue;
 
       const sorted = [...d.standings].sort(
         (a, b) => b.points - a.points || b.won - a.won || b.goalDiff - a.goalDiff || b.goalsFor - a.goalsFor
@@ -599,6 +624,7 @@ export function detectNewlyCompletedCompetitions(rawState: GameState): Champions
         userPrizeMoney: isUserChamp || isUserRunner ? prize : undefined,
         managerName: isUserChamp ? state.managerName : undefined,
       });
+      }
     }
   }
 

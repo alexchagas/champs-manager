@@ -30,6 +30,8 @@ import { calculateRescissionPenalty } from '../engine/careerEconomy';
 import { sound } from '../audio/soundEngine';
 import { getClubTheme } from '../theme/clubTheme';
 import { ClubCrest } from './ClubCrest';
+import { COUNTRY_FLAGS } from '../data/countryFlags';
+import { getAllCountries } from '../data/teamsDatabase';
 
 type TabType = 'auctions' | 'free_agents' | 'search' | 'offers' | 'contracts';
 
@@ -145,7 +147,15 @@ export const TransfersScreen: React.FC = () => {
     minAge: 17,
     maxAge: 40,
     nameQuery: '',
+    countryId: userClub.countryId || 29,
+    division: 'all',
   });
+
+  const availableCountryOptions = useMemo(() => {
+    const list = getAllCountries();
+    // Exclui Brasil pois já é uma opção dedicada no topo
+    return list.filter(c => c.id !== 29);
+  }, []);
 
   const showToast = (type: 'success' | 'error', message: string) => {
     setFeedback({ type, message });
@@ -949,6 +959,41 @@ export const TransfersScreen: React.FC = () => {
             {/* Search Filter Panel */}
             <div className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg p-3 space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap items-stretch lg:items-center gap-2.5 sm:gap-3">
+                {/* País */}
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs text-slate-400 font-semibold shrink-0">País:</span>
+                  <select
+                    value={searchFilter.countryId ?? (userClub.countryId || 29)}
+                    onChange={(e) => setSearchFilter({ ...searchFilter, countryId: Number(e.target.value) })}
+                    className="w-full lg:w-auto bg-[var(--app-surface-2)] border border-[var(--app-border-subtle)] text-slate-200 text-xs rounded px-2.5 py-1.5 focus:outline-none focus:border-[var(--app-border-highlight)]"
+                  >
+                    <option value={0}>Todos os Países</option>
+                    <option value={29}>🇧🇷 Brasil</option>
+                    {availableCountryOptions.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {COUNTRY_FLAGS[c.id] || '🌐'} {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Divisão */}
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs text-slate-400 font-semibold shrink-0">Divisão:</span>
+                  <select
+                    value={searchFilter.division ?? 'all'}
+                    onChange={(e) => setSearchFilter({ ...searchFilter, division: e.target.value === 'all' ? 'all' : Number(e.target.value) })}
+                    className="w-full lg:w-auto bg-[var(--app-surface-2)] border border-[var(--app-border-subtle)] text-slate-200 text-xs rounded px-2.5 py-1.5 focus:outline-none focus:border-[var(--app-border-highlight)]"
+                  >
+                    <option value="all">Todas as Divisões</option>
+                    <option value={1}>Série A (Elite)</option>
+                    <option value={2}>Série B</option>
+                    <option value={3}>Série C</option>
+                    <option value={4}>Série D</option>
+                    <option value={5}>Estaduais / Acesso</option>
+                  </select>
+                </div>
+
                 <div className="flex items-center space-x-2">
                   <span className="text-xs text-slate-400 font-semibold shrink-0">Posição:</span>
                   <select
@@ -1040,11 +1085,21 @@ export const TransfersScreen: React.FC = () => {
                 </div>
 
                 <button
-                  onClick={() => setSearchFilter({ position: 'TODOS', minStrength: 50, maxStrength: 100, minAge: 17, maxAge: 40, nameQuery: '' })}
+                  onClick={() => setSearchFilter({ position: 'TODOS', minStrength: 50, maxStrength: 100, minAge: 17, maxAge: 40, nameQuery: '', countryId: userClub.countryId || 29, division: 'all' })}
                   className="text-xs text-slate-400 hover:text-white px-2 py-1 cursor-pointer underline text-center sm:text-right"
                 >
                   Limpar
                 </button>
+              </div>
+
+              {/* Informações da busca */}
+              <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-[var(--app-border-subtle)]">
+                <span>
+                  Encontrados <strong className="text-[var(--app-text-accent)] font-mono-numbers">{sortedSearchResults.length}</strong> jogadores
+                </span>
+                <span className="text-[10px] text-slate-500">
+                  Ordenado por força técnica decrescente
+                </span>
               </div>
             </div>
 
