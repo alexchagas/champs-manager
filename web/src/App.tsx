@@ -23,6 +23,8 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { BugReportModal } from './components/BugReportModal';
 import { SeasonReviewScreen } from './components/SeasonReviewScreen';
 import { TournamentConclusionModal } from './components/TournamentConclusionModal';
+import { DismissalModal } from './components/DismissalModal';
+import { ClubJobOffersModal } from './components/ClubJobOffersModal';
 import { ChampionsHistoryScreen } from './components/ChampionsHistoryScreen';
 import { DevToolsLauncher } from './dev/index.ts';
 
@@ -67,6 +69,10 @@ const MainAppContent: React.FC = () => {
     userClub,
     startNextSeason,
     dismissTournamentConclusion,
+    dismissPendingDismissal,
+    acceptClubJobOffer,
+    rejectAllClubJobOffers,
+    viewClub,
   } = useGame();
 
   const [isBugReportOpen, setIsBugReportOpen] = useState(false);
@@ -222,6 +228,25 @@ const MainAppContent: React.FC = () => {
           record={gameState.pendingTournamentConclusion}
           userClubId={gameState.userClubId}
           onClose={dismissTournamentConclusion}
+        />
+      )}
+
+      {/* Floating Dismissal Modal (Brasfoot a/dm_0.java) */}
+      {gameState.pendingDismissal && (
+        <DismissalModal
+          dismissal={gameState.pendingDismissal}
+          onClose={dismissPendingDismissal}
+        />
+      )}
+
+      {/* Floating Club Job Offers Modal (Brasfoot a/go_0.java) */}
+      {gameState.clubJobOffers && gameState.clubJobOffers.length > 0 && (
+        <ClubJobOffersModal
+          offers={gameState.clubJobOffers}
+          onAccept={acceptClubJobOffer}
+          onRejectAll={rejectAllClubJobOffers}
+          onInspectClub={viewClub}
+          isUnemployed={gameState.managers?.find(m => m.id === gameState.humanManagerId)?.available ?? false}
         />
       )}
 

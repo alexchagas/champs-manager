@@ -264,6 +264,35 @@ class SoundEngine {
     this.playWhistle(true);
   }
 
+  // Warning / alert / dismissal / resignation chime
+  public playWarning() {
+    if (this.playSoundFile('warning.wav')) return;
+    if (!this.enabled || this.volume <= 0) return;
+    try {
+      const ctx = this.getContext();
+      if (!ctx) return;
+
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(360, now);
+      osc.frequency.exponentialRampToValueAtTime(180, now + 0.22);
+
+      gain.gain.setValueAtTime(0.18 * this.volume, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.25);
+    } catch (_) {
+      // Audio fallback gracefully ignores
+    }
+  }
+
   // Player injury
   public playInjury() {
     if (this.playSoundFile('injury.wav')) return;

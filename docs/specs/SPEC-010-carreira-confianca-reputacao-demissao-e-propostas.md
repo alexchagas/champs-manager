@@ -309,3 +309,124 @@ Além dos convites passivos, o Brasfoot possui no menu a **Central de Empregos (
 - [ ] **CA-05:** Após ser demitido, o treinador fica desempregado (sem clube ativo) e precisa avançar rodadas até receber propostas reais de clubes da parte baixa da tabela compatíveis com sua divisão/reputação (excluindo o clube que o demitiu).
 - [ ] **CA-06:** Treinador empregado com boa campanha/títulos recebe convites de outros clubes em janelas da temporada (meio do ano e fim de temporada), podendo aceitar mudar de clube ou recusar e continuar no clube atual.
 - [ ] **CA-07:** A aba `Carreira dos Técnicos` (`ManagersScreen.tsx`) conta com a **Central de Empregos** filtrada por reputação e opção de **Pedir Demissão**.
+
+---
+
+## 5. Especificação Detalhada da Experiência e Telas no Modo Desempregado (UX & Telas)
+
+### 5.1. Desassociação Estrita de Clube (`userClubId: undefined`)
+
+No momento exato da demissão (`changeManagers`) ou pedido de demissão (`resignHumanManager`):
+1. **Limpeza do ID do Clube:**
+   ```ts
+   state.userClubId = undefined;
+   ```
+2. **Atualização do Treinador Humano:**
+   ```ts
+   human.currentClubId = undefined;
+   human.available = true;
+   human.lastFiredClubId = previousClubId;
+   human.unemployedRounds = 0;
+   ```
+3. **Novo Treinador da IA no Clube Anterior:**
+   O clube anterior passa a ter um técnico da IA como comandante (`club.managerId = newAiId`, `club.coach = newAiName`). O jogador humano **não tem mais nenhuma relação de comando** com o elenco, táticas ou finanças do clube anterior.
+
+---
+
+### 5.2. Como Cada Tela Deve se Comportar no Modo Desempregado
+
+```mermaid
+flowchart TD
+    A["Treinador Demitido ou Pede Demissão"] --> B["userClubId = undefined<br/>human.available = true"]
+    B --> C["Redireciona para Hub do Treinador Desempregado"]
+    C --> D{"Ações Possíveis"}
+    D -->|"Avançar Rodada (Simulação Rápida)"| E["Simula jogos de todos os clubes neutros"]
+    D -->|"Abrir Central de Empregos"| F["Candidatar-se a vagas abertas compatíveis com reputação"]
+    D -->|"Consultar Classificação / Estatísticas"| G["Navegar tabelas e artilharia normalmente"]
+    E --> H["Tela de Resultados da Rodada (round_results)"]
+    H --> I{"Houve proposta de clube?<br/>(unemployedRounds >= 1)"}
+    I -->|"Sim"| J["Abre ClubJobOffersModal"]
+    I -->|"Não"| K["Botão 'Próxima Rodada' volta ao Hub / próxima simulação"]
+    J -->|"Aceitar Proposta"| L["userClubId = newClubId<br/>Restaura telas completas de clube"]
+    J -->|"Rejeitar Todas"| K
+```
+
+#### A. Barra Superior (`Header.tsx`)
+- **Empregado:** Exibe o escudo do clube, nome do clube, divisão e saldo bancário.
+- **Desempregado:**
+  - **Escudo:** Ícone neutro de prancheta/treinador (`User` ou `Briefcase`).
+  - **Nome:** Nome do técnico (ex: *"Professor"*).
+  - **Status:** Badge sutil com cor neutra/âmbar: *"Sem Clube • Disponível no Mercado"*.
+  - **Reputação:** Nível e estrelas (ex: *"★★★ Regional"*).
+  - **Saldo/Finanças:** Oculto (treinadores desempregados não possuem balanço contábil de clube).
+
+#### B. Barra Inferior de Navegação (`BottomNavBar.tsx`)
+- **Abas Restritas a Clubes:**
+  - `Elenco`, `Táticas` e `Finanças` ficam visualmente atenuadas (`opacity-40 grayscale pointer-events-none`) ou, ao clicar, exibem tooltip/toast: *"Você está desempregado. Assuma um clube para gerenciar elenco e finanças."*
+- **Abas Globais Habilitadas:**
+  - `Início / Hub` (leva ao Hub do Desempregado);
+  - `Classificação` (permite ver tabelas de qualquer divisão/copa);
+  - `Calendário / Jogos` (permite ver os confrontos da rodada);
+  - `Treinadores` (com aba de Central de Empregos).
+
+#### C. Tela Principal (`ClubOverview.tsx` $\rightarrow$ `UnemployedHub.tsx`)
+Quando `!gameState.userClubId` ou `human.available === true`, a tela principal deixa de renderizar o layout de clube e renderiza o **Hub de Técnico Desempregado**:
+1. **Hero Card do Treinador:**
+   - Nome do técnico e estrelas de reputação (`0: Municipal` a `5: Mundial`);
+   - Indicador de Prestígio Acumulado (`prestigePoints`);
+   - Resumo do último trabalho: clube de onde saiu, rodada, motivo e estatísticas;
+   - Status de desemprego: *"Sem clube há X rodadas"*.
+2. **Card de Ação Principal — Avançar Calendário:**
+   - Botão em destaque: **"Simular Rodada X (Avançar Calendário)"**;
+   - Informa a data/semana do futebol e quais competições estão ocorrendo.
+3. **Card da Central de Empregos:**
+   - Mostra quantas vagas compatíveis com a reputação do técnico estão em aberto;
+   - Botão com atalho direto: *"Ver Vagas Disponíveis na Central de Empregos"*.
+4. **Resumo Espectador do Futebol:**
+   - Mini-tabela da Série A (ou divisão de interesse) para o técnico acompanhar quem está liderando e quem está em crise;
+   - Notícias do mercado e demissões de outros clubes na temporada.
+
+#### D. Telas de Elenco, Táticas e Finanças (`SquadScreen`, `TacticsScreen`, `FinancesScreen`)
+Se o usuário navegar diretamente por atalho ou URL para essas telas:
+- Renderizam um **Empty State Padronizado**:
+  - Ícone temático ilustrativo;
+  - Título: *"Nenhum clube sob seu comando"*;
+  - Mensagem explicativa: *"Você está no mercado da bola. Espere por propostas de clubes ao avançar as rodadas ou candidate-se a uma vaga na Central de Empregos."*;
+  - Botão de ação: *"Acessar Central de Empregos"*.
+
+---
+
+### 5.3. Fluxo de Jogo ao Perder e ser Demitido
+
+1. O usuário joga a partida na `LiveMatchScreen`.
+2. Ao soar o apito final, a partida encerra e transita para a tela de **Resultados da Rodada (`round_results`)**.
+3. O jogador visualiza os placares da rodada e clica em **"Avançar"**.
+4. O ciclo de pós-rodada executa `scoreManagers` e `changeManagers`:
+   - Se `boardRating < 10` (após a tolerância de 5 jogos), o técnico é demitido;
+   - O modal `DismissalModal.tsx` é renderizado imediatamente sobre a tela;
+   - O modal explica o motivo real (ex: *"seus resultados não agradaram a diretoria e torcida"*), o nome do novo técnico contratado pela diretoria para seu lugar, e orienta a aguardar novas propostas.
+5. Ao clicar em **"Entendido"**:
+   - `userClubId` torna-se `undefined`;
+   - O jogo direciona imediatamente para o **Hub do Técnico Desempregado**.
+
+---
+
+### 5.4. Fluxo de Avanço Contínuo no Modo Desempregado ("Next, Next, Next...")
+
+1. No Hub de Desempregado, o jogador clica em **"Simular Rodada X"**:
+   - Como o jogador não tem clube, **não abre a tela de partida ao vivo (`LiveMatchScreen`)**;
+   - O motor executa a simulação instantânea de todas as partidas de todas as divisões e copas daquela rodada;
+   - O contador de `unemployedRounds` é incrementado (`+1`).
+2. O jogo abre a tela de **Resultados da Rodada (`round_results`)**:
+   - O jogador vê todos os placares dos outros clubes como espectador neutro;
+   - Botão inferior: **"Continuar"**.
+3. Ao clicar em **"Continuar"**:
+   - Se o motor gerou convites oficiais (`generateUnemployedJobOffers`), o modal `ClubJobOffersModal.tsx` abre com as propostas de clubes (salário, divisão, elenco, posição na tabela);
+   - Se o jogador **aceitar** uma proposta:
+     - Assume imediatamente o novo clube (`appointHuman(newClubId)`);
+     - `userClubId` é configurado para o novo clube;
+     - As barras de Confiança são reiniciadas (`boardRating: 95`, `fanRating: 85`);
+     - Todas as telas de Elenco, Táticas e Finanças voltam a ser do novo time.
+   - Se o jogador **rejeitar todas** ou **não houver propostas naquela rodada**:
+     - Retorna ao Hub do Desempregado para clicar em **"Simular Rodada X+1"** e avançar novamente.
+

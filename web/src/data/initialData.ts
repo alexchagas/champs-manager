@@ -337,12 +337,16 @@ export function createNewGame(
 
   const nationalTeams = initializeNationalTeams(clonedClubs);
 
+  const initialRepLevel = userClub.reputation ?? (userClub.division === 1 ? 3 : userClub.division === 2 ? 2 : 1);
   const initialHumanManager: Manager = {
     id: 'human-1',
     name: managerName.trim() || 'Alex Chagas',
     kind: 'human',
-    reputation: 1,
-    boardRating: 60,
+    reputation: Math.max(10, initialRepLevel * 20),
+    reputationLevel: initialRepLevel,
+    prestigePoints: 0,
+    boardRating: 95,
+    fanRating: 85,
     riskProfile: 'balanced',
     currentClubId: userClubId,
     available: false,
@@ -352,6 +356,7 @@ export function createNewGame(
     seasonScore: 0,
     careerScore: 0,
     scoreComponents: { results: 0, competitions: 0, squad: 0, finances: 0 },
+    unemployedRounds: 0,
   };
 
   const worldCup = isWorldCupYear(seasonYear) ? createWorldCupTournament(seasonYear, nationalTeams) : undefined;
