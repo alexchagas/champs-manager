@@ -415,11 +415,11 @@ export const ClubOverview: React.FC = () => {
   return (
     <div className="flex-1 flex flex-col lg:overflow-hidden bg-[var(--app-bg-deep)] p-2 sm:p-3 gap-2 sm:gap-2.5 lg:min-h-0 select-none pb-4 lg:pb-0">
       {/* TOP: CAREER & BOARD DASHBOARD WIDGET (ESTILO CLÁSSICO BRASFOOT) */}
-      <div className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg p-2.5 sm:p-3 shadow-md shrink-0 relative overflow-hidden">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-2.5 sm:p-3 shadow-md shrink-0 relative overflow-hidden">
         {/* Top dual stripe */}
         <div className="absolute top-0 left-0 right-0 h-1 flex z-10">
           <div className="flex-1" style={{ background: userClubTheme.stripeGradient }} />
-          <div className="w-1 bg-[var(--app-surface-2)]" />
+          <div className="w-1 bg-zinc-900" />
           <div className="flex-1" style={{ background: userClubTheme.stripeGradient }} />
         </div>
 
@@ -429,7 +429,7 @@ export const ClubOverview: React.FC = () => {
             {/* Escudo e Nome com Divisão Abaixo */}
             <div className="flex items-center space-x-2 sm:space-x-2.5 shrink-0">
               <div 
-                className="w-10 h-10 sm:w-11 sm:h-11 rounded-lg flex items-center justify-center font-bold text-sm shadow-md bg-[var(--app-bg-deep)] shrink-0 p-1 relative overflow-hidden"
+                className="w-10 h-10 sm:w-11 sm:h-11 rounded-lg flex items-center justify-center font-bold text-sm shadow-md bg-zinc-950 shrink-0 p-1 relative overflow-hidden"
                 style={{ 
                   border: `1.5px solid ${userClubTheme.subtleBorder}`,
                   boxShadow: `0 0 12px ${userClubTheme.subtleBg}`
@@ -448,7 +448,7 @@ export const ClubOverview: React.FC = () => {
                   {userClub.name}
                 </h1>
                 <div className="flex items-center space-x-1.5 mt-0.5">
-                  <span className="text-[10px] sm:text-[11px] font-bold text-[var(--app-text-accent)] uppercase tracking-wider">
+                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-300 uppercase tracking-wider">
                     {gameState.divisionName || 'Série A'}
                   </span>
                   <span 
@@ -461,7 +461,7 @@ export const ClubOverview: React.FC = () => {
             </div>
 
             {/* Separador vertical sutil em telas maiores */}
-            <div className="hidden sm:block h-8 w-px bg-[var(--app-border-subtle)] shrink-0" />
+            <div className="hidden sm:block h-8 w-px bg-zinc-800 shrink-0" />
 
             {/* Comando Técnico & Métricas do Treinador */}
             <div className="min-w-0 flex flex-col justify-center">
@@ -485,7 +485,7 @@ export const ClubOverview: React.FC = () => {
 
                 {/* Reputação */}
                 <span 
-                  className="inline-flex items-center gap-1 text-[10px] text-[var(--app-text-accent)] bg-[var(--app-bg-deep)] border border-[var(--app-border-subtle)] px-1.5 py-0.5 rounded font-mono font-bold"
+                  className="inline-flex items-center gap-1 text-[10px] text-slate-100 bg-zinc-950 border border-zinc-800 px-1.5 py-0.5 rounded font-mono font-bold"
                   title={`Reputação do Treinador: ${managerReputation}%`}
                 >
                   <Sparkles className="w-2.5 h-2.5 text-amber-300" />
@@ -493,30 +493,30 @@ export const ClubOverview: React.FC = () => {
                 </span>
 
                 {/* Perfil */}
-                <span className="hidden md:inline-flex text-[10px] text-slate-400 bg-[var(--app-surface-2)]/60 px-1.5 py-0.5 rounded font-semibold border border-[var(--app-border-subtle)]">
+                <span className="hidden md:inline-flex text-[10px] text-slate-400 bg-zinc-800/60 px-1.5 py-0.5 rounded font-semibold border border-zinc-700/60">
                   Estilo: <strong className="text-slate-200 ml-1">{profileLabel}</strong>
                 </span>
 
                 {/* Força Média do Time */}
-                <span className="hidden lg:inline-flex text-[10px] text-slate-400 bg-[var(--app-surface-2)]/60 px-1.5 py-0.5 rounded font-semibold border border-[var(--app-border-subtle)]">
-                  Elenco: <strong className="text-[var(--app-text-accent)] ml-1">{userStrength.overall} Força</strong>
+                <span className="hidden lg:inline-flex text-[10px] text-slate-400 bg-zinc-800/60 px-1.5 py-0.5 rounded font-semibold border border-zinc-700/60">
+                  Elenco: <strong className="text-slate-100 ml-1">{userStrength.overall} Força</strong>
                 </span>
               </div>
             </div>
           </div>
 
           {/* Section 2: Competição & Barra de Progresso da Temporada */}
-          <div className="hidden lg:flex flex-col items-center justify-center px-4 py-1.5 bg-[var(--app-surface-2)]/60 rounded-md border border-[var(--app-border-subtle)] shrink-0 min-w-[220px]">
+          <div className="hidden lg:flex flex-col items-center justify-center px-4 py-1.5 bg-zinc-800/60 rounded-md border border-zinc-700/60 shrink-0 min-w-[220px]">
             <div className="flex items-center justify-between w-full text-[11px] mb-1">
               <span className="text-slate-400 truncate max-w-[130px] font-medium">
                 {tableTitle || 'Campeonato'}
               </span>
-              <span className="text-[var(--app-text-accent)] font-bold font-mono-numbers">
+              <span className="text-slate-100 font-bold font-mono-numbers">
                 Rodada {gameState.currentRound}/{totalRounds}
               </span>
             </div>
             {/* Progress bar */}
-            <div className="w-full bg-[var(--app-bg-deep)] h-1.5 rounded-full overflow-hidden border border-[var(--app-border-subtle)]">
+            <div className="w-full bg-zinc-950 h-1.5 rounded-full overflow-hidden border border-zinc-800">
               <div 
                 className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full transition-all duration-500"
                 style={{ width: `${Math.min(100, Math.round((gameState.currentRound / Math.max(1, totalRounds)) * 100))}%` }}
@@ -527,7 +527,7 @@ export const ClubOverview: React.FC = () => {
           {/* Section 3: Widget de Saldo em Caixa */}
           <div 
             onClick={() => setScreen('finances')}
-            className="flex items-center space-x-3 px-3 py-1.5 bg-[var(--app-surface-2)] hover:bg-[var(--app-surface-2)]/80 border border-[var(--app-border-subtle)] rounded-lg cursor-pointer transition-all active:scale-98 shadow-xs ml-auto sm:ml-0"
+            className="flex items-center space-x-3 px-3 py-1.5 bg-zinc-800/60 hover:bg-zinc-800 border border-zinc-700/60 rounded-lg cursor-pointer transition-all active:scale-98 shadow-xs ml-auto sm:ml-0"
             title="Ver Finanças detalhadas"
           >
             <div className="w-7 h-7 rounded-md bg-emerald-950/70 border border-emerald-600/40 flex items-center justify-center text-emerald-400 shrink-0">
@@ -553,14 +553,14 @@ export const ClubOverview: React.FC = () => {
             if (!headlineArticle.read) markNewsAsRead(headlineArticle.id); 
             setScreen('news'); 
           }}
-          className="bg-[var(--app-surface-1)] hover:bg-[var(--app-surface-2)] border border-[var(--app-border-subtle)] hover:border-[var(--app-border-highlight)] rounded-lg px-2.5 sm:px-3 py-1.5 flex items-center justify-between gap-2 shadow-xs shrink-0 cursor-pointer transition-all group"
+          className="bg-[#202024] hover:bg-zinc-800 border border-zinc-700/50 hover:border-zinc-700 rounded-lg px-2.5 sm:px-3 py-1.5 flex items-center justify-between gap-2 shadow-xs shrink-0 cursor-pointer transition-all group"
           title="Clique para abrir a edição completa do Jornal"
         >
           <div className="flex items-center space-x-2 min-w-0">
             <span className={`inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] font-bold border shrink-0 ${
               !headlineArticle.read
                 ? 'bg-amber-950/80 text-amber-300 border-amber-600/50'
-                : 'bg-[var(--app-surface-2)] text-slate-300 border-[var(--app-border-subtle)]'
+                : 'bg-zinc-800 text-slate-300 border-zinc-700/60'
             }`}>
               <Newspaper className="w-3 h-3 text-amber-400" />
               <span>Plantão</span>
@@ -1152,30 +1152,22 @@ export const ClubOverview: React.FC = () => {
       <div className="flex flex-col gap-2.5 sm:gap-3 lg:overflow-hidden order-1 lg:order-2 lg:w-1/2 lg:min-h-0">
         {/* TOP ROW: NEXT MATCH HERO CARD */}
         {nextOpponent && userFixture && (
-          <div className="bg-[var(--app-surface-1)] border border-[var(--app-border-subtle)] rounded-lg p-2.5 sm:p-3 flex flex-col gap-2 sm:gap-2.5 shadow-md shrink-0 relative overflow-hidden">
-            {/* Top dual-team kit stripe line */}
-            <div className="absolute top-0 left-0 right-0 h-1 flex z-10">
-              <div className="flex-1" style={{ background: userClubTheme.stripeGradient }} />
-              <div className="w-1 bg-[var(--app-surface-2)]" />
-              <div className="flex-1" style={{ background: opponentTheme?.stripeGradient || userClubTheme.stripeGradient }} />
-            </div>
+          <div
+            className="bg-zinc-900 border border-zinc-800 rounded-lg p-2.5 sm:p-3 flex flex-col gap-2 sm:gap-2.5 shadow-md shrink-0 relative overflow-hidden"
+            style={{
+              // Cada lado do card leva a cor do seu time, sumindo até o centro neutro
+              backgroundImage: `linear-gradient(90deg, color-mix(in srgb, ${userClubTheme.primaryAccent} 20%, transparent) 0%, transparent 40%, transparent 60%, color-mix(in srgb, ${(opponentTheme ?? userClubTheme).primaryAccent} 20%, transparent) 100%)`,
+            }}
+          >
 
             {/* Teams & VS Row */}
             <div className="flex items-center justify-between pt-1">
               {/* User Club */}
               <div className="flex items-center space-x-2 sm:space-x-3 flex-1 min-w-0 max-w-[42%] lg:w-44">
                 <div
-                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center font-black text-sm text-white shadow bg-[var(--app-bg-deep)] shrink-0 p-0.5 relative overflow-hidden"
-                  style={{ 
-                    border: `1.5px solid ${userClubTheme.subtleBorder}`,
-                    boxShadow: `0 0 10px ${userClubTheme.subtleBg}`
-                  }}
+                  className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center font-black text-sm text-white shrink-0 p-0.5 relative"
                 >
                   <ClubCrest club={userClub} size="lg" className="w-8 h-8 sm:w-9 sm:h-9" />
-                  <div 
-                    className="absolute bottom-0 left-0 right-0 h-0.5"
-                    style={{ background: userClubTheme.stripeGradient }}
-                  />
                 </div>
                 <div className="min-w-0">
                   <div className="font-extrabold text-xs sm:text-sm text-white truncate flex items-center gap-1 sm:gap-1.5">
@@ -1236,17 +1228,9 @@ export const ClubOverview: React.FC = () => {
                   </div>
                 </div>
                 <div
-                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center font-black text-sm text-white shadow bg-[var(--app-bg-deep)] shrink-0 p-0.5 relative overflow-hidden group-hover:scale-105 transition-transform"
-                  style={{ 
-                    border: `1.5px solid ${opponentTheme?.subtleBorder || 'var(--app-border-subtle)'}`,
-                    boxShadow: opponentTheme ? `0 0 10px ${opponentTheme.subtleBg}` : undefined
-                  }}
+                  className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center font-black text-sm text-white shrink-0 p-0.5 relative group-hover:scale-105 transition-transform"
                 >
                   <ClubCrest club={nextOpponent} size="lg" className="w-8 h-8 sm:w-9 sm:h-9" />
-                  <div 
-                    className="absolute bottom-0 left-0 right-0 h-0.5"
-                    style={{ background: opponentTheme?.stripeGradient || userClubTheme.stripeGradient }}
-                  />
                 </div>
               </div>
             </div>
